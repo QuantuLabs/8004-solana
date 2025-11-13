@@ -79,7 +79,7 @@ This implementation brings these capabilities to Solana while maintaining cross-
 - [ ] **Reputation Registry**
   - [ ] Feedback scoring (0-100)
   - [ ] Revocation support
-  - [ ] Agent responses (max 5 per feedback)
+  - [ ] Agent responses (unlimited via separate accounts)
   - [ ] Cached reputation summaries
 - [ ] **Validation Registry**
   - [ ] Validation requests
@@ -129,9 +129,11 @@ This implementation follows the official [ERC-8004 specification](https://eips.e
 | Metadata Storage | Unlimited mapping | Max 10 entries | 🧪 Local tests only |
 | Reputation Scoring | 0-100 with tags | 0-100 with tags | ⏳ Not started |
 | Feedback Revocation | By client | By client | ⏳ Not started |
-| Agent Responses | Unlimited | Max 5 | ⏳ Not started |
+| Agent Responses | Unlimited (array in struct) | Unlimited (separate accounts) | ⏳ Not started |
 | Validation System | Request/Response | Request/Response | ⏳ Not started |
 | Cross-chain IDs | CAIP-10 | CAIP-10 | ⏳ Not started |
+
+**Note on Responses**: Solana implementation uses separate accounts per response (~$0.40 each, recoverable) which is actually **cheaper** than Ethereum's approach (~$1-5 per response, non-recoverable).
 
 ## Official References
 
