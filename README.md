@@ -87,7 +87,7 @@ This implementation brings these capabilities to Solana while maintaining cross-
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/erc8004-solana.git
+git clone https://github.com/QuantumAgentic/erc8004-solana.git
 cd erc8004-solana
 
 # Install dependencies
