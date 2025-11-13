@@ -101,6 +101,76 @@ pub mod identity_registry {
 
         Ok(())
     }
+
+    /// Set agent metadata (ERC-8004 spec: setMetadata(agentId, key, value))
+    ///
+    /// Updates or adds a metadata entry for the agent. Only the agent owner can call this.
+    /// If the key exists, the value is updated. If the key is new, a new entry is added.
+    /// Maximum 10 metadata entries per agent.
+    ///
+    /// # Arguments
+    /// * `key` - Metadata key (max 32 bytes)
+    /// * `value` - Metadata value (max 256 bytes)
+    ///
+    /// # Events
+    /// * `MetadataSet` - Emitted when metadata is successfully set
+    ///
+    /// # Errors
+    /// * `KeyTooLong` - If key exceeds 32 bytes
+    /// * `ValueTooLong` - If value exceeds 256 bytes
+    /// * `MetadataLimitReached` - If adding new entry would exceed 10 entries
+    /// * `Unauthorized` - If caller is not the agent owner
+    pub fn set_metadata(
+        ctx: Context<SetMetadata>,
+        key: String,
+        value: Vec<u8>,
+    ) -> Result<()> {
+        // Validate key length (ERC-8004 adaptation: max 32 bytes)
+        require!(
+            key.len() <= MetadataEntry::MAX_KEY_LENGTH,
+            IdentityError::KeyTooLong
+        );
+
+        // Validate value length (ERC-8004 adaptation: max 256 bytes)
+        require!(
+            value.len() <= MetadataEntry::MAX_VALUE_LENGTH,
+            IdentityError::ValueTooLong
+        );
+
+        let agent = &mut ctx.accounts.agent_account;
+
+        // Find existing entry or add new one
+        if let Some(entry) = agent.find_metadata_mut(&key) {
+            // Update existing entry
+            entry.value = value.clone();
+        } else {
+            // Add new entry (max 10 entries)
+            require!(
+                agent.metadata.len() < AgentAccount::MAX_METADATA_ENTRIES,
+                IdentityError::MetadataLimitReached
+            );
+
+            agent.metadata.push(MetadataEntry {
+                key: key.clone(),
+                value: value.clone(),
+            });
+        }
+
+        // Emit event (ERC-8004 spec: MetadataSet event)
+        emit!(MetadataSet {
+            agent_id: agent.agent_id,
+            key: key.clone(),
+            value,
+        });
+
+        msg!(
+            "Metadata '{}' set for agent {}",
+            key,
+            agent.agent_id
+        );
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -154,4 +224,25 @@ pub struct AgentRegistered {
     pub token_uri: String,
     pub owner: Pubkey,
     pub agent_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct SetMetadata<'info> {
+    #[account(
+        mut,
+        seeds = [b"agent", agent_account.agent_mint.as_ref()],
+        bump = agent_account.bump,
+        constraint = owner.key() == agent_account.owner @ IdentityError::Unauthorized
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    pub owner: Signer<'info>,
+}
+
+/// Event emitted when agent metadata is set (ERC-8004 spec: MetadataSet)
+#[event]
+pub struct MetadataSet {
+    pub agent_id: u64,
+    pub key: String,
+    pub value: Vec<u8>,
 }

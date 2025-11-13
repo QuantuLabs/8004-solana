@@ -274,4 +274,204 @@ describe("Identity Registry", () => {
       }
     });
   });
+
+  describe("Set Metadata", () => {
+    let nftMint: PublicKey;
+    let agentPda: PublicKey;
+
+    before(async () => {
+      // Create and register an agent for metadata tests
+      const mintKeypair = Keypair.generate();
+      nftMint = await createMint(
+        provider.connection,
+        provider.wallet.payer,
+        provider.wallet.publicKey,
+        null,
+        0,
+        mintKeypair
+      );
+
+      const tokenAccount = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        nftMint,
+        provider.wallet.publicKey
+      );
+
+      await mintTo(
+        provider.connection,
+        provider.wallet.payer,
+        nftMint,
+        tokenAccount.address,
+        provider.wallet.publicKey,
+        1
+      );
+
+      [agentPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("agent"), nftMint.toBuffer()],
+        program.programId
+      );
+
+      // Register the agent
+      await program.methods
+        .register("ipfs://metadata-test")
+        .accounts({
+          config: configPda,
+          agentAccount: agentPda,
+          agentMint: nftMint,
+          owner: provider.wallet.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc();
+    });
+
+    it("Sets new metadata entry", async () => {
+      const key = "name";
+      const value = Buffer.from("Test Agent");
+
+      await program.methods
+        .setMetadata(key, value)
+        .accounts({
+          agentAccount: agentPda,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.metadata.length, 1, "Should have 1 metadata entry");
+      assert.equal(agent.metadata[0].key, key);
+      assert.deepEqual(Buffer.from(agent.metadata[0].value), value);
+    });
+
+    it("Updates existing metadata entry", async () => {
+      const key = "name";
+      const newValue = Buffer.from("Updated Agent Name");
+
+      await program.methods
+        .setMetadata(key, newValue)
+        .accounts({
+          agentAccount: agentPda,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.metadata.length, 1, "Should still have 1 entry");
+      assert.deepEqual(Buffer.from(agent.metadata[0].value), newValue);
+    });
+
+    it("Adds multiple metadata entries", async () => {
+      const entries = [
+        { key: "description", value: "AI Agent" },
+        { key: "version", value: "1.0" },
+        { key: "category", value: "DeFi" },
+      ];
+
+      for (const entry of entries) {
+        await program.methods
+          .setMetadata(entry.key, Buffer.from(entry.value))
+          .accounts({
+            agentAccount: agentPda,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc();
+      }
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.metadata.length, 4, "Should have 4 entries total");
+    });
+
+    it("Enforces 10 metadata entry limit", async () => {
+      // We already have 4 entries, add 6 more to reach 10
+      for (let i = 0; i < 6; i++) {
+        await program.methods
+          .setMetadata(`key${i}`, Buffer.from(`value${i}`))
+          .accounts({
+            agentAccount: agentPda,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc();
+      }
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.metadata.length, 10, "Should have exactly 10 entries");
+
+      // Try to add 11th entry
+      try {
+        await program.methods
+          .setMetadata("overflow", Buffer.from("should fail"))
+          .accounts({
+            agentAccount: agentPda,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc();
+
+        assert.fail("Should have failed with MetadataLimitReached");
+      } catch (error) {
+        assert.include(error.message, "MetadataLimitReached");
+      }
+    });
+
+    it("Fails with key > 32 bytes", async () => {
+      const longKey = "a".repeat(33);
+
+      try {
+        await program.methods
+          .setMetadata(longKey, Buffer.from("value"))
+          .accounts({
+            agentAccount: agentPda,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc();
+
+        assert.fail("Should have failed with KeyTooLong");
+      } catch (error) {
+        assert.include(error.message, "KeyTooLong");
+      }
+    });
+
+    it("Fails with value > 256 bytes", async () => {
+      const longValue = Buffer.alloc(257, "a");
+
+      try {
+        await program.methods
+          .setMetadata("test", longValue)
+          .accounts({
+            agentAccount: agentPda,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc();
+
+        assert.fail("Should have failed with ValueTooLong");
+      } catch (error) {
+        assert.include(error.message, "ValueTooLong");
+      }
+    });
+
+    it("Fails when non-owner tries to set metadata", async () => {
+      const otherUser = Keypair.generate();
+
+      // Airdrop to other user
+      const airdropSig = await provider.connection.requestAirdrop(
+        otherUser.publicKey,
+        1000000000
+      );
+      await provider.connection.confirmTransaction(airdropSig);
+
+      try {
+        await program.methods
+          .setMetadata("unauthorized", Buffer.from("hack"))
+          .accounts({
+            agentAccount: agentPda,
+            owner: otherUser.publicKey,
+          })
+          .signers([otherUser])
+          .rpc();
+
+        assert.fail("Should have failed with Unauthorized");
+      } catch (error) {
+        assert.include(error.message, "Unauthorized");
+      }
+    });
+  });
 });
