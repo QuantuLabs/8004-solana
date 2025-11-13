@@ -6,22 +6,29 @@
 [![Anchor Version](https://img.shields.io/badge/Anchor-0.31.1-blue)](https://github.com/coral-xyz/anchor)
 [![Solana](https://img.shields.io/badge/Solana-Compatible-green)](https://solana.com)
 [![Status](https://img.shields.io/badge/Status-In%20Development-orange)]()
-[![Progress](https://img.shields.io/badge/Progress-12%25-blue)]()
+[![Progress](https://img.shields.io/badge/Progress-15%25-blue)]()
+[![Devnet](https://img.shields.io/badge/Devnet-Live-success)]()
+[![Tests](https://img.shields.io/badge/Tests-24%2F24-brightgreen)]()
 
-## 📊 Implementation Progress: ~12%
+## 📊 Implementation Progress: ~15%
 
-**Phase 1: Identity Registry - COMPLETE** (Local tests only - not yet deployed)
+**Phase 1: Identity Registry - ✅ DEPLOYED TO DEVNET**
 
 - ✅ Data structures (RegistryConfig, AgentAccount, MetadataEntry)
-- ✅ Initialize instruction (local tests ✓)
-- ✅ Register instruction with NFT validation (local tests ✓)
-- ✅ Set metadata instruction (local tests ✓)
-- ✅ Set agent URI instruction (local tests ✓)
-- ✅ Transfer support via SPL Token + sync_owner (local tests ✓)
+- ✅ Initialize instruction (devnet ✓)
+- ✅ Register instruction with NFT validation (devnet ✓)
+- ✅ Set metadata instruction (devnet ✓)
+- ✅ Set agent URI instruction (devnet ✓)
+- ✅ Transfer support via SPL Token + sync_owner (devnet ✓)
 - ✅ Events (AgentRegistered, MetadataSet, AgentUriSet, AgentOwnerSynced)
-- ✅ Test suite (24/24 passing locally)
-- ⏳ Devnet deployment & testing
-- ⏳ Integration testing
+- ✅ Test suite (24/24 local, 17/17 devnet functional tests)
+- ✅ **Deployed to Solana Devnet**
+- ✅ 100% instruction coverage, 100% error path coverage
+
+**Devnet Program IDs:**
+- Identity Registry: `AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR`
+- Reputation Registry: `9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa`
+- Validation Registry: `2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x`
 
 ## 🚧 Building in Public
 
@@ -68,14 +75,14 @@ This implementation brings these capabilities to Solana while maintaining cross-
 ### ✅ Planned Features
 
 - [x] Project structure with 3 Anchor programs
-- [x] **Identity Registry** (✅ COMPLETE - local only)
-  - [x] NFT-based agent registration (local tests ✓)
-  - [x] Metadata storage (max 10 key-value pairs, local tests ✓)
-  - [x] Sequential agent IDs (local tests ✓)
-  - [x] Set agent URI instruction (local tests ✓)
-  - [x] Transfer support via SPL Token + sync_owner (local tests ✓)
-  - [ ] Devnet deployment
-  - [ ] Live integration tests
+- [x] **Identity Registry** (✅ DEPLOYED & TESTED)
+  - [x] NFT-based agent registration (devnet ✓)
+  - [x] Metadata storage (max 10 key-value pairs, devnet ✓)
+  - [x] Sequential agent IDs (devnet ✓)
+  - [x] Set agent URI instruction (devnet ✓)
+  - [x] Transfer support via SPL Token + sync_owner (devnet ✓)
+  - [x] Devnet deployment (live at AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR)
+  - [x] Live integration tests (17/17 functional tests passing)
 - [ ] **Reputation Registry**
   - [ ] Feedback scoring (0-100)
   - [ ] Revocation support
@@ -125,8 +132,8 @@ This implementation follows the official [ERC-8004 specification](https://eips.e
 
 | Feature | Ethereum | Solana | Status |
 |---------|----------|--------|--------|
-| Agent Registration | ERC-721 tokenId | SPL Token NFT + PDA | 🧪 Local tests only |
-| Metadata Storage | Unlimited mapping | Max 10 entries | 🧪 Local tests only |
+| Agent Registration | ERC-721 tokenId | SPL Token NFT + PDA | ✅ Devnet deployed |
+| Metadata Storage | Unlimited mapping | Max 10 entries | ✅ Devnet deployed |
 | Reputation Scoring | 0-100 with tags | 0-100 with tags | ⏳ Not started |
 | Feedback Revocation | By client | By client | ⏳ Not started |
 | Agent Responses | Unlimited (array in struct) | Unlimited (separate accounts) | ⏳ Not started |

@@ -10,6 +10,11 @@ identity_registry = "AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR"
 reputation_registry = "9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa"
 validation_registry = "2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x"
 
+[programs.devnet]
+identity_registry = "AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR"
+reputation_registry = "9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa"
+validation_registry = "2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x"
+
 [registry]
 url = "https://api.apr.dev"
 
