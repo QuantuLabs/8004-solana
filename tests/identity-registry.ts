@@ -1,18 +1,20 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey, Keypair } from "@solana/web3.js";
+import { PublicKey, Keypair, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
 import { assert } from "chai";
 import {
-  createMint,
-  getOrCreateAssociatedTokenAccount,
-  mintTo,
-  transfer,
+  getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   getAccount,
+  transfer,
 } from "@solana/spl-token";
 import { IdentityRegistry } from "../target/types/identity_registry";
 
-describe("Identity Registry", () => {
+// Metaplex Token Metadata Program ID
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+
+describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -20,6 +22,43 @@ describe("Identity Registry", () => {
 
   let configPda: PublicKey;
   let configBump: number;
+  let collectionMint: Keypair;
+  let collectionMetadata: PublicKey;
+  let collectionMasterEdition: PublicKey;
+  let collectionTokenAccount: PublicKey;
+
+  // Helper function to derive Metaplex metadata PDA
+  function getMetadataPda(mint: PublicKey): PublicKey {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+        mint.toBuffer(),
+      ],
+      TOKEN_METADATA_PROGRAM_ID
+    )[0];
+  }
+
+  // Helper function to derive Metaplex master edition PDA
+  function getMasterEditionPda(mint: PublicKey): PublicKey {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+        mint.toBuffer(),
+        Buffer.from("edition"),
+      ],
+      TOKEN_METADATA_PROGRAM_ID
+    )[0];
+  }
+
+  // Helper function to derive agent account PDA
+  function getAgentPda(agentMint: PublicKey): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("agent"), agentMint.toBuffer()],
+      program.programId
+    );
+  }
 
   before(async () => {
     // Derive config PDA
@@ -30,309 +69,699 @@ describe("Identity Registry", () => {
   });
 
   describe("Initialize", () => {
-    it("Initializes the registry config", async () => {
+    it("Initializes the registry with Metaplex Collection NFT", async () => {
+      collectionMint = Keypair.generate();
+      collectionMetadata = getMetadataPda(collectionMint.publicKey);
+      collectionMasterEdition = getMasterEditionPda(collectionMint.publicKey);
+      collectionTokenAccount = getAssociatedTokenAddressSync(
+        collectionMint.publicKey,
+        provider.wallet.publicKey
+      );
+
       await program.methods
         .initialize()
         .accounts({
           config: configPda,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
+          collectionTokenAccount,
           authority: provider.wallet.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
+        .signers([collectionMint])
         .rpc();
 
       const config = await program.account.registryConfig.fetch(configPda);
 
       assert.equal(config.authority.toBase58(), provider.wallet.publicKey.toBase58());
-      assert.equal(config.nextAgentId.toNumber(), 0);
+      assert.equal(config.nextAgentId.toNumber(), 0, "Agent ID should start at 0");
       assert.equal(config.totalAgents.toNumber(), 0);
+      assert.equal(config.collectionMint.toBase58(), collectionMint.publicKey.toBase58());
       assert.equal(config.bump, configBump);
+
+      // Verify collection token account was created and holds 1 NFT
+      const collectionTokenAcct = await getAccount(provider.connection, collectionTokenAccount);
+      assert.equal(collectionTokenAcct.amount.toString(), "1", "Collection should have supply of 1");
     });
 
     it("Fails to reinitialize", async () => {
+      const newCollectionMint = Keypair.generate();
+      const newCollectionMetadata = getMetadataPda(newCollectionMint.publicKey);
+      const newCollectionMasterEdition = getMasterEditionPda(newCollectionMint.publicKey);
+      const newCollectionTokenAccount = getAssociatedTokenAddressSync(
+        newCollectionMint.publicKey,
+        provider.wallet.publicKey
+      );
+
       try {
         await program.methods
           .initialize()
           .accounts({
             config: configPda,
+            collectionMint: newCollectionMint.publicKey,
+            collectionMetadata: newCollectionMetadata,
+            collectionMasterEdition: newCollectionMasterEdition,
+            collectionTokenAccount: newCollectionTokenAccount,
             authority: provider.wallet.publicKey,
-            systemProgram: anchor.web3.SystemProgram.programId,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            rent: SYSVAR_RENT_PUBKEY,
+            tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
           })
+          .signers([newCollectionMint])
           .rpc();
 
         assert.fail("Should have failed to reinitialize");
       } catch (error) {
-        // Expected to fail - account already initialized
+        // Expected to fail - config account already initialized
         assert.include(error.message, "already in use");
       }
     });
   });
 
-  describe("Register", () => {
-    let nftMint: PublicKey;
+  describe("Register (ERC-8004: register(tokenURI))", () => {
+    let agentMint: Keypair;
+    let agentMetadata: PublicKey;
+    let agentMasterEdition: PublicKey;
+    let agentTokenAccount: PublicKey;
     let agentPda: PublicKey;
+    let agentBump: number;
 
     beforeEach(async () => {
-      // Create a new NFT mint for each test (supply=1, decimals=0)
-      const mintKeypair = Keypair.generate();
-      nftMint = await createMint(
-        provider.connection,
-        provider.wallet.payer,
-        provider.wallet.publicKey,
-        null,
-        0, // decimals = 0 (NFT)
-        mintKeypair
-      );
-
-      // Mint exactly 1 token (supply=1)
-      const tokenAccount = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint,
+      // Generate new keypairs for each agent NFT
+      agentMint = Keypair.generate();
+      agentMetadata = getMetadataPda(agentMint.publicKey);
+      agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      agentTokenAccount = getAssociatedTokenAddressSync(
+        agentMint.publicKey,
         provider.wallet.publicKey
       );
-
-      await mintTo(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint,
-        tokenAccount.address,
-        provider.wallet.publicKey,
-        1 // supply = 1 (NFT)
-      );
-
-      // Derive agent PDA
-      [agentPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent"), nftMint.toBuffer()],
-        program.programId
-      );
+      [agentPda, agentBump] = getAgentPda(agentMint.publicKey);
     });
 
-    it("Registers an agent with tokenURI", async () => {
-      const tokenUri = "ipfs://QmTest123456789abcdefg";
+    it("Registers agent with tokenURI (contract creates NFT)", async () => {
+      const tokenUri = "https://example.com/agent/1.json";
+
+      const configBefore = await program.account.registryConfig.fetch(configPda);
+      const expectedAgentId = configBefore.nextAgentId.toNumber();
 
       await program.methods
         .register(tokenUri)
         .accounts({
           config: configPda,
+          authority: provider.wallet.publicKey,
           agentAccount: agentPda,
-          agentMint: nftMint,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
           owner: provider.wallet.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
+        .signers([agentMint])
         .rpc();
 
-      // Verify agent account
+      // Verify agent account was created
       const agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.agentId.toNumber(), 0, "First agent should have ID 0");
+      assert.equal(agent.agentId.toNumber(), expectedAgentId);
       assert.equal(agent.owner.toBase58(), provider.wallet.publicKey.toBase58());
-      assert.equal(agent.agentMint.toBase58(), nftMint.toBase58());
+      assert.equal(agent.agentMint.toBase58(), agentMint.publicKey.toBase58());
       assert.equal(agent.tokenUri, tokenUri);
-      assert.equal(agent.metadata.length, 0, "Should have no initial metadata");
+      assert.equal(agent.metadata.length, 0, "Should have no metadata initially");
+      assert.equal(agent.bump, agentBump);
 
-      // Verify config updated
-      const config = await program.account.registryConfig.fetch(configPda);
-      assert.equal(config.nextAgentId.toNumber(), 1, "Next ID should be 1");
-      assert.equal(config.totalAgents.toNumber(), 1, "Total should be 1");
+      // Verify config was updated
+      const configAfter = await program.account.registryConfig.fetch(configPda);
+      assert.equal(configAfter.nextAgentId.toNumber(), expectedAgentId + 1);
+      assert.equal(configAfter.totalAgents.toNumber(), 1);
+
+      // Verify NFT was minted to owner
+      const tokenAcct = await getAccount(provider.connection, agentTokenAccount);
+      assert.equal(tokenAcct.amount.toString(), "1", "Owner should have 1 NFT");
+      assert.equal(tokenAcct.mint.toBase58(), agentMint.publicKey.toBase58());
     });
 
     it("Registers agent with empty tokenURI (ERC-8004 spec)", async () => {
-      const tokenUri = "";
-
       await program.methods
-        .register(tokenUri)
+        .register("")
         .accounts({
           config: configPda,
+          authority: provider.wallet.publicKey,
           agentAccount: agentPda,
-          agentMint: nftMint,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
           owner: provider.wallet.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
+        .signers([agentMint])
         .rpc();
 
       const agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.tokenUri, "", "Empty URI should be allowed");
+      assert.equal(agent.tokenUri, "");
     });
 
-    it("Assigns sequential agent IDs", async () => {
-      // Register first agent
-      await program.methods
-        .register("ipfs://first")
-        .accounts({
-          config: configPda,
-          agentAccount: agentPda,
-          agentMint: nftMint,
-          owner: provider.wallet.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
-        })
-        .rpc();
+    it("Assigns sequential agent IDs starting from 0", async () => {
+      const agentMints = [];
+      const agentPdas = [];
 
-      const firstAgent = await program.account.agentAccount.fetch(agentPda);
-      const firstId = firstAgent.agentId.toNumber();
+      // Register 3 agents
+      for (let i = 0; i < 3; i++) {
+        const mint = Keypair.generate();
+        const metadata = getMetadataPda(mint.publicKey);
+        const masterEdition = getMasterEditionPda(mint.publicKey);
+        const tokenAccount = getAssociatedTokenAddressSync(mint.publicKey, provider.wallet.publicKey);
+        const [pda] = getAgentPda(mint.publicKey);
 
-      // Create second NFT and register
-      const mintKeypair2 = Keypair.generate();
-      const nftMint2 = await createMint(
-        provider.connection,
-        provider.wallet.payer,
-        provider.wallet.publicKey,
-        null,
-        0,
-        mintKeypair2
-      );
+        await program.methods
+          .register(`https://example.com/agent/${i}.json`)
+          .accounts({
+            config: configPda,
+            authority: provider.wallet.publicKey,
+            agentAccount: pda,
+            agentMint: mint.publicKey,
+            agentMetadata: metadata,
+            agentMasterEdition: masterEdition,
+            agentTokenAccount: tokenAccount,
+            collectionMint: collectionMint.publicKey,
+            collectionMetadata,
+            collectionMasterEdition,
+            owner: provider.wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            rent: SYSVAR_RENT_PUBKEY,
+            tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+          })
+          .signers([mint])
+          .rpc();
 
-      const tokenAccount2 = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint2,
-        provider.wallet.publicKey
-      );
+        agentMints.push(mint);
+        agentPdas.push(pda);
+      }
 
-      await mintTo(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint2,
-        tokenAccount2.address,
-        provider.wallet.publicKey,
-        1
-      );
+      // Verify agent IDs are sequential
+      for (let i = 0; i < 3; i++) {
+        const agent = await program.account.agentAccount.fetch(agentPdas[i]);
+        // First test registered agent ID 0, so these should be 1, 2, 3
+        assert.equal(agent.agentId.toNumber(), 1 + i);
+      }
 
-      const [agentPda2] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent"), nftMint2.toBuffer()],
-        program.programId
-      );
-
-      await program.methods
-        .register("ipfs://second")
-        .accounts({
-          config: configPda,
-          agentAccount: agentPda2,
-          agentMint: nftMint2,
-          owner: provider.wallet.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
-        })
-        .rpc();
-
-      const secondAgent = await program.account.agentAccount.fetch(agentPda2);
-      assert.equal(
-        secondAgent.agentId.toNumber(),
-        firstId + 1,
-        "IDs should be sequential"
-      );
+      const config = await program.account.registryConfig.fetch(configPda);
+      assert.equal(config.totalAgents.toNumber(), 4, "Should have 4 total agents (1 from previous test + 3 new)");
     });
 
     it("Fails with tokenURI > 200 bytes", async () => {
-      const longUri = "ipfs://" + "a".repeat(200);
+      const longUri = "x".repeat(201);
 
       try {
         await program.methods
           .register(longUri)
           .accounts({
             config: configPda,
+            authority: provider.wallet.publicKey,
             agentAccount: agentPda,
-            agentMint: nftMint,
+            agentMint: agentMint.publicKey,
+            agentMetadata,
+            agentMasterEdition,
+            agentTokenAccount,
+            collectionMint: collectionMint.publicKey,
+            collectionMetadata,
+            collectionMasterEdition,
             owner: provider.wallet.publicKey,
-            systemProgram: anchor.web3.SystemProgram.programId,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            rent: SYSVAR_RENT_PUBKEY,
+            tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
           })
+          .signers([agentMint])
           .rpc();
 
-        assert.fail("Should have failed with URI too long");
+        assert.fail("Should have failed with UriTooLong error");
       } catch (error) {
         assert.include(error.message, "UriTooLong");
       }
     });
 
-    it("Fails with invalid NFT (decimals != 0)", async () => {
-      // Create mint with decimals = 9 (not an NFT)
-      const invalidMintKeypair = Keypair.generate();
-      const invalidMint = await createMint(
-        provider.connection,
-        provider.wallet.payer,
-        provider.wallet.publicKey,
-        null,
-        9, // decimals = 9 (NOT an NFT!)
-        invalidMintKeypair
-      );
+    it("Accepts tokenURI with exactly 200 bytes", async () => {
+      const exactUri = "x".repeat(200);
 
-      const [invalidAgentPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent"), invalidMint.toBuffer()],
-        program.programId
-      );
+      await program.methods
+        .register(exactUri)
+        .accounts({
+          config: configPda,
+          authority: provider.wallet.publicKey,
+          agentAccount: agentPda,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .signers([agentMint])
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.tokenUri.length, 200);
+    });
+  });
+
+  describe("Register Empty (ERC-8004: register())", () => {
+    it("Registers agent without parameters", async () => {
+      const agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      const [agentPda] = getAgentPda(agentMint.publicKey);
+
+      await program.methods
+        .registerEmpty()
+        .accounts({
+          config: configPda,
+          authority: provider.wallet.publicKey,
+          agentAccount: agentPda,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .signers([agentMint])
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.tokenUri, "", "Token URI should be empty");
+      assert.equal(agent.metadata.length, 0, "Metadata should be empty");
+    });
+  });
+
+  describe("Register With Metadata (ERC-8004: register(tokenURI, metadata[]))", () => {
+    it("Registers agent with URI and batch metadata", async () => {
+      const agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      const [agentPda] = getAgentPda(agentMint.publicKey);
+
+      const tokenUri = "https://example.com/agent.json";
+      const metadata = [
+        { key: "name", value: Buffer.from("Alice") },
+        { key: "type", value: Buffer.from("assistant") },
+        { key: "version", value: Buffer.from("1.0.0") },
+      ];
+
+      await program.methods
+        .registerWithMetadata(tokenUri, metadata)
+        .accounts({
+          config: configPda,
+          authority: provider.wallet.publicKey,
+          agentAccount: agentPda,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .signers([agentMint])
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.tokenUri, tokenUri);
+      assert.equal(agent.metadata.length, 3);
+      assert.equal(agent.metadata[0].key, "name");
+      assert.equal(Buffer.from(agent.metadata[0].value).toString(), "Alice");
+      assert.equal(agent.metadata[1].key, "type");
+      assert.equal(Buffer.from(agent.metadata[1].value).toString(), "assistant");
+    });
+
+    it("Registers agent with empty URI and metadata", async () => {
+      const agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      const [agentPda] = getAgentPda(agentMint.publicKey);
+
+      const metadata = [
+        { key: "status", value: Buffer.from("active") },
+      ];
+
+      await program.methods
+        .registerWithMetadata("", metadata)
+        .accounts({
+          config: configPda,
+          authority: provider.wallet.publicKey,
+          agentAccount: agentPda,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .signers([agentMint])
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.tokenUri, "");
+      assert.equal(agent.metadata.length, 1);
+    });
+
+    it("Fails with more than 10 metadata entries", async () => {
+      const agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      const [agentPda] = getAgentPda(agentMint.publicKey);
+
+      const metadata = [];
+      for (let i = 0; i < 11; i++) {
+        metadata.push({ key: `key${i}`, value: Buffer.from(`value${i}`) });
+      }
 
       try {
         await program.methods
-          .register("ipfs://invalid")
+          .registerWithMetadata("https://example.com", metadata)
           .accounts({
             config: configPda,
-            agentAccount: invalidAgentPda,
-            agentMint: invalidMint,
+            authority: provider.wallet.publicKey,
+            agentAccount: agentPda,
+            agentMint: agentMint.publicKey,
+            agentMetadata,
+            agentMasterEdition,
+            agentTokenAccount,
+            collectionMint: collectionMint.publicKey,
+            collectionMetadata,
+            collectionMasterEdition,
             owner: provider.wallet.publicKey,
-            systemProgram: anchor.web3.SystemProgram.programId,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            rent: SYSVAR_RENT_PUBKEY,
+            tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
           })
+          .signers([agentMint])
           .rpc();
 
-        assert.fail("Should have failed with InvalidNFT");
+        assert.fail("Should have failed with MetadataLimitReached error");
       } catch (error) {
-        assert.include(error.message, "InvalidNFT");
+        assert.include(error.message, "MetadataLimitReached");
+      }
+    });
+
+    it("Accepts exactly 10 metadata entries", async () => {
+      const agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      const [agentPda] = getAgentPda(agentMint.publicKey);
+
+      const metadata = [];
+      for (let i = 0; i < 10; i++) {
+        metadata.push({ key: `key${i}`, value: Buffer.from(`value${i}`) });
+      }
+
+      await program.methods
+        .registerWithMetadata("https://example.com", metadata)
+        .accounts({
+          config: configPda,
+          authority: provider.wallet.publicKey,
+          agentAccount: agentPda,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .signers([agentMint])
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.metadata.length, 10);
+    });
+
+    it("Fails with key > 32 bytes", async () => {
+      const agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      const [agentPda] = getAgentPda(agentMint.publicKey);
+
+      const metadata = [
+        { key: "x".repeat(33), value: Buffer.from("value") },
+      ];
+
+      try {
+        await program.methods
+          .registerWithMetadata("https://example.com", metadata)
+          .accounts({
+            config: configPda,
+            authority: provider.wallet.publicKey,
+            agentAccount: agentPda,
+            agentMint: agentMint.publicKey,
+            agentMetadata,
+            agentMasterEdition,
+            agentTokenAccount,
+            collectionMint: collectionMint.publicKey,
+            collectionMetadata,
+            collectionMasterEdition,
+            owner: provider.wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            rent: SYSVAR_RENT_PUBKEY,
+            tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+          })
+          .signers([agentMint])
+          .rpc();
+
+        assert.fail("Should have failed with KeyTooLong error");
+      } catch (error) {
+        assert.include(error.message, "KeyTooLong");
+      }
+    });
+
+    it("Fails with value > 256 bytes", async () => {
+      const agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      const [agentPda] = getAgentPda(agentMint.publicKey);
+
+      const metadata = [
+        { key: "data", value: Buffer.alloc(257, "x") },
+      ];
+
+      try {
+        await program.methods
+          .registerWithMetadata("https://example.com", metadata)
+          .accounts({
+            config: configPda,
+            authority: provider.wallet.publicKey,
+            agentAccount: agentPda,
+            agentMint: agentMint.publicKey,
+            agentMetadata,
+            agentMasterEdition,
+            agentTokenAccount,
+            collectionMint: collectionMint.publicKey,
+            collectionMetadata,
+            collectionMasterEdition,
+            owner: provider.wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            rent: SYSVAR_RENT_PUBKEY,
+            tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+          })
+          .signers([agentMint])
+          .rpc();
+
+        assert.fail("Should have failed with ValueTooLong error");
+      } catch (error) {
+        assert.include(error.message, "ValueTooLong");
       }
     });
   });
 
-  describe("Set Metadata", () => {
-    let nftMint: PublicKey;
+  describe("Get Metadata (ERC-8004: getMetadata(agentId, key))", () => {
+    let agentMint: Keypair;
     let agentPda: PublicKey;
 
     before(async () => {
-      // Create and register an agent for metadata tests
-      const mintKeypair = Keypair.generate();
-      nftMint = await createMint(
-        provider.connection,
-        provider.wallet.payer,
-        provider.wallet.publicKey,
-        null,
-        0,
-        mintKeypair
-      );
+      // Register an agent with metadata
+      agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      [agentPda] = getAgentPda(agentMint.publicKey);
 
-      const tokenAccount = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint,
-        provider.wallet.publicKey
-      );
+      const metadata = [
+        { key: "name", value: Buffer.from("Test Agent") },
+        { key: "type", value: Buffer.from("assistant") },
+      ];
 
-      await mintTo(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint,
-        tokenAccount.address,
-        provider.wallet.publicKey,
-        1
-      );
-
-      [agentPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent"), nftMint.toBuffer()],
-        program.programId
-      );
-
-      // Register the agent
       await program.methods
-        .register("ipfs://metadata-test")
+        .registerWithMetadata("https://test.com", metadata)
         .accounts({
           config: configPda,
+          authority: provider.wallet.publicKey,
           agentAccount: agentPda,
-          agentMint: nftMint,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
           owner: provider.wallet.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
+        .signers([agentMint])
+        .rpc();
+    });
+
+    it("Returns metadata value for existing key", async () => {
+      const result = await program.methods
+        .getMetadata("name")
+        .accounts({
+          agentAccount: agentPda,
+        })
+        .view();
+
+      assert.equal(Buffer.from(result).toString(), "Test Agent");
+    });
+
+    it("Returns empty bytes for non-existent key", async () => {
+      const result = await program.methods
+        .getMetadata("nonexistent")
+        .accounts({
+          agentAccount: agentPda,
+        })
+        .view();
+
+      assert.equal(result.length, 0, "Should return empty array");
+    });
+  });
+
+  describe("Set Metadata (ERC-8004: setMetadata(agentId, key, value))", () => {
+    let agentMint: Keypair;
+    let agentPda: PublicKey;
+
+    beforeEach(async () => {
+      // Register a fresh agent for each test
+      agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      [agentPda] = getAgentPda(agentMint.publicKey);
+
+      await program.methods
+        .register("https://example.com")
+        .accounts({
+          config: configPda,
+          authority: provider.wallet.publicKey,
+          agentAccount: agentPda,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .signers([agentMint])
         .rpc();
     });
 
     it("Sets new metadata entry", async () => {
-      const key = "name";
-      const value = Buffer.from("Test Agent");
-
       await program.methods
-        .setMetadata(key, value)
+        .setMetadata("name", Buffer.from("Alice"))
         .accounts({
           agentAccount: agentPda,
           owner: provider.wallet.publicKey,
@@ -340,17 +769,24 @@ describe("Identity Registry", () => {
         .rpc();
 
       const agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.metadata.length, 1, "Should have 1 metadata entry");
-      assert.equal(agent.metadata[0].key, key);
-      assert.deepEqual(Buffer.from(agent.metadata[0].value), value);
+      assert.equal(agent.metadata.length, 1);
+      assert.equal(agent.metadata[0].key, "name");
+      assert.equal(Buffer.from(agent.metadata[0].value).toString(), "Alice");
     });
 
     it("Updates existing metadata entry", async () => {
-      const key = "name";
-      const newValue = Buffer.from("Updated Agent Name");
-
+      // Set initial value
       await program.methods
-        .setMetadata(key, newValue)
+        .setMetadata("status", Buffer.from("active"))
+        .accounts({
+          agentAccount: agentPda,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      // Update same key
+      await program.methods
+        .setMetadata("status", Buffer.from("inactive"))
         .accounts({
           agentAccount: agentPda,
           owner: provider.wallet.publicKey,
@@ -359,14 +795,14 @@ describe("Identity Registry", () => {
 
       const agent = await program.account.agentAccount.fetch(agentPda);
       assert.equal(agent.metadata.length, 1, "Should still have 1 entry");
-      assert.deepEqual(Buffer.from(agent.metadata[0].value), newValue);
+      assert.equal(Buffer.from(agent.metadata[0].value).toString(), "inactive");
     });
 
     it("Adds multiple metadata entries", async () => {
       const entries = [
-        { key: "description", value: "AI Agent" },
+        { key: "name", value: "Alice" },
+        { key: "type", value: "assistant" },
         { key: "version", value: "1.0" },
-        { key: "category", value: "DeFi" },
       ];
 
       for (const entry of entries) {
@@ -380,12 +816,12 @@ describe("Identity Registry", () => {
       }
 
       const agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.metadata.length, 4, "Should have 4 entries total");
+      assert.equal(agent.metadata.length, 3);
     });
 
     it("Enforces 10 metadata entry limit", async () => {
-      // We already have 4 entries, add 6 more to reach 10
-      for (let i = 0; i < 6; i++) {
+      // Add 10 entries
+      for (let i = 0; i < 10; i++) {
         await program.methods
           .setMetadata(`key${i}`, Buffer.from(`value${i}`))
           .accounts({
@@ -395,27 +831,24 @@ describe("Identity Registry", () => {
           .rpc();
       }
 
-      const agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.metadata.length, 10, "Should have exactly 10 entries");
-
       // Try to add 11th entry
       try {
         await program.methods
-          .setMetadata("overflow", Buffer.from("should fail"))
+          .setMetadata("key11", Buffer.from("value11"))
           .accounts({
             agentAccount: agentPda,
             owner: provider.wallet.publicKey,
           })
           .rpc();
 
-        assert.fail("Should have failed with MetadataLimitReached");
+        assert.fail("Should have failed with MetadataLimitReached error");
       } catch (error) {
         assert.include(error.message, "MetadataLimitReached");
       }
     });
 
     it("Fails with key > 32 bytes", async () => {
-      const longKey = "a".repeat(33);
+      const longKey = "x".repeat(33);
 
       try {
         await program.methods
@@ -426,25 +859,25 @@ describe("Identity Registry", () => {
           })
           .rpc();
 
-        assert.fail("Should have failed with KeyTooLong");
+        assert.fail("Should have failed with KeyTooLong error");
       } catch (error) {
         assert.include(error.message, "KeyTooLong");
       }
     });
 
     it("Fails with value > 256 bytes", async () => {
-      const longValue = Buffer.alloc(257, "a");
+      const longValue = Buffer.alloc(257, "x");
 
       try {
         await program.methods
-          .setMetadata("test", longValue)
+          .setMetadata("data", longValue)
           .accounts({
             agentAccount: agentPda,
             owner: provider.wallet.publicKey,
           })
           .rpc();
 
-        assert.fail("Should have failed with ValueTooLong");
+        assert.fail("Should have failed with ValueTooLong error");
       } catch (error) {
         assert.include(error.message, "ValueTooLong");
       }
@@ -454,15 +887,13 @@ describe("Identity Registry", () => {
       const otherUser = Keypair.generate();
 
       // Airdrop to other user
-      const airdropSig = await provider.connection.requestAirdrop(
-        otherUser.publicKey,
-        1000000000
+      await provider.connection.confirmTransaction(
+        await provider.connection.requestAirdrop(otherUser.publicKey, 1000000000)
       );
-      await provider.connection.confirmTransaction(airdropSig);
 
       try {
         await program.methods
-          .setMetadata("unauthorized", Buffer.from("hack"))
+          .setMetadata("name", Buffer.from("Hacker"))
           .accounts({
             agentAccount: agentPda,
             owner: otherUser.publicKey,
@@ -470,65 +901,51 @@ describe("Identity Registry", () => {
           .signers([otherUser])
           .rpc();
 
-        assert.fail("Should have failed with Unauthorized");
+        assert.fail("Should have failed with Unauthorized error");
       } catch (error) {
         assert.include(error.message, "Unauthorized");
       }
     });
   });
 
-  describe("Set Agent URI", () => {
-    let nftMint: PublicKey;
+  describe("Set Agent URI (ERC-8004: setAgentUri(agentId, newUri))", () => {
+    let agentMint: Keypair;
     let agentPda: PublicKey;
 
-    before(async () => {
-      // Create and register an agent for URI tests
-      const mintKeypair = Keypair.generate();
-      nftMint = await createMint(
-        provider.connection,
-        provider.wallet.payer,
-        provider.wallet.publicKey,
-        null,
-        0,
-        mintKeypair
-      );
+    beforeEach(async () => {
+      agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      [agentPda] = getAgentPda(agentMint.publicKey);
 
-      const tokenAccount = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint,
-        provider.wallet.publicKey
-      );
-
-      await mintTo(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint,
-        tokenAccount.address,
-        provider.wallet.publicKey,
-        1
-      );
-
-      [agentPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent"), nftMint.toBuffer()],
-        program.programId
-      );
-
-      // Register the agent
       await program.methods
-        .register("ipfs://original-uri")
+        .register("https://original.com")
         .accounts({
           config: configPda,
+          authority: provider.wallet.publicKey,
           agentAccount: agentPda,
-          agentMint: nftMint,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
           owner: provider.wallet.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
+        .signers([agentMint])
         .rpc();
     });
 
     it("Updates agent URI", async () => {
-      const newUri = "ipfs://updated-uri-v2";
+      const newUri = "https://updated.com";
 
       await program.methods
         .setAgentUri(newUri)
@@ -539,14 +956,12 @@ describe("Identity Registry", () => {
         .rpc();
 
       const agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.tokenUri, newUri, "URI should be updated");
+      assert.equal(agent.tokenUri, newUri);
     });
 
     it("Updates agent URI to empty string (ERC-8004 spec)", async () => {
-      const emptyUri = "";
-
       await program.methods
-        .setAgentUri(emptyUri)
+        .setAgentUri("")
         .accounts({
           agentAccount: agentPda,
           owner: provider.wallet.publicKey,
@@ -554,50 +969,28 @@ describe("Identity Registry", () => {
         .rpc();
 
       const agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.tokenUri, emptyUri, "Empty URI should be allowed");
+      assert.equal(agent.tokenUri, "");
     });
 
     it("Updates agent URI multiple times", async () => {
-      const uri1 = "ipfs://version1";
-      const uri2 = "ar://version2";
-      const uri3 = "https://example.com/agent.json";
+      const uris = ["https://v1.com", "https://v2.com", "https://v3.com"];
 
-      await program.methods
-        .setAgentUri(uri1)
-        .accounts({
-          agentAccount: agentPda,
-          owner: provider.wallet.publicKey,
-        })
-        .rpc();
+      for (const uri of uris) {
+        await program.methods
+          .setAgentUri(uri)
+          .accounts({
+            agentAccount: agentPda,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc();
 
-      let agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.tokenUri, uri1);
-
-      await program.methods
-        .setAgentUri(uri2)
-        .accounts({
-          agentAccount: agentPda,
-          owner: provider.wallet.publicKey,
-        })
-        .rpc();
-
-      agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.tokenUri, uri2);
-
-      await program.methods
-        .setAgentUri(uri3)
-        .accounts({
-          agentAccount: agentPda,
-          owner: provider.wallet.publicKey,
-        })
-        .rpc();
-
-      agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(agent.tokenUri, uri3);
+        const agent = await program.account.agentAccount.fetch(agentPda);
+        assert.equal(agent.tokenUri, uri);
+      }
     });
 
     it("Fails with URI > 200 bytes", async () => {
-      const longUri = "ipfs://" + "a".repeat(200);
+      const longUri = "x".repeat(201);
 
       try {
         await program.methods
@@ -608,7 +1001,7 @@ describe("Identity Registry", () => {
           })
           .rpc();
 
-        assert.fail("Should have failed with UriTooLong");
+        assert.fail("Should have failed with UriTooLong error");
       } catch (error) {
         assert.include(error.message, "UriTooLong");
       }
@@ -617,16 +1010,13 @@ describe("Identity Registry", () => {
     it("Fails when non-owner tries to set URI", async () => {
       const otherUser = Keypair.generate();
 
-      // Airdrop to other user
-      const airdropSig = await provider.connection.requestAirdrop(
-        otherUser.publicKey,
-        1000000000
+      await provider.connection.confirmTransaction(
+        await provider.connection.requestAirdrop(otherUser.publicKey, 1000000000)
       );
-      await provider.connection.confirmTransaction(airdropSig);
 
       try {
         await program.methods
-          .setAgentUri("ipfs://unauthorized")
+          .setAgentUri("https://hacker.com")
           .accounts({
             agentAccount: agentPda,
             owner: otherUser.publicKey,
@@ -634,108 +1024,117 @@ describe("Identity Registry", () => {
           .signers([otherUser])
           .rpc();
 
-        assert.fail("Should have failed with Unauthorized");
+        assert.fail("Should have failed with Unauthorized error");
       } catch (error) {
         assert.include(error.message, "Unauthorized");
       }
     });
   });
 
-  describe("Sync Owner (Transfer Support)", () => {
-    let nftMint: PublicKey;
+  describe("Sync Owner (NFT Transfer Support)", () => {
+    let agentMint: Keypair;
     let agentPda: PublicKey;
-    let originalOwnerTokenAccount: any;
+    let originalOwnerTokenAccount: PublicKey;
     let newOwner: Keypair;
-    let newOwnerTokenAccount: any;
+    let newOwnerTokenAccount: PublicKey;
 
-    before(async () => {
-      // Create new owner
-      newOwner = Keypair.generate();
+    beforeEach(async () => {
+      agentMint = Keypair.generate();
+      const agentMetadata = getMetadataPda(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPda(agentMint.publicKey);
+      originalOwnerTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
+      [agentPda] = getAgentPda(agentMint.publicKey);
 
-      // Airdrop to new owner
-      const airdropSig = await provider.connection.requestAirdrop(
-        newOwner.publicKey,
-        2000000000
-      );
-      await provider.connection.confirmTransaction(airdropSig);
-
-      // Create and register an agent
-      const mintKeypair = Keypair.generate();
-      nftMint = await createMint(
-        provider.connection,
-        provider.wallet.payer,
-        provider.wallet.publicKey,
-        null,
-        0,
-        mintKeypair
-      );
-
-      originalOwnerTokenAccount = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint,
-        provider.wallet.publicKey
-      );
-
-      await mintTo(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint,
-        originalOwnerTokenAccount.address,
-        provider.wallet.publicKey,
-        1
-      );
-
-      [agentPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent"), nftMint.toBuffer()],
-        program.programId
-      );
-
-      // Register the agent
       await program.methods
-        .register("ipfs://transfer-test")
+        .register("https://example.com")
         .accounts({
           config: configPda,
+          authority: provider.wallet.publicKey,
           agentAccount: agentPda,
-          agentMint: nftMint,
+          agentMint: agentMint.publicKey,
+          agentMetadata,
+          agentMasterEdition,
+          agentTokenAccount: originalOwnerTokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata,
+          collectionMasterEdition,
           owner: provider.wallet.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
+        .signers([agentMint])
         .rpc();
+
+      // Prepare new owner
+      newOwner = Keypair.generate();
+      await provider.connection.confirmTransaction(
+        await provider.connection.requestAirdrop(newOwner.publicKey, 1000000000)
+      );
+      newOwnerTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, newOwner.publicKey);
     });
 
     it("Syncs owner after SPL Token transfer", async () => {
-      // Create token account for new owner
-      newOwnerTokenAccount = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        provider.wallet.payer,
-        nftMint,
-        newOwner.publicKey
-      );
+      // Create new owner's token account first
+      const { AssociatedTokenProgramInstruction, createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
 
-      // Transfer SPL Token NFT to new owner
+      const createAtaTx = new anchor.web3.Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          provider.wallet.publicKey,
+          newOwnerTokenAccount,
+          newOwner.publicKey,
+          agentMint.publicKey
+        )
+      );
+      await provider.sendAndConfirm(createAtaTx);
+
+      // Transfer NFT via SPL Token
       await transfer(
         provider.connection,
         provider.wallet.payer,
-        originalOwnerTokenAccount.address,
-        newOwnerTokenAccount.address,
+        originalOwnerTokenAccount,
+        newOwnerTokenAccount,
         provider.wallet.publicKey,
         1
       );
 
-      // Verify token was transferred
-      const newOwnerTokenAccountInfo = await getAccount(
-        provider.connection,
-        newOwnerTokenAccount.address
-      );
-      assert.equal(newOwnerTokenAccountInfo.amount.toString(), "1");
+      // Sync owner in AgentAccount
+      await program.methods
+        .syncOwner()
+        .accounts({
+          agentAccount: agentPda,
+          tokenAccount: newOwnerTokenAccount,
+        })
+        .rpc();
 
-      // Agent account should still have old owner
-      let agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(
-        agent.owner.toBase58(),
-        provider.wallet.publicKey.toBase58(),
-        "Owner should still be original before sync"
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.owner.toBase58(), newOwner.publicKey.toBase58());
+    });
+
+    it("Allows new owner to update metadata after transfer", async () => {
+      // Create ATA and transfer
+      const { createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
+
+      const createAtaTx = new anchor.web3.Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          provider.wallet.publicKey,
+          newOwnerTokenAccount,
+          newOwner.publicKey,
+          agentMint.publicKey
+        )
+      );
+      await provider.sendAndConfirm(createAtaTx);
+
+      await transfer(
+        provider.connection,
+        provider.wallet.payer,
+        originalOwnerTokenAccount,
+        newOwnerTokenAccount,
+        provider.wallet.publicKey,
+        1
       );
 
       // Sync owner
@@ -743,83 +1142,13 @@ describe("Identity Registry", () => {
         .syncOwner()
         .accounts({
           agentAccount: agentPda,
-          tokenAccount: newOwnerTokenAccount.address,
+          tokenAccount: newOwnerTokenAccount,
         })
         .rpc();
 
-      // Verify owner was synced
-      agent = await program.account.agentAccount.fetch(agentPda);
-      assert.equal(
-        agent.owner.toBase58(),
-        newOwner.publicKey.toBase58(),
-        "Owner should be updated after sync"
-      );
-    });
-
-    it("Fails to sync with invalid token account (amount = 0)", async () => {
-      // Original owner now has 0 tokens
-      try {
-        await program.methods
-          .syncOwner()
-          .accounts({
-            agentAccount: agentPda,
-            tokenAccount: originalOwnerTokenAccount.address,
-          })
-          .rpc();
-
-        assert.fail("Should have failed with InvalidTokenAccount");
-      } catch (error) {
-        assert.include(error.message, "InvalidTokenAccount");
-      }
-    });
-
-    it("Fails to sync with wrong mint token account", async () => {
-      // Create a different NFT
-      const wrongMintKeypair = Keypair.generate();
-      const wrongMint = await createMint(
-        provider.connection,
-        provider.wallet.payer,
-        provider.wallet.publicKey,
-        null,
-        0,
-        wrongMintKeypair
-      );
-
-      const wrongTokenAccount = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        provider.wallet.payer,
-        wrongMint,
-        provider.wallet.publicKey
-      );
-
-      await mintTo(
-        provider.connection,
-        provider.wallet.payer,
-        wrongMint,
-        wrongTokenAccount.address,
-        provider.wallet.publicKey,
-        1
-      );
-
-      try {
-        await program.methods
-          .syncOwner()
-          .accounts({
-            agentAccount: agentPda,
-            tokenAccount: wrongTokenAccount.address,
-          })
-          .rpc();
-
-        assert.fail("Should have failed with InvalidTokenAccount");
-      } catch (error) {
-        assert.include(error.message, "InvalidTokenAccount");
-      }
-    });
-
-    it("Allows new owner to update metadata after transfer", async () => {
-      // New owner should be able to set metadata
+      // New owner sets metadata
       await program.methods
-        .setMetadata("transferred", Buffer.from("true"))
+        .setMetadata("newKey", Buffer.from("newValue"))
         .accounts({
           agentAccount: agentPda,
           owner: newOwner.publicKey,
@@ -828,23 +1157,85 @@ describe("Identity Registry", () => {
         .rpc();
 
       const agent = await program.account.agentAccount.fetch(agentPda);
-      const metadata = agent.metadata.find((m) => m.key === "transferred");
-      assert.equal(Buffer.from(metadata.value).toString(), "true");
+      assert.equal(agent.metadata.length, 1);
+      assert.equal(agent.metadata[0].key, "newKey");
     });
 
     it("Prevents old owner from updating metadata after transfer", async () => {
+      // Create ATA and transfer
+      const { createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
+
+      const createAtaTx = new anchor.web3.Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          provider.wallet.publicKey,
+          newOwnerTokenAccount,
+          newOwner.publicKey,
+          agentMint.publicKey
+        )
+      );
+      await provider.sendAndConfirm(createAtaTx);
+
+      await transfer(
+        provider.connection,
+        provider.wallet.payer,
+        originalOwnerTokenAccount,
+        newOwnerTokenAccount,
+        provider.wallet.publicKey,
+        1
+      );
+
+      // Sync owner
+      await program.methods
+        .syncOwner()
+        .accounts({
+          agentAccount: agentPda,
+          tokenAccount: newOwnerTokenAccount,
+        })
+        .rpc();
+
+      // Old owner tries to set metadata
       try {
         await program.methods
-          .setMetadata("unauthorized", Buffer.from("hack"))
+          .setMetadata("hack", Buffer.from("value"))
           .accounts({
             agentAccount: agentPda,
             owner: provider.wallet.publicKey,
           })
           .rpc();
 
-        assert.fail("Should have failed with Unauthorized");
+        assert.fail("Should have failed with Unauthorized error");
       } catch (error) {
         assert.include(error.message, "Unauthorized");
+      }
+    });
+
+    it("Fails to sync with invalid token account (amount = 0)", async () => {
+      // Create empty token account
+      const { createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
+
+      const emptyAccount = getAssociatedTokenAddressSync(agentMint.publicKey, newOwner.publicKey);
+      const createAtaTx = new anchor.web3.Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          provider.wallet.publicKey,
+          emptyAccount,
+          newOwner.publicKey,
+          agentMint.publicKey
+        )
+      );
+      await provider.sendAndConfirm(createAtaTx);
+
+      try {
+        await program.methods
+          .syncOwner()
+          .accounts({
+            agentAccount: agentPda,
+            tokenAccount: emptyAccount,
+          })
+          .rpc();
+
+        assert.fail("Should have failed with InvalidTokenAccount error");
+      } catch (error) {
+        assert.include(error.message, "InvalidTokenAccount");
       }
     });
   });

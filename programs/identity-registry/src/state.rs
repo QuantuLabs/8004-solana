@@ -12,14 +12,17 @@ pub struct RegistryConfig {
     /// Total agents registered
     pub total_agents: u64,
 
+    /// Metaplex Collection NFT mint (all agents are part of this collection)
+    pub collection_mint: Pubkey,
+
     /// PDA bump seed
     pub bump: u8,
 }
 
 impl RegistryConfig {
     /// Space required for RegistryConfig account
-    /// 8 (discriminator) + 32 (authority) + 8 (next_agent_id) + 8 (total_agents) + 1 (bump)
-    pub const SIZE: usize = 8 + 32 + 8 + 8 + 1;
+    /// 32 (authority) + 8 (next_agent_id) + 8 (total_agents) + 32 (collection_mint) + 1 (bump)
+    pub const SIZE: usize = 32 + 8 + 8 + 32 + 1;
 }
 
 /// Agent account (equivalent to ERC-721 token)
@@ -100,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_registry_config_size() {
-        assert_eq!(RegistryConfig::SIZE, 57);
+        assert_eq!(RegistryConfig::SIZE, 81);
     }
 
     #[test]

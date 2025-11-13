@@ -20,9 +20,6 @@ pub enum IdentityError {
     #[msg("Arithmetic overflow occurred")]
     Overflow,
 
-    #[msg("Agent mint must be an NFT (supply=1, decimals=0)")]
-    InvalidNFT,
-
     #[msg("Metadata key not found")]
     MetadataNotFound,
 
