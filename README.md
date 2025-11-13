@@ -6,20 +6,20 @@
 [![Anchor Version](https://img.shields.io/badge/Anchor-0.31.1-blue)](https://github.com/coral-xyz/anchor)
 [![Solana](https://img.shields.io/badge/Solana-Compatible-green)](https://solana.com)
 [![Status](https://img.shields.io/badge/Status-In%20Development-orange)]()
-[![Progress](https://img.shields.io/badge/Progress-10%25-blue)]()
+[![Progress](https://img.shields.io/badge/Progress-12%25-blue)]()
 
-## 📊 Implementation Progress: ~10%
+## 📊 Implementation Progress: ~12%
 
-**Phase 1: Identity Registry - Core Instructions** (Local tests only - not yet deployed)
+**Phase 1: Identity Registry - COMPLETE** (Local tests only - not yet deployed)
 
 - ✅ Data structures (RegistryConfig, AgentAccount, MetadataEntry)
 - ✅ Initialize instruction (local tests ✓)
 - ✅ Register instruction with NFT validation (local tests ✓)
 - ✅ Set metadata instruction (local tests ✓)
 - ✅ Set agent URI instruction (local tests ✓)
-- ✅ Events (AgentRegistered, MetadataSet, AgentUriSet)
-- ✅ Test suite (19/19 passing locally)
-- ⏳ Transfer support via SPL Token
+- ✅ Transfer support via SPL Token + sync_owner (local tests ✓)
+- ✅ Events (AgentRegistered, MetadataSet, AgentUriSet, AgentOwnerSynced)
+- ✅ Test suite (24/24 passing locally)
 - ⏳ Devnet deployment & testing
 - ⏳ Integration testing
 
@@ -68,12 +68,12 @@ This implementation brings these capabilities to Solana while maintaining cross-
 ### ✅ Planned Features
 
 - [x] Project structure with 3 Anchor programs
-- [x] **Identity Registry** (~40% complete - local only)
+- [x] **Identity Registry** (✅ COMPLETE - local only)
   - [x] NFT-based agent registration (local tests ✓)
   - [x] Metadata storage (max 10 key-value pairs, local tests ✓)
   - [x] Sequential agent IDs (local tests ✓)
   - [x] Set agent URI instruction (local tests ✓)
-  - [ ] Transfer support via SPL Token
+  - [x] Transfer support via SPL Token + sync_owner (local tests ✓)
   - [ ] Devnet deployment
   - [ ] Live integration tests
 - [ ] **Reputation Registry**

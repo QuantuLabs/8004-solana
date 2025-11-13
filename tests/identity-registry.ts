@@ -6,7 +6,9 @@ import {
   createMint,
   getOrCreateAssociatedTokenAccount,
   mintTo,
+  transfer,
   TOKEN_PROGRAM_ID,
+  getAccount,
 } from "@solana/spl-token";
 import { IdentityRegistry } from "../target/types/identity_registry";
 
@@ -630,6 +632,214 @@ describe("Identity Registry", () => {
             owner: otherUser.publicKey,
           })
           .signers([otherUser])
+          .rpc();
+
+        assert.fail("Should have failed with Unauthorized");
+      } catch (error) {
+        assert.include(error.message, "Unauthorized");
+      }
+    });
+  });
+
+  describe("Sync Owner (Transfer Support)", () => {
+    let nftMint: PublicKey;
+    let agentPda: PublicKey;
+    let originalOwnerTokenAccount: any;
+    let newOwner: Keypair;
+    let newOwnerTokenAccount: any;
+
+    before(async () => {
+      // Create new owner
+      newOwner = Keypair.generate();
+
+      // Airdrop to new owner
+      const airdropSig = await provider.connection.requestAirdrop(
+        newOwner.publicKey,
+        2000000000
+      );
+      await provider.connection.confirmTransaction(airdropSig);
+
+      // Create and register an agent
+      const mintKeypair = Keypair.generate();
+      nftMint = await createMint(
+        provider.connection,
+        provider.wallet.payer,
+        provider.wallet.publicKey,
+        null,
+        0,
+        mintKeypair
+      );
+
+      originalOwnerTokenAccount = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        nftMint,
+        provider.wallet.publicKey
+      );
+
+      await mintTo(
+        provider.connection,
+        provider.wallet.payer,
+        nftMint,
+        originalOwnerTokenAccount.address,
+        provider.wallet.publicKey,
+        1
+      );
+
+      [agentPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("agent"), nftMint.toBuffer()],
+        program.programId
+      );
+
+      // Register the agent
+      await program.methods
+        .register("ipfs://transfer-test")
+        .accounts({
+          config: configPda,
+          agentAccount: agentPda,
+          agentMint: nftMint,
+          owner: provider.wallet.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc();
+    });
+
+    it("Syncs owner after SPL Token transfer", async () => {
+      // Create token account for new owner
+      newOwnerTokenAccount = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        nftMint,
+        newOwner.publicKey
+      );
+
+      // Transfer SPL Token NFT to new owner
+      await transfer(
+        provider.connection,
+        provider.wallet.payer,
+        originalOwnerTokenAccount.address,
+        newOwnerTokenAccount.address,
+        provider.wallet.publicKey,
+        1
+      );
+
+      // Verify token was transferred
+      const newOwnerTokenAccountInfo = await getAccount(
+        provider.connection,
+        newOwnerTokenAccount.address
+      );
+      assert.equal(newOwnerTokenAccountInfo.amount.toString(), "1");
+
+      // Agent account should still have old owner
+      let agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(
+        agent.owner.toBase58(),
+        provider.wallet.publicKey.toBase58(),
+        "Owner should still be original before sync"
+      );
+
+      // Sync owner
+      await program.methods
+        .syncOwner()
+        .accounts({
+          agentAccount: agentPda,
+          tokenAccount: newOwnerTokenAccount.address,
+        })
+        .rpc();
+
+      // Verify owner was synced
+      agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(
+        agent.owner.toBase58(),
+        newOwner.publicKey.toBase58(),
+        "Owner should be updated after sync"
+      );
+    });
+
+    it("Fails to sync with invalid token account (amount = 0)", async () => {
+      // Original owner now has 0 tokens
+      try {
+        await program.methods
+          .syncOwner()
+          .accounts({
+            agentAccount: agentPda,
+            tokenAccount: originalOwnerTokenAccount.address,
+          })
+          .rpc();
+
+        assert.fail("Should have failed with InvalidTokenAccount");
+      } catch (error) {
+        assert.include(error.message, "InvalidTokenAccount");
+      }
+    });
+
+    it("Fails to sync with wrong mint token account", async () => {
+      // Create a different NFT
+      const wrongMintKeypair = Keypair.generate();
+      const wrongMint = await createMint(
+        provider.connection,
+        provider.wallet.payer,
+        provider.wallet.publicKey,
+        null,
+        0,
+        wrongMintKeypair
+      );
+
+      const wrongTokenAccount = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        wrongMint,
+        provider.wallet.publicKey
+      );
+
+      await mintTo(
+        provider.connection,
+        provider.wallet.payer,
+        wrongMint,
+        wrongTokenAccount.address,
+        provider.wallet.publicKey,
+        1
+      );
+
+      try {
+        await program.methods
+          .syncOwner()
+          .accounts({
+            agentAccount: agentPda,
+            tokenAccount: wrongTokenAccount.address,
+          })
+          .rpc();
+
+        assert.fail("Should have failed with InvalidTokenAccount");
+      } catch (error) {
+        assert.include(error.message, "InvalidTokenAccount");
+      }
+    });
+
+    it("Allows new owner to update metadata after transfer", async () => {
+      // New owner should be able to set metadata
+      await program.methods
+        .setMetadata("transferred", Buffer.from("true"))
+        .accounts({
+          agentAccount: agentPda,
+          owner: newOwner.publicKey,
+        })
+        .signers([newOwner])
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      const metadata = agent.metadata.find((m) => m.key === "transferred");
+      assert.equal(Buffer.from(metadata.value).toString(), "true");
+    });
+
+    it("Prevents old owner from updating metadata after transfer", async () => {
+      try {
+        await program.methods
+          .setMetadata("unauthorized", Buffer.from("hack"))
+          .accounts({
+            agentAccount: agentPda,
+            owner: provider.wallet.publicKey,
+          })
           .rpc();
 
         assert.fail("Should have failed with Unauthorized");

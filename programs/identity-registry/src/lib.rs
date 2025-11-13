@@ -213,6 +213,54 @@ pub mod identity_registry {
 
         Ok(())
     }
+
+    /// Sync agent owner after SPL Token transfer
+    ///
+    /// After transferring the agent NFT via SPL Token standard transfer,
+    /// call this instruction to sync the cached owner field in AgentAccount.
+    /// This is optional but recommended for query convenience.
+    ///
+    /// # Arguments
+    /// None - new owner is derived from SPL Token account
+    ///
+    /// # Events
+    /// * `AgentOwnerSynced` - Emitted when owner is successfully synced
+    ///
+    /// # Errors
+    /// * `InvalidTokenAccount` - If token account doesn't hold the NFT
+    pub fn sync_owner(ctx: Context<SyncOwner>) -> Result<()> {
+        let agent = &mut ctx.accounts.agent_account;
+        let token_account = &ctx.accounts.token_account;
+
+        // Verify token account holds the agent NFT (amount = 1)
+        require!(
+            token_account.amount == 1,
+            IdentityError::InvalidTokenAccount
+        );
+
+        let old_owner = agent.owner;
+        let new_owner = token_account.owner;
+
+        // Update cached owner
+        agent.owner = new_owner;
+
+        // Emit event
+        emit!(AgentOwnerSynced {
+            agent_id: agent.agent_id,
+            old_owner,
+            new_owner,
+            agent_mint: agent.agent_mint,
+        });
+
+        msg!(
+            "Agent {} owner synced: {} -> {}",
+            agent.agent_id,
+            old_owner,
+            new_owner
+        );
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -308,4 +356,29 @@ pub struct AgentUriSet {
     pub agent_id: u64,
     pub old_uri: String,
     pub new_uri: String,
+}
+
+#[derive(Accounts)]
+pub struct SyncOwner<'info> {
+    #[account(
+        mut,
+        seeds = [b"agent", agent_account.agent_mint.as_ref()],
+        bump = agent_account.bump
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    /// Token account holding the agent NFT (must have amount = 1)
+    #[account(
+        constraint = token_account.mint == agent_account.agent_mint @ IdentityError::InvalidTokenAccount
+    )]
+    pub token_account: Account<'info, anchor_spl::token::TokenAccount>,
+}
+
+/// Event emitted when agent owner is synced after transfer
+#[event]
+pub struct AgentOwnerSynced {
+    pub agent_id: u64,
+    pub old_owner: Pubkey,
+    pub new_owner: Pubkey,
+    pub agent_mint: Pubkey,
 }

@@ -25,4 +25,7 @@ pub enum IdentityError {
 
     #[msg("Metadata key not found")]
     MetadataNotFound,
+
+    #[msg("Invalid token account: does not hold the agent NFT")]
+    InvalidTokenAccount,
 }
