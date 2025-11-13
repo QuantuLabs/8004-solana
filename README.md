@@ -133,12 +133,34 @@ This implementation follows the official [ERC-8004 specification](https://eips.e
 | Feature | Ethereum | Solana | Status |
 |---------|----------|--------|--------|
 | Agent Registration | ERC-721 tokenId | SPL Token NFT + PDA | ✅ Devnet deployed |
-| Metadata Storage | Unlimited mapping | Max 10 entries | ✅ Devnet deployed |
+| Metadata Storage | Unlimited mapping | 10 on-chain + unlimited off-chain | ✅ Devnet deployed |
 | Reputation Scoring | 0-100 with tags | 0-100 with tags | ⏳ Not started |
 | Feedback Revocation | By client | By client | ⏳ Not started |
 | Agent Responses | Unlimited | Unlimited | ⏳ Not started |
 | Validation System | Request/Response | Request/Response | ⏳ Not started |
 | Cross-chain IDs | CAIP-10 | CAIP-10 | ⏳ Not started |
+
+## Metadata Storage
+
+### On-Chain (10 entries max)
+
+```typescript
+await program.methods.setMetadata("name", Buffer.from("Alice")).rpc();
+await program.methods.setMetadata("mcp_endpoint", Buffer.from("https://...")).rpc();
+```
+
+- Max 10 entries per agent
+- Max 32 bytes per key, 256 bytes per value
+- Cost: ~$0.60 rent (included in agent account)
+
+### Extended Metadata
+
+For >10 entries, use:
+
+1. **TokenURI JSON** (recommended): Unlimited storage via IPFS/Arweave (~$0.01)
+2. **Extension PDAs**: Additional on-chain entries (~$0.40/entry, recoverable)
+
+See [METADATA_EXTENSIONS.md](./docs/METADATA_EXTENSIONS.md) for details.
 
 ## Official References
 
