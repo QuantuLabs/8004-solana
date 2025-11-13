@@ -25,6 +25,12 @@ test-ledger/
 # Documentation (implementation notes - not for public repo)
 docs/
 
+# Reference repositories (cloned for analysis only)
+agent0-ts/
+agent0-py/
+subgraph/
+refs/
+
 # IDE
 .vscode/
 .idea/
