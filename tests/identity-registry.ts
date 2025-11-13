@@ -474,4 +474,168 @@ describe("Identity Registry", () => {
       }
     });
   });
+
+  describe("Set Agent URI", () => {
+    let nftMint: PublicKey;
+    let agentPda: PublicKey;
+
+    before(async () => {
+      // Create and register an agent for URI tests
+      const mintKeypair = Keypair.generate();
+      nftMint = await createMint(
+        provider.connection,
+        provider.wallet.payer,
+        provider.wallet.publicKey,
+        null,
+        0,
+        mintKeypair
+      );
+
+      const tokenAccount = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        nftMint,
+        provider.wallet.publicKey
+      );
+
+      await mintTo(
+        provider.connection,
+        provider.wallet.payer,
+        nftMint,
+        tokenAccount.address,
+        provider.wallet.publicKey,
+        1
+      );
+
+      [agentPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("agent"), nftMint.toBuffer()],
+        program.programId
+      );
+
+      // Register the agent
+      await program.methods
+        .register("ipfs://original-uri")
+        .accounts({
+          config: configPda,
+          agentAccount: agentPda,
+          agentMint: nftMint,
+          owner: provider.wallet.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc();
+    });
+
+    it("Updates agent URI", async () => {
+      const newUri = "ipfs://updated-uri-v2";
+
+      await program.methods
+        .setAgentUri(newUri)
+        .accounts({
+          agentAccount: agentPda,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.tokenUri, newUri, "URI should be updated");
+    });
+
+    it("Updates agent URI to empty string (ERC-8004 spec)", async () => {
+      const emptyUri = "";
+
+      await program.methods
+        .setAgentUri(emptyUri)
+        .accounts({
+          agentAccount: agentPda,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.tokenUri, emptyUri, "Empty URI should be allowed");
+    });
+
+    it("Updates agent URI multiple times", async () => {
+      const uri1 = "ipfs://version1";
+      const uri2 = "ar://version2";
+      const uri3 = "https://example.com/agent.json";
+
+      await program.methods
+        .setAgentUri(uri1)
+        .accounts({
+          agentAccount: agentPda,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      let agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.tokenUri, uri1);
+
+      await program.methods
+        .setAgentUri(uri2)
+        .accounts({
+          agentAccount: agentPda,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.tokenUri, uri2);
+
+      await program.methods
+        .setAgentUri(uri3)
+        .accounts({
+          agentAccount: agentPda,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      agent = await program.account.agentAccount.fetch(agentPda);
+      assert.equal(agent.tokenUri, uri3);
+    });
+
+    it("Fails with URI > 200 bytes", async () => {
+      const longUri = "ipfs://" + "a".repeat(200);
+
+      try {
+        await program.methods
+          .setAgentUri(longUri)
+          .accounts({
+            agentAccount: agentPda,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc();
+
+        assert.fail("Should have failed with UriTooLong");
+      } catch (error) {
+        assert.include(error.message, "UriTooLong");
+      }
+    });
+
+    it("Fails when non-owner tries to set URI", async () => {
+      const otherUser = Keypair.generate();
+
+      // Airdrop to other user
+      const airdropSig = await provider.connection.requestAirdrop(
+        otherUser.publicKey,
+        1000000000
+      );
+      await provider.connection.confirmTransaction(airdropSig);
+
+      try {
+        await program.methods
+          .setAgentUri("ipfs://unauthorized")
+          .accounts({
+            agentAccount: agentPda,
+            owner: otherUser.publicKey,
+          })
+          .signers([otherUser])
+          .rpc();
+
+        assert.fail("Should have failed with Unauthorized");
+      } catch (error) {
+        assert.include(error.message, "Unauthorized");
+      }
+    });
+  });
 });

@@ -171,6 +171,48 @@ pub mod identity_registry {
 
         Ok(())
     }
+
+    /// Set agent URI (ERC-8004 spec: setAgentUri(agentId, newUri))
+    ///
+    /// Updates the token URI for an agent. Only the agent owner can call this.
+    ///
+    /// # Arguments
+    /// * `new_uri` - New IPFS/Arweave/HTTP URI (max 200 bytes, can be empty string)
+    ///
+    /// # Events
+    /// * `AgentUriSet` - Emitted when URI is successfully updated
+    ///
+    /// # Errors
+    /// * `UriTooLong` - If new_uri exceeds 200 bytes
+    /// * `Unauthorized` - If caller is not the agent owner
+    pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
+        // Validate URI length (ERC-8004 spec: max 200 bytes)
+        require!(
+            new_uri.len() <= AgentAccount::MAX_URI_LENGTH,
+            IdentityError::UriTooLong
+        );
+
+        let agent = &mut ctx.accounts.agent_account;
+        let old_uri = agent.token_uri.clone();
+
+        // Update URI
+        agent.token_uri = new_uri.clone();
+
+        // Emit event
+        emit!(AgentUriSet {
+            agent_id: agent.agent_id,
+            old_uri,
+            new_uri,
+        });
+
+        msg!(
+            "Agent {} URI updated to {}",
+            agent.agent_id,
+            agent.token_uri
+        );
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -245,4 +287,25 @@ pub struct MetadataSet {
     pub agent_id: u64,
     pub key: String,
     pub value: Vec<u8>,
+}
+
+#[derive(Accounts)]
+pub struct SetAgentUri<'info> {
+    #[account(
+        mut,
+        seeds = [b"agent", agent_account.agent_mint.as_ref()],
+        bump = agent_account.bump,
+        constraint = owner.key() == agent_account.owner @ IdentityError::Unauthorized
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    pub owner: Signer<'info>,
+}
+
+/// Event emitted when agent URI is updated
+#[event]
+pub struct AgentUriSet {
+    pub agent_id: u64,
+    pub old_uri: String,
+    pub new_uri: String,
 }
