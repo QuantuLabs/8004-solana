@@ -6,20 +6,22 @@
 [![Anchor Version](https://img.shields.io/badge/Anchor-0.31.1-blue)](https://github.com/coral-xyz/anchor)
 [![Solana](https://img.shields.io/badge/Solana-Compatible-green)](https://solana.com)
 [![Status](https://img.shields.io/badge/Status-In%20Development-orange)]()
-[![Progress](https://img.shields.io/badge/Progress-15%25-blue)]()
+[![Progress](https://img.shields.io/badge/Progress-8%25-blue)]()
 
-## 📊 Implementation Progress: 15%
+## 📊 Implementation Progress: ~8%
 
-**Phase 1: Identity Registry - Foundation** (15% of total project)
+**Phase 1: Identity Registry - Core Instructions** (Local tests only - not yet deployed)
 
 - ✅ Data structures (RegistryConfig, AgentAccount, MetadataEntry)
-- ✅ Initialize instruction
-- ✅ Register instruction with NFT validation
-- ✅ Set metadata instruction (max 10 entries)
+- ✅ Initialize instruction (local tests ✓)
+- ✅ Register instruction with NFT validation (local tests ✓)
+- ✅ Set metadata instruction (local tests ✓)
 - ✅ Events (AgentRegistered, MetadataSet)
-- ✅ Comprehensive test suite (14/14 tests passing)
-- ⏳ Set agent URI instruction (next)
+- ✅ Test suite (14/14 passing locally)
+- ⏳ Set agent URI instruction
 - ⏳ Transfer support via SPL Token
+- ⏳ Devnet deployment & testing
+- ⏳ Integration testing
 
 ## 🚧 Building in Public
 
@@ -66,12 +68,14 @@ This implementation brings these capabilities to Solana while maintaining cross-
 ### ✅ Planned Features
 
 - [x] Project structure with 3 Anchor programs
-- [x] **Identity Registry** (50% complete)
-  - [x] NFT-based agent registration
-  - [x] Metadata storage (max 10 key-value pairs)
-  - [x] Sequential agent IDs
+- [x] **Identity Registry** (~30% complete - local only)
+  - [x] NFT-based agent registration (local tests ✓)
+  - [x] Metadata storage (max 10 key-value pairs, local tests ✓)
+  - [x] Sequential agent IDs (local tests ✓)
   - [ ] Set agent URI instruction
   - [ ] Transfer support via SPL Token
+  - [ ] Devnet deployment
+  - [ ] Live integration tests
 - [ ] **Reputation Registry**
   - [ ] Feedback scoring (0-100)
   - [ ] Revocation support
@@ -121,13 +125,13 @@ This implementation follows the official [ERC-8004 specification](https://eips.e
 
 | Feature | Ethereum | Solana | Status |
 |---------|----------|--------|--------|
-| Agent Registration | ERC-721 tokenId | SPL Token NFT + PDA | ✅ Implemented |
-| Metadata Storage | Unlimited mapping | Max 10 entries | ✅ Implemented |
-| Reputation Scoring | 0-100 with tags | 0-100 with tags | ⏳ Pending |
-| Feedback Revocation | By client | By client | ⏳ Pending |
-| Agent Responses | Unlimited | Max 5 | ⏳ Pending |
-| Validation System | Request/Response | Request/Response | ⏳ Pending |
-| Cross-chain IDs | CAIP-10 | CAIP-10 | ⏳ Pending |
+| Agent Registration | ERC-721 tokenId | SPL Token NFT + PDA | 🧪 Local tests only |
+| Metadata Storage | Unlimited mapping | Max 10 entries | 🧪 Local tests only |
+| Reputation Scoring | 0-100 with tags | 0-100 with tags | ⏳ Not started |
+| Feedback Revocation | By client | By client | ⏳ Not started |
+| Agent Responses | Unlimited | Max 5 | ⏳ Not started |
+| Validation System | Request/Response | Request/Response | ⏳ Not started |
+| Cross-chain IDs | CAIP-10 | CAIP-10 | ⏳ Not started |
 
 ## Official References
 
@@ -142,10 +146,13 @@ This implementation follows the official [ERC-8004 specification](https://eips.e
 
 ## Roadmap
 
-### Phase 1: Foundation (Current - 50% Complete)
+### Phase 1: Foundation (Current - ~30% Complete)
 - [x] Project setup with 3 programs
-- [x] Identity Registry core features (initialize, register, set_metadata)
-- [x] Basic tests (14/14 passing)
+- [x] Identity Registry core instructions (initialize, register, set_metadata)
+- [x] Local tests (14/14 passing)
+- [ ] Remaining identity instructions (set_agent_uri, transfer)
+- [ ] Devnet deployment
+- [ ] Live testing
 
 ### Phase 2: Core Features
 - [ ] Reputation Registry with feedback system
