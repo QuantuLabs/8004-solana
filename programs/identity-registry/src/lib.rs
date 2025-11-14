@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
     metadata::Metadata,
-    token::{self, spl_token::instruction::AuthorityType, Mint, MintTo, SetAuthority, Token, TokenAccount},
+    token::{self, Mint, MintTo, Token, TokenAccount},
 };
 use mpl_token_metadata::{
     instructions::{CreateV1CpiBuilder, SetAndVerifyCollectionCpiBuilder},
@@ -196,19 +196,6 @@ pub mod identity_registry {
             1,
         )?;
 
-        // Remove mint authority to make NFT truly immutable (supply = 1 forever)
-        token::set_authority(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                SetAuthority {
-                    current_authority: ctx.accounts.owner.to_account_info(),
-                    account_or_mint: ctx.accounts.agent_mint.to_account_info(),
-                },
-            ),
-            AuthorityType::MintTokens,
-            None, // Remove mint authority completely
-        )?;
-
         // Create Metaplex NFT metadata + master edition WITH collection reference
         let agent_name = format!("Agent #{}", agent_id);
         let metadata_uri = if token_uri.is_empty() {
@@ -285,6 +272,10 @@ pub mod identity_registry {
             agent.agent_mint,
             config.collection_mint
         );
+
+        // Note: Mint authority is automatically transferred to the Master Edition account
+        // by Metaplex when creating the master edition. This makes the NFT truly immutable
+        // with supply = 1 forever. No additional action needed.
 
         Ok(())
     }
