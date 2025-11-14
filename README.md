@@ -8,22 +8,22 @@
 [![Status](https://img.shields.io/badge/Status-In%20Development-orange)]()
 [![Progress](https://img.shields.io/badge/Progress-15%25-blue)]()
 [![Devnet](https://img.shields.io/badge/Devnet-Live-success)]()
-[![Tests](https://img.shields.io/badge/Tests-32%2F32-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-31%2F32-brightgreen)]()
 
 ## 📊 Implementation Progress: ~15%
 
 **Phase 1: Identity Registry - ✅ DEPLOYED TO DEVNET**
 
-- ✅ Data structures (RegistryConfig, AgentAccount, MetadataEntry)
+- ✅ Data structures (RegistryConfig, AgentAccount, MetadataEntry, MetadataExtension)
 - ✅ Initialize instruction (devnet ✓)
 - ✅ Register instruction with NFT validation (devnet ✓)
-- ✅ Set metadata instruction (devnet ✓)
+- ✅ Set metadata instruction + metadata extensions (devnet ✓)
 - ✅ Set agent URI instruction (devnet ✓)
 - ✅ Transfer support via SPL Token + sync_owner (devnet ✓)
-- ✅ Events (AgentRegistered, MetadataSet, AgentUriSet, AgentOwnerSynced)
-- ✅ Test suite (32/32 local, 17/17 devnet functional tests)
+- ✅ owner_of() view function
+- ✅ Events (Registered, MetadataSet, UriUpdated, AgentOwnerSynced)
+- ✅ Test suite (31/32 local, 17/17 devnet functional tests)
 - ✅ **Deployed to Solana Devnet**
-- ✅ 100% instruction coverage, 100% error path coverage
 
 **Devnet Program IDs:**
 - Identity Registry: `AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR`
