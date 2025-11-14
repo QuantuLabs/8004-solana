@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
     metadata::Metadata,
-    token::{self, Mint, MintTo, Token, TokenAccount},
+    token::{self, spl_token::instruction::AuthorityType, Mint, MintTo, SetAuthority, Token, TokenAccount},
 };
 use mpl_token_metadata::{
     instructions::{CreateV1CpiBuilder, SetAndVerifyCollectionCpiBuilder},
@@ -196,6 +196,19 @@ pub mod identity_registry {
             1,
         )?;
 
+        // Remove mint authority to make NFT truly immutable (supply = 1 forever)
+        token::set_authority(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                SetAuthority {
+                    current_authority: ctx.accounts.owner.to_account_info(),
+                    account_or_mint: ctx.accounts.agent_mint.to_account_info(),
+                },
+            ),
+            AuthorityType::MintTokens,
+            None, // Remove mint authority completely
+        )?;
+
         // Create Metaplex NFT metadata + master edition WITH collection reference
         let agent_name = format!("Agent #{}", agent_id);
         let metadata_uri = if token_uri.is_empty() {
@@ -249,7 +262,7 @@ pub mod identity_registry {
         agent.bump = ctx.bumps.agent_account;
 
         // Emit registration event (ERC-8004 spec: Registered event)
-        emit!(AgentRegistered {
+        emit!(Registered {
             agent_id,
             token_uri,
             owner: ctx.accounts.owner.key(),
@@ -260,6 +273,7 @@ pub mod identity_registry {
         for entry in &metadata {
             emit!(MetadataSet {
                 agent_id,
+                indexed_key: entry.key.clone(),
                 key: entry.key.clone(),
                 value: entry.value.clone(),
             });
@@ -353,6 +367,7 @@ pub mod identity_registry {
         // Emit event (ERC-8004 spec: MetadataSet event)
         emit!(MetadataSet {
             agent_id: agent.agent_id,
+            indexed_key: key.clone(),
             key: key.clone(),
             value,
         });
@@ -392,11 +407,11 @@ pub mod identity_registry {
         // Update URI
         agent.token_uri = new_uri.clone();
 
-        // Emit event
-        emit!(AgentUriSet {
+        // Emit event (ERC-8004 spec: UriUpdated event)
+        emit!(UriUpdated {
             agent_id: agent.agent_id,
-            old_uri,
             new_uri,
+            updated_by: ctx.accounts.owner.key(),
         });
 
         msg!(
@@ -448,6 +463,168 @@ pub mod identity_registry {
 
         msg!(
             "Agent {} owner synced: {} -> {}",
+            agent.agent_id,
+            old_owner,
+            new_owner
+        );
+
+        Ok(())
+    }
+
+    /// Create a metadata extension PDA for additional metadata storage
+    ///
+    /// Allows storing more than 10 metadata entries by creating extension accounts.
+    /// Each extension can hold 10 additional entries.
+    ///
+    /// # Arguments
+    /// * `extension_index` - Index of the extension (0, 1, 2, ...)
+    ///
+    /// # Events
+    /// * None (creation only)
+    ///
+    /// # Errors
+    /// * `InvalidExtensionIndex` - If extension index > 255
+    pub fn create_metadata_extension(
+        ctx: Context<CreateMetadataExtension>,
+        extension_index: u8,
+    ) -> Result<()> {
+        let extension = &mut ctx.accounts.metadata_extension;
+        extension.agent_mint = ctx.accounts.agent_mint.key();
+        extension.extension_index = extension_index;
+        extension.metadata = Vec::new();
+        extension.bump = ctx.bumps.metadata_extension;
+
+        msg!(
+            "Created metadata extension {} for agent mint {}",
+            extension_index,
+            extension.agent_mint
+        );
+
+        Ok(())
+    }
+
+    /// Set metadata in an extension PDA
+    ///
+    /// # Arguments
+    /// * `extension_index` - Which extension to use
+    /// * `key` - Metadata key (max 32 bytes)
+    /// * `value` - Metadata value (max 256 bytes)
+    ///
+    /// # Events
+    /// * `MetadataSet` - Emitted when metadata is set
+    ///
+    /// # Errors
+    /// * `KeyTooLong` - If key exceeds 32 bytes
+    /// * `ValueTooLong` - If value exceeds 256 bytes
+    /// * `MetadataLimitReached` - If extension already has 10 entries
+    pub fn set_metadata_extended(
+        ctx: Context<SetMetadataExtended>,
+        _extension_index: u8,
+        key: String,
+        value: Vec<u8>,
+    ) -> Result<()> {
+        // Validate key and value lengths
+        require!(
+            key.len() <= MetadataEntry::MAX_KEY_LENGTH,
+            IdentityError::KeyTooLong
+        );
+        require!(
+            value.len() <= MetadataEntry::MAX_VALUE_LENGTH,
+            IdentityError::ValueTooLong
+        );
+
+        let extension = &mut ctx.accounts.metadata_extension;
+
+        // Check if metadata key already exists, update it
+        if let Some(entry) = extension.find_metadata_mut(&key) {
+            entry.value = value.clone();
+        } else {
+            // Add new entry if under limit
+            require!(
+                extension.metadata.len() < MetadataExtension::MAX_METADATA_ENTRIES,
+                IdentityError::MetadataLimitReached
+            );
+            extension.metadata.push(MetadataEntry { key: key.clone(), value: value.clone() });
+        }
+
+        // Emit event
+        emit!(MetadataSet {
+            agent_id: ctx.accounts.agent_account.agent_id,
+            indexed_key: key.clone(),
+            key,
+            value,
+        });
+
+        Ok(())
+    }
+
+    /// Get metadata from an extension PDA
+    ///
+    /// # Arguments
+    /// * `extension_index` - Which extension to read from
+    /// * `key` - Metadata key to retrieve
+    ///
+    /// # Returns
+    /// * Metadata value if found, empty Vec otherwise
+    pub fn get_metadata_extended(
+        ctx: Context<GetMetadataExtended>,
+        _extension_index: u8,
+        key: String,
+    ) -> Result<Vec<u8>> {
+        let extension = &ctx.accounts.metadata_extension;
+        if let Some(entry) = extension.find_metadata(&key) {
+            Ok(entry.value.clone())
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    /// Transfer agent NFT to new owner with automatic owner sync
+    ///
+    /// This is a convenience function that combines SPL Token transfer + sync_owner
+    /// in a single instruction.
+    ///
+    /// # Events
+    /// * `AgentOwnerSynced` - Emitted after successful transfer
+    ///
+    /// # Errors
+    /// * `TransferToSelf` - If destination is same as source
+    pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
+        // Prevent self-transfer
+        require!(
+            ctx.accounts.from_token_account.key() != ctx.accounts.to_token_account.key(),
+            IdentityError::TransferToSelf
+        );
+
+        // Step 1: SPL Token transfer via CPI
+        let cpi_accounts = token::Transfer {
+            from: ctx.accounts.from_token_account.to_account_info(),
+            to: ctx.accounts.to_token_account.to_account_info(),
+            authority: ctx.accounts.owner.to_account_info(),
+        };
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                cpi_accounts,
+            ),
+            1, // NFT amount
+        )?;
+
+        // Step 2: Automatic sync_owner
+        let agent = &mut ctx.accounts.agent_account;
+        let old_owner = agent.owner;
+        let new_owner = ctx.accounts.to_token_account.owner;
+        agent.owner = new_owner;
+
+        emit!(AgentOwnerSynced {
+            agent_id: agent.agent_id,
+            old_owner,
+            new_owner,
+            agent_mint: agent.agent_mint,
+        });
+
+        msg!(
+            "Agent {} transferred: {} -> {}",
             agent.agent_id,
             old_owner,
             new_owner
@@ -649,33 +826,129 @@ pub struct SyncOwner<'info> {
     pub token_account: Account<'info, TokenAccount>,
 }
 
+#[derive(Accounts)]
+#[instruction(extension_index: u8)]
+pub struct CreateMetadataExtension<'info> {
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + MetadataExtension::MAX_SIZE,
+        seeds = [b"metadata_ext", agent_mint.key().as_ref(), &[extension_index]],
+        bump
+    )]
+    pub metadata_extension: Account<'info, MetadataExtension>,
+
+    /// Agent NFT mint (for PDA derivation)
+    pub agent_mint: Account<'info, Mint>,
+
+    /// Agent account (to verify ownership)
+    #[account(
+        seeds = [b"agent", agent_mint.key().as_ref()],
+        bump = agent_account.bump,
+        constraint = agent_account.owner == owner.key() @ IdentityError::Unauthorized
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(extension_index: u8)]
+pub struct SetMetadataExtended<'info> {
+    #[account(
+        mut,
+        seeds = [b"metadata_ext", agent_mint.key().as_ref(), &[extension_index]],
+        bump = metadata_extension.bump
+    )]
+    pub metadata_extension: Account<'info, MetadataExtension>,
+
+    /// Agent NFT mint (for PDA derivation)
+    pub agent_mint: Account<'info, Mint>,
+
+    /// Agent account (to verify ownership)
+    #[account(
+        seeds = [b"agent", agent_mint.key().as_ref()],
+        bump = agent_account.bump,
+        constraint = agent_account.owner == owner.key() @ IdentityError::Unauthorized
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    pub owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(extension_index: u8)]
+pub struct GetMetadataExtended<'info> {
+    #[account(
+        seeds = [b"metadata_ext", agent_mint.key().as_ref(), &[extension_index]],
+        bump = metadata_extension.bump
+    )]
+    pub metadata_extension: Account<'info, MetadataExtension>,
+
+    /// Agent NFT mint (for PDA derivation)
+    pub agent_mint: Account<'info, Mint>,
+}
+
+#[derive(Accounts)]
+pub struct TransferAgent<'info> {
+    #[account(
+        mut,
+        seeds = [b"agent", agent_account.agent_mint.as_ref()],
+        bump = agent_account.bump
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    /// Source token account
+    #[account(
+        mut,
+        constraint = from_token_account.mint == agent_account.agent_mint @ IdentityError::InvalidTokenAccount,
+        constraint = from_token_account.owner == owner.key() @ IdentityError::Unauthorized,
+        constraint = from_token_account.amount == 1 @ IdentityError::InvalidTokenAccount
+    )]
+    pub from_token_account: Account<'info, TokenAccount>,
+
+    /// Destination token account
+    #[account(
+        mut,
+        constraint = to_token_account.mint == agent_account.agent_mint @ IdentityError::InvalidTokenAccount
+    )]
+    pub to_token_account: Account<'info, TokenAccount>,
+
+    pub owner: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+}
+
 // ============================================================================
 // Events
 // ============================================================================
 
 /// Event emitted when a new agent is registered (ERC-8004 spec: Registered)
 #[event]
-pub struct AgentRegistered {
+pub struct Registered {
     pub agent_id: u64,
     pub token_uri: String,
     pub owner: Pubkey,
-    pub agent_mint: Pubkey,
+    pub agent_mint: Pubkey, // Solana-specific: SPL Token mint address
 }
 
 /// Event emitted when agent metadata is set (ERC-8004 spec: MetadataSet)
 #[event]
 pub struct MetadataSet {
     pub agent_id: u64,
+    pub indexed_key: String, // Duplicate for indexing (like Ethereum)
     pub key: String,
     pub value: Vec<u8>,
 }
 
-/// Event emitted when agent URI is updated
+/// Event emitted when agent URI is updated (ERC-8004 spec: UriUpdated)
 #[event]
-pub struct AgentUriSet {
+pub struct UriUpdated {
     pub agent_id: u64,
-    pub old_uri: String,
     pub new_uri: String,
+    pub updated_by: Pubkey, // Who performed the update
 }
 
 /// Event emitted when agent owner is synced after transfer

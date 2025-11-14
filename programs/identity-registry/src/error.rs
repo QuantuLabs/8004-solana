@@ -25,4 +25,22 @@ pub enum IdentityError {
 
     #[msg("Invalid token account: does not hold the agent NFT")]
     InvalidTokenAccount,
+
+    #[msg("Metadata extension not found for this agent")]
+    ExtensionNotFound,
+
+    #[msg("Invalid extension index")]
+    InvalidExtensionIndex,
+
+    #[msg("Collection mint does not match registry config")]
+    InvalidCollectionMint,
+
+    #[msg("NFT supply must be exactly 1")]
+    InvalidNftSupply,
+
+    #[msg("NFT decimals must be 0")]
+    InvalidNftDecimals,
+
+    #[msg("Transfer destination is same as source")]
+    TransferToSelf,
 }

@@ -75,6 +75,43 @@ impl AgentAccount {
     }
 }
 
+/// Metadata extension PDA for additional entries beyond the base 10
+/// Allows unlimited metadata by creating multiple extension accounts
+#[account]
+pub struct MetadataExtension {
+    /// Agent NFT mint reference
+    pub agent_mint: Pubkey,
+
+    /// Extension index (0, 1, 2, ...) for sequential extensions
+    pub extension_index: u8,
+
+    /// Additional metadata entries (max 10 per extension)
+    pub metadata: Vec<MetadataEntry>,
+
+    /// PDA bump seed
+    pub bump: u8,
+}
+
+impl MetadataExtension {
+    /// Maximum size for MetadataExtension
+    /// 8 (discriminator) + 32 (agent_mint) + 1 (extension_index)
+    /// + 4 + (10 * MetadataEntry::MAX_SIZE) (metadata) + 1 (bump)
+    pub const MAX_SIZE: usize = 8 + 32 + 1 + 4 + (10 * MetadataEntry::MAX_SIZE) + 1;
+
+    /// Maximum number of metadata entries per extension
+    pub const MAX_METADATA_ENTRIES: usize = 10;
+
+    /// Find metadata entry by key
+    pub fn find_metadata(&self, key: &str) -> Option<&MetadataEntry> {
+        self.metadata.iter().find(|entry| entry.key == key)
+    }
+
+    /// Find mutable metadata entry by key
+    pub fn find_metadata_mut(&mut self, key: &str) -> Option<&mut MetadataEntry> {
+        self.metadata.iter_mut().find(|entry| entry.key == key)
+    }
+}
+
 /// Metadata entry (key-value pair)
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct MetadataEntry {
@@ -117,5 +154,13 @@ mod tests {
         assert!(AgentAccount::MAX_SIZE < 10240);
         // Actual expected size
         assert_eq!(AgentAccount::MAX_SIZE, 3257);
+    }
+
+    #[test]
+    fn test_metadata_extension_max_size() {
+        // Should be under 10KB for reasonable rent costs
+        assert!(MetadataExtension::MAX_SIZE < 10240);
+        // Actual expected size: 8 + 32 + 1 + 4 + (10 * 296) + 1 = 3006
+        assert_eq!(MetadataExtension::MAX_SIZE, 3006);
     }
 }
