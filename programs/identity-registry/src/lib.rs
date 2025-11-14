@@ -232,7 +232,7 @@ pub mod identity_registry {
         .metadata(&ctx.accounts.agent_metadata)
         .collection_authority(&ctx.accounts.authority.to_account_info())
         .payer(&ctx.accounts.owner.to_account_info())
-        .update_authority(&ctx.accounts.authority.to_account_info())
+        .update_authority(&ctx.accounts.owner.to_account_info())
         .collection_mint(&ctx.accounts.collection_mint.to_account_info())
         .collection(&ctx.accounts.collection_metadata)
         .collection_master_edition_account(&ctx.accounts.collection_master_edition)

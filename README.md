@@ -51,14 +51,20 @@ This implementation brings these capabilities to Solana while maintaining cross-
 │                    Solana Programs                       │
 ├───────────────────┬──────────────────┬───────────────────┤
 │ Identity Registry │ Reputation       │ Validation        │
-│ (ERC-721 + URI)  │ Registry         │ Registry          │
+│ (NFT Collection)  │ Registry         │ Registry          │
 │                   │                  │                   │
 │ • Agent NFTs      │ • Feedback 0-100 │ • Validation      │
-│ • Metadata        │ • Revocations    │   Requests        │
-│ • Sequential IDs  │ • Responses      │ • Responses       │
+│   (via Metaplex)  │ • Revocations    │   Requests        │
+│ • Metadata        │ • Responses      │ • Responses       │
+│ • Sequential IDs  │                  │                   │
+│ • Collection NFT  │                  │                   │
 └───────────────────┴──────────────────┴───────────────────┘
-                            │
-                            ▼
+         │                  │
+         │                  ▼
+         │         SPL Token + Metaplex
+         │         (NFT minting & metadata)
+         │
+         ▼
 ┌─────────────────────────────────────────────────────────┐
 │              TypeScript SDK (agent0-ts style)            │
 ├─────────────────────────────────────────────────────────┤
@@ -69,6 +75,8 @@ This implementation brings these capabilities to Solana while maintaining cross-
 │ • Search & reputation queries                           │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**NFT Integration**: We use **Metaplex Token Metadata** for NFT management. The program controls minting via SPL Token (per ERC-8004 spec requirement), while Metaplex handles the metadata layer (name, URI, collection). This follows the standard Solana NFT pattern.
 
 ## Features
 
