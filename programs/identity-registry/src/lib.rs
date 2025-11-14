@@ -5,8 +5,9 @@ use anchor_spl::{
     token::{self, Mint, MintTo, Token, TokenAccount},
 };
 use mpl_token_metadata::{
-    instructions::{CreateV1CpiBuilder, SetAndVerifyCollectionCpiBuilder},
-    types::{Collection, PrintSupply, TokenStandard},
+    instructions::{CreateV1CpiBuilder, SetAndVerifyCollectionCpiBuilder, UpdateAsUpdateAuthorityV2CpiBuilder, UpdateV1CpiBuilder},
+    types::{Collection, Data, PrintSupply, TokenStandard},
+    ID as TOKEN_METADATA_PROGRAM_ID,
 };
 
 declare_id!("AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR");
@@ -214,7 +215,7 @@ pub mod identity_registry {
             .system_program(&ctx.accounts.system_program.to_account_info())
             .sysvar_instructions(&ctx.accounts.sysvar_instructions)
             .spl_token_program(Some(&ctx.accounts.token_program.to_account_info()))
-            .name(agent_name)
+            .name(agent_name.clone())
             .uri(metadata_uri)
             .seller_fee_basis_points(0)
             .token_standard(TokenStandard::NonFungible)
@@ -244,6 +245,8 @@ pub mod identity_registry {
         agent.owner = ctx.accounts.owner.key();
         agent.agent_mint = ctx.accounts.agent_mint.key();
         agent.token_uri = token_uri.clone();
+        agent.nft_name = agent_name.clone();
+        agent.nft_symbol = String::new(); // Empty symbol for now
         agent.metadata = metadata.clone();
         agent.created_at = Clock::get()?.unix_timestamp;
         agent.bump = ctx.bumps.agent_account;
@@ -397,12 +400,25 @@ pub mod identity_registry {
         // Update AgentAccount URI
         agent.token_uri = new_uri.clone();
 
-        // TODO: Sync URI to Metaplex NFT metadata for wallet/marketplace display
-        // Metaplex UpdateAsUpdateAuthorityV2 requires full Data struct (name, symbol, URI, etc.)
-        // For now, URIs should be set once at registration. Future: Add update_nft_metadata() instruction
-        // that reads existing metadata and updates only the URI field via Metaplex CPI.
-        //
-        // Workaround: Users can call Metaplex update directly from off-chain if needed.
+        // Sync URI to Metaplex NFT metadata using UpdateAsUpdateAuthorityV2
+        // This ensures wallets and marketplaces display the updated URI
+        let metadata_data = Data {
+            name: agent.nft_name.clone(),
+            symbol: agent.nft_symbol.clone(),
+            uri: new_uri.clone(),
+            seller_fee_basis_points: 0,
+            creators: None,
+        };
+
+        UpdateAsUpdateAuthorityV2CpiBuilder::new(&ctx.accounts.token_metadata_program.to_account_info())
+            .authority(&ctx.accounts.owner.to_account_info())
+            .mint(&ctx.accounts.agent_mint.to_account_info())
+            .metadata(&ctx.accounts.agent_metadata.to_account_info())
+            .payer(&ctx.accounts.owner.to_account_info())
+            .system_program(&ctx.accounts.system_program.to_account_info())
+            .sysvar_instructions(&ctx.accounts.sysvar_instructions.to_account_info())
+            .data(metadata_data)
+            .invoke()?;
 
         // Emit event (ERC-8004 spec: UriUpdated event)
         emit!(UriUpdated {
@@ -412,18 +428,23 @@ pub mod identity_registry {
         });
 
         msg!(
-            "Agent {} URI updated in AgentAccount (Note: NFT metadata not auto-synced)",
+            "Agent {} URI updated in AgentAccount and NFT metadata synced",
             agent.agent_id
         );
 
         Ok(())
     }
 
-    /// Sync agent owner after SPL Token transfer
+    /// Sync agent owner after SPL Token transfer (ERC-8004 compliance)
     ///
     /// After transferring the agent NFT via SPL Token standard transfer,
-    /// call this instruction to sync the cached owner field in AgentAccount.
-    /// This is optional but recommended for query convenience.
+    /// call this instruction to sync the cached owner field in AgentAccount
+    /// AND transfer the Metaplex update_authority to the new owner.
+    ///
+    /// This ensures the new owner can modify the agent's tokenURI and metadata,
+    /// as required by ERC-8004 spec: "The owner of the ERC-721 token is the
+    /// owner of the agent and can transfer ownership or delegate management
+    /// (e.g., updating the registration file)."
     ///
     /// # Arguments
     /// None - new owner is derived from SPL Token account
@@ -449,6 +470,18 @@ pub mod identity_registry {
         // Update cached owner
         agent.owner = new_owner;
 
+        // Transfer Metaplex update_authority to new owner (ERC-8004 compliance)
+        // This allows the new owner to modify tokenURI via set_agent_uri()
+        UpdateV1CpiBuilder::new(&ctx.accounts.token_metadata_program.to_account_info())
+            .authority(&ctx.accounts.old_owner_signer.to_account_info())
+            .mint(&ctx.accounts.agent_mint.to_account_info())
+            .metadata(&ctx.accounts.agent_metadata.to_account_info())
+            .payer(&ctx.accounts.old_owner_signer.to_account_info())
+            .system_program(&ctx.accounts.system_program.to_account_info())
+            .sysvar_instructions(&ctx.accounts.sysvar_instructions.to_account_info())
+            .new_update_authority(new_owner)
+            .invoke()?;
+
         // Emit event
         emit!(AgentOwnerSynced {
             agent_id: agent.agent_id,
@@ -458,7 +491,7 @@ pub mod identity_registry {
         });
 
         msg!(
-            "Agent {} owner synced: {} -> {}",
+            "Agent {} owner synced: {} -> {} (update_authority transferred)",
             agent.agent_id,
             old_owner,
             new_owner
@@ -820,7 +853,29 @@ pub struct SetAgentUri<'info> {
     )]
     pub agent_account: Account<'info, AgentAccount>,
 
+    /// CHECK: Metaplex metadata PDA verified via seeds constraint
+    #[account(
+        mut,
+        seeds = [
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            agent_mint.key().as_ref(),
+        ],
+        bump,
+        seeds::program = TOKEN_METADATA_PROGRAM_ID
+    )]
+    pub agent_metadata: UncheckedAccount<'info>,
+
+    pub agent_mint: Account<'info, Mint>,
+
+    #[account(mut)]
     pub owner: Signer<'info>,
+
+    pub token_metadata_program: Program<'info, Metadata>,
+    pub system_program: Program<'info, System>,
+
+    /// CHECK: Metaplex requires this for authorization
+    pub sysvar_instructions: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -837,6 +892,35 @@ pub struct SyncOwner<'info> {
         constraint = token_account.mint == agent_account.agent_mint @ IdentityError::InvalidTokenAccount
     )]
     pub token_account: Account<'info, TokenAccount>,
+
+    /// CHECK: Metaplex metadata PDA verified via seeds constraint
+    #[account(
+        mut,
+        seeds = [
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            agent_mint.key().as_ref(),
+        ],
+        bump,
+        seeds::program = TOKEN_METADATA_PROGRAM_ID
+    )]
+    pub agent_metadata: UncheckedAccount<'info>,
+
+    pub agent_mint: Account<'info, Mint>,
+
+    /// Old owner (current update_authority) must sign to transfer authority
+    #[account(
+        mut,
+        constraint = old_owner_signer.key() == agent_account.owner @ IdentityError::Unauthorized
+    )]
+    pub old_owner_signer: Signer<'info>,
+
+    pub token_metadata_program: Program<'info, Metadata>,
+    pub system_program: Program<'info, System>,
+
+    /// CHECK: Metaplex requires this for authorization
+    #[account(address = anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub sysvar_instructions: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]

@@ -41,6 +41,14 @@ pub struct AgentAccount {
     /// Max 200 bytes per ERC-8004 spec
     pub token_uri: String,
 
+    /// NFT name stored for UpdateMetadata CPI (e.g., "Agent #123")
+    /// Max 32 bytes per Metaplex spec
+    pub nft_name: String,
+
+    /// NFT symbol stored for UpdateMetadata CPI
+    /// Max 10 bytes per Metaplex spec
+    pub nft_symbol: String,
+
     /// Key-value metadata (max 10 entries)
     pub metadata: Vec<MetadataEntry>,
 
@@ -54,9 +62,10 @@ pub struct AgentAccount {
 impl AgentAccount {
     /// Maximum size for AgentAccount
     /// 8 (discriminator) + 8 (agent_id) + 32 (owner) + 32 (agent_mint)
-    /// + 4 + 200 (token_uri) + 4 + (10 * MetadataEntry::MAX_SIZE) (metadata)
+    /// + 4 + 200 (token_uri) + 4 + 32 (nft_name) + 4 + 10 (nft_symbol)
+    /// + 4 + (10 * MetadataEntry::MAX_SIZE) (metadata)
     /// + 8 (created_at) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 32 + 4 + 200 + 4 + (10 * MetadataEntry::MAX_SIZE) + 8 + 1;
+    pub const MAX_SIZE: usize = 8 + 8 + 32 + 32 + 4 + 200 + 4 + 32 + 4 + 10 + 4 + (10 * MetadataEntry::MAX_SIZE) + 8 + 1;
 
     /// Maximum number of metadata entries allowed
     pub const MAX_METADATA_ENTRIES: usize = 10;

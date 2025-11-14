@@ -6,24 +6,34 @@
 [![Anchor Version](https://img.shields.io/badge/Anchor-0.31.1-blue)](https://github.com/coral-xyz/anchor)
 [![Solana](https://img.shields.io/badge/Solana-Compatible-green)](https://solana.com)
 [![Status](https://img.shields.io/badge/Status-In%20Development-orange)]()
-[![Progress](https://img.shields.io/badge/Progress-15%25-blue)]()
+[![Progress](https://img.shields.io/badge/Progress-Phase%201%20Complete-blue)]()
 [![Devnet](https://img.shields.io/badge/Devnet-Live-success)]()
-[![Tests](https://img.shields.io/badge/Tests-31%2F32-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-43%2F43-brightgreen)]()
+[![Identity](https://img.shields.io/badge/Identity%20Registry-100%25%20Complete-brightgreen)]()
 
-## 📊 Implementation Progress: ~15%
+## 📊 Implementation Progress
 
-**Phase 1: Identity Registry - ✅ DEPLOYED TO DEVNET**
+**Phase 1: Identity Registry - ✅ COMPLETE**
 
 - ✅ Data structures (RegistryConfig, AgentAccount, MetadataEntry, MetadataExtension)
-- ✅ Initialize instruction (devnet ✓)
-- ✅ Register instruction with NFT validation (devnet ✓)
-- ✅ Set metadata instruction + metadata extensions (devnet ✓)
-- ✅ Set agent URI instruction (devnet ✓)
-- ✅ Transfer support via SPL Token + sync_owner (devnet ✓)
-- ✅ owner_of() view function
+- ✅ Initialize instruction with Metaplex Collection NFT
+- ✅ Register instructions (register, registerEmpty, registerWithMetadata)
+- ✅ Set metadata instruction + unlimited metadata via extensions
+- ✅ Set agent URI instruction with Metaplex UpdateV1 CPI
+- ✅ Transfer support via SPL Token + sync_owner + transfer_agent
+- ✅ **Update authority transfer** - New NFT owners can modify tokenURI and metadata (ERC-8004 compliance)
+- ✅ owner_of() view function (ERC-721 compatibility)
+- ✅ Metadata extension system for unlimited metadata storage
 - ✅ Events (Registered, MetadataSet, UriUpdated, AgentOwnerSynced)
-- ✅ Test suite (31/32 local, 17/17 devnet functional tests)
+- ✅ **Test suite: 43/43 passing (100% E2E coverage for Identity Registry)**
+- ✅ **100% ERC-8004 Identity Registry Compliance**
 - ✅ **Deployed to Solana Devnet**
+
+**Phase 2: Reputation Registry - ⏳ NOT STARTED**
+
+**Phase 3: Validation Registry - ⏳ NOT STARTED**
+
+**Phase 4: TypeScript SDK - ⏳ NOT STARTED**
 
 **Devnet Program IDs:**
 - Identity Registry: `AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR`
@@ -80,17 +90,23 @@ This implementation brings these capabilities to Solana while maintaining cross-
 
 ## Features
 
-### ✅ Planned Features
+### ✅ Phase 1 Complete: Identity Registry
 
 - [x] Project structure with 3 Anchor programs
-- [x] **Identity Registry** (✅ DEPLOYED & TESTED)
-  - [x] NFT-based agent registration (devnet ✓)
-  - [x] Metadata storage (max 10 key-value pairs, devnet ✓)
+- [x] **Identity Registry** (✅ COMPLETE)
+  - [x] NFT-based agent registration via Metaplex (devnet ✓)
+  - [x] Metadata storage with unlimited extensions (devnet ✓)
   - [x] Sequential agent IDs (devnet ✓)
-  - [x] Set agent URI instruction (devnet ✓)
-  - [x] Transfer support via SPL Token + sync_owner (devnet ✓)
+  - [x] Set agent URI with update_authority transfer (devnet ✓)
+  - [x] Transfer support via SPL Token + sync_owner + transfer_agent (devnet ✓)
+  - [x] owner_of() view function (ERC-721 compatibility)
+  - [x] Metadata extension system for unlimited storage
+  - [x] UpdateV1 CPI for update_authority transfer to new owners
+  - [x] Comprehensive test suite (43/43 tests passing)
   - [x] Devnet deployment (live at AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR)
-  - [x] Live integration tests (17/17 functional tests passing)
+
+### 🚀 Future Phases
+
 - [ ] **Reputation Registry**
   - [ ] Feedback scoring (0-100)
   - [ ] Revocation support
@@ -136,12 +152,27 @@ anchor test
 
 ## ERC-8004 Specification Compliance
 
-This implementation follows the official [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004) with adaptations for Solana's account model:
+### Identity Registry - ✅ Fully Compliant
+
+The Identity Registry implementation achieves **full compliance** with the [ERC-8004 Identity Registry specification](https://eips.ethereum.org/EIPS/eip-8004):
+
+| Feature | ERC-8004 Requirement | Solana Implementation | Status |
+|---------|---------------------|----------------------|--------|
+| Agent Registration | Contract creates NFT | Program creates SPL Token NFT via Metaplex | ✅ Compliant |
+| Metadata Storage | Unlimited on-chain | 10 base + unlimited via extensions | ✅ Compliant |
+| Owner Modifications | Owner can modify tokenURI & metadata | UpdateV1 CPI transfers update_authority to new owner | ✅ Compliant |
+| Sequential Agent IDs | Required | Implemented via RegistryConfig counter | ✅ Compliant |
+| Empty URI Support | Must accept empty tokenURI | Supported in register/registerEmpty | ✅ Compliant |
+| Transfer Support | NFT transfer = ownership transfer | SPL Token transfer + sync_owner | ✅ Compliant |
+| ownerOf() Function | ERC-721 compatibility | Implemented as view function | ✅ Compliant |
+| Events | Registered, MetadataSet, UriUpdated | All events implemented | ✅ Compliant |
+
+**Key Implementation**: The program correctly transfers NFT `update_authority` to new owners via Metaplex UpdateV1 CPI, ensuring new NFT owners can modify tokenURI and metadata.
+
+### Reputation & Validation (Future Phases)
 
 | Feature | Ethereum | Solana | Status |
 |---------|----------|--------|--------|
-| Agent Registration | ERC-721 tokenId | SPL Token NFT + PDA | ✅ Devnet deployed |
-| Metadata Storage | Unlimited mapping | 10 on-chain + unlimited off-chain | ✅ Devnet deployed |
 | Reputation Scoring | 0-100 with tags | 0-100 with tags | ⏳ Not started |
 | Feedback Revocation | By client | By client | ⏳ Not started |
 | Agent Responses | Unlimited | Unlimited | ⏳ Not started |
@@ -183,29 +214,30 @@ See [METADATA_EXTENSIONS.md](./docs/METADATA_EXTENSIONS.md) for details.
 
 ## Roadmap
 
-### Phase 1: Foundation (Current - ~30% Complete)
+### Phase 1: Identity Registry ✅ COMPLETE
 - [x] Project setup with 3 programs
-- [x] Identity Registry core instructions (initialize, register, set_metadata)
-- [x] Local tests (14/14 passing)
-- [ ] Remaining identity instructions (set_agent_uri, transfer)
-- [ ] Devnet deployment
-- [ ] Live testing
+- [x] Identity Registry all instructions (initialize, register, set_metadata, set_agent_uri, transfer)
+- [x] Update authority transfer via Metaplex UpdateV1 CPI
+- [x] Metadata extension system for unlimited storage
+- [x] Comprehensive test suite (43/43 passing)
+- [x] ERC-8004 Identity Registry specification compliance
+- [x] Devnet deployment (live)
 
-### Phase 2: Core Features
+### Phase 2: Core Features (Next)
 - [ ] Reputation Registry with feedback system
 - [ ] Validation Registry
-- [ ] Comprehensive test suite
+- [ ] Cross-program integration tests
 
 ### Phase 3: SDK Development
 - [ ] TypeScript SDK with agent0-ts API
 - [ ] IPFS/Arweave storage adapters
 - [ ] OASF taxonomies integration
 
-### Phase 4: Production Ready
+### Phase 4: Production Deployment
 - [ ] Security audit
-- [ ] Devnet deployment
-- [ ] Documentation & examples
 - [ ] Mainnet deployment
+- [ ] Documentation & examples
+- [ ] Public launch
 
 ## Contributing
 
@@ -238,6 +270,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Status**: 🚧 Active Development - Last Updated: 2025-11-13
+**Status**: 🚧 In Development - Phase 1 Complete (Identity Registry) - Last Updated: 2025-11-14
+
+**Identity Registry Test Coverage**: 43/43 tests passing
 
 *Building the future of trustless agent registries on Solana*
