@@ -8,7 +8,7 @@
 [![Status](https://img.shields.io/badge/Status-In%20Development-orange)]()
 [![Progress](https://img.shields.io/badge/Progress-15%25-blue)]()
 [![Devnet](https://img.shields.io/badge/Devnet-Live-success)]()
-[![Tests](https://img.shields.io/badge/Tests-24%2F24-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-32%2F32-brightgreen)]()
 
 ## 📊 Implementation Progress: ~15%
 
@@ -21,7 +21,7 @@
 - ✅ Set agent URI instruction (devnet ✓)
 - ✅ Transfer support via SPL Token + sync_owner (devnet ✓)
 - ✅ Events (AgentRegistered, MetadataSet, AgentUriSet, AgentOwnerSynced)
-- ✅ Test suite (24/24 local, 17/17 devnet functional tests)
+- ✅ Test suite (32/32 local, 17/17 devnet functional tests)
 - ✅ **Deployed to Solana Devnet**
 - ✅ 100% instruction coverage, 100% error path coverage
 
