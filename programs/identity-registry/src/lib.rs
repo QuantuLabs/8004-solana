@@ -393,22 +393,27 @@ pub mod identity_registry {
         );
 
         let agent = &mut ctx.accounts.agent_account;
-        let old_uri = agent.token_uri.clone();
 
-        // Update URI
+        // Update AgentAccount URI
         agent.token_uri = new_uri.clone();
+
+        // TODO: Sync URI to Metaplex NFT metadata for wallet/marketplace display
+        // Metaplex UpdateAsUpdateAuthorityV2 requires full Data struct (name, symbol, URI, etc.)
+        // For now, URIs should be set once at registration. Future: Add update_nft_metadata() instruction
+        // that reads existing metadata and updates only the URI field via Metaplex CPI.
+        //
+        // Workaround: Users can call Metaplex update directly from off-chain if needed.
 
         // Emit event (ERC-8004 spec: UriUpdated event)
         emit!(UriUpdated {
             agent_id: agent.agent_id,
-            new_uri,
+            new_uri: new_uri.clone(),
             updated_by: ctx.accounts.owner.key(),
         });
 
         msg!(
-            "Agent {} URI updated to {}",
-            agent.agent_id,
-            agent.token_uri
+            "Agent {} URI updated in AgentAccount (Note: NFT metadata not auto-synced)",
+            agent.agent_id
         );
 
         Ok(())
@@ -460,6 +465,23 @@ pub mod identity_registry {
         );
 
         Ok(())
+    }
+
+    /// Get agent owner by agent mint (ERC-721: ownerOf)
+    ///
+    /// Query the current owner of an agent NFT. This is a view function
+    /// that doesn't modify state.
+    ///
+    /// # Arguments
+    /// None - agent_mint is derived from context
+    ///
+    /// # Returns
+    /// The owner's public key
+    ///
+    /// # Events
+    /// None (view function)
+    pub fn owner_of(ctx: Context<OwnerOf>) -> Result<Pubkey> {
+        Ok(ctx.accounts.agent_account.owner)
     }
 
     /// Create a metadata extension PDA for additional metadata storage
@@ -815,6 +837,16 @@ pub struct SyncOwner<'info> {
         constraint = token_account.mint == agent_account.agent_mint @ IdentityError::InvalidTokenAccount
     )]
     pub token_account: Account<'info, TokenAccount>,
+}
+
+#[derive(Accounts)]
+pub struct OwnerOf<'info> {
+    /// Agent account PDA
+    #[account(
+        seeds = [b"agent", agent_account.agent_mint.as_ref()],
+        bump = agent_account.bump
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
 }
 
 #[derive(Accounts)]
