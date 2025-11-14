@@ -1,6 +1,15 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey, Keypair, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
+import {
+  PublicKey,
+  Keypair,
+  SystemProgram,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
+  SYSVAR_RENT_PUBKEY,
+  ComputeBudgetProgram,
+  Transaction,
+  TransactionInstruction
+} from "@solana/web3.js";
 import { assert } from "chai";
 import {
   getAssociatedTokenAddressSync,
@@ -58,6 +67,19 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
       [Buffer.from("agent"), agentMint.toBuffer()],
       program.programId
     );
+  }
+
+  // Helper to send transaction with compute budget
+  async function sendWithComputeBudget(
+    ix: TransactionInstruction,
+    signers: Keypair[] = [],
+    computeUnits: number = 400_000
+  ): Promise<string> {
+    const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+      units: computeUnits,
+    });
+    const tx = new Transaction().add(computeBudgetIx, ix);
+    return await provider.sendAndConfirm(tx, signers);
   }
 
   before(async () => {
@@ -289,12 +311,12 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
       // Verify agent IDs are sequential
       for (let i = 0; i < 3; i++) {
         const agent = await program.account.agentAccount.fetch(agentPdas[i]);
-        // First test registered agent ID 0, so these should be 1, 2, 3
-        assert.equal(agent.agentId.toNumber(), 1 + i);
+        // Previous tests registered agent IDs 0 and 1, so these should be 2, 3, 4
+        assert.equal(agent.agentId.toNumber(), 2 + i);
       }
 
       const config = await program.account.registryConfig.fetch(configPda);
-      assert.equal(config.totalAgents.toNumber(), 4, "Should have 4 total agents (1 from previous test + 3 new)");
+      assert.equal(config.totalAgents.toNumber(), 5, "Should have 5 total agents (2 from previous tests + 3 new)");
     });
 
     it("Fails with tokenURI > 200 bytes", async () => {
@@ -416,7 +438,7 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
         { key: "version", value: Buffer.from("1.0.0") },
       ];
 
-      await program.methods
+      const ix = await program.methods
         .registerWithMetadata(tokenUri, metadata)
         .accounts({
           config: configPda,
@@ -437,8 +459,9 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
           tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
-        .signers([agentMint])
-        .rpc();
+        .instruction();
+
+      await sendWithComputeBudget(ix, [agentMint]);
 
       const agent = await program.account.agentAccount.fetch(agentPda);
       assert.equal(agent.tokenUri, tokenUri);
@@ -544,7 +567,7 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
         metadata.push({ key: `key${i}`, value: Buffer.from(`value${i}`) });
       }
 
-      await program.methods
+      const ix = await program.methods
         .registerWithMetadata("https://example.com", metadata)
         .accounts({
           config: configPda,
@@ -565,8 +588,9 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
           tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
-        .signers([agentMint])
-        .rpc();
+        .instruction();
+
+      await sendWithComputeBudget(ix, [agentMint]);
 
       const agent = await program.account.agentAccount.fetch(agentPda);
       assert.equal(agent.metadata.length, 10);
@@ -674,7 +698,7 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
         { key: "type", value: Buffer.from("assistant") },
       ];
 
-      await program.methods
+      const ix = await program.methods
         .registerWithMetadata("https://test.com", metadata)
         .accounts({
           config: configPda,
@@ -695,8 +719,9 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
           tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
-        .signers([agentMint])
-        .rpc();
+        .instruction();
+
+      await sendWithComputeBudget(ix, [agentMint]);
     });
 
     it("Returns metadata value for existing key", async () => {
@@ -734,7 +759,7 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
       const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
       [agentPda] = getAgentPda(agentMint.publicKey);
 
-      await program.methods
+      const registerIx = await program.methods
         .register("https://example.com")
         .accounts({
           config: configPda,
@@ -755,8 +780,9 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
           tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
-        .signers([agentMint])
-        .rpc();
+        .instruction();
+
+      await sendWithComputeBudget(registerIx, [agentMint]);
     });
 
     it("Sets new metadata entry", async () => {
@@ -919,7 +945,7 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
       const agentTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
       [agentPda] = getAgentPda(agentMint.publicKey);
 
-      await program.methods
+      const registerIx = await program.methods
         .register("https://original.com")
         .accounts({
           config: configPda,
@@ -941,7 +967,14 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .signers([agentMint])
-        .rpc();
+        .instruction();
+
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: 400_000,
+      });
+
+      const tx = new Transaction().add(computeBudgetIx, registerIx);
+      await provider.sendAndConfirm(tx, [agentMint]);
     });
 
     it("Updates agent URI", async () => {
@@ -1045,7 +1078,7 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
       originalOwnerTokenAccount = getAssociatedTokenAddressSync(agentMint.publicKey, provider.wallet.publicKey);
       [agentPda] = getAgentPda(agentMint.publicKey);
 
-      await program.methods
+      const registerIx = await program.methods
         .register("https://example.com")
         .accounts({
           config: configPda,
@@ -1066,8 +1099,9 @@ describe("Identity Registry (ERC-8004 Spec Compliant)", () => {
           tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
-        .signers([agentMint])
-        .rpc();
+        .instruction();
+
+      await sendWithComputeBudget(registerIx, [agentMint]);
 
       // Prepare new owner
       newOwner = Keypair.generate();

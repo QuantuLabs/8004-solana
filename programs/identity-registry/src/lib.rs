@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::sysvar::instructions as sysvar_instructions;
 use anchor_spl::{
     associated_token::AssociatedToken,
     metadata::Metadata,
