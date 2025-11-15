@@ -293,23 +293,23 @@ Comprehensive technical documentation is available in `/docs`:
 
 ## Storage & Costs
 
-### On-Chain Costs (Solana @ $0.30/SOL)
+### On-Chain Costs (Solana @ $160/SOL)
 
 | Operation | Accounts | Rent (SOL) | USD Cost |
 |-----------|----------|-----------|----------|
-| Register Agent | 4 | 0.050 | $0.015 |
-| Give Feedback (1st) | 3 | 0.026 | $0.008 |
-| Give Feedback (next) | 1 | 0.024 | $0.007 |
+| Register Agent | 4 | 0.050 | $8.00 |
+| Give Feedback (1st) | 3 | 0.026 | $4.16 |
+| Give Feedback (next) | 1 | 0.024 | $3.84 |
 | Revoke Feedback | 0 | 0.000 | $0.000 |
-| Append Response | 1-2 | 0.023-0.025 | $0.007-$0.008 |
+| Append Response | 1-2 | 0.023-0.025 | $3.68-$4.00 |
 
 **Rent is recoverable** when accounts are closed.
 
 ### Metadata Storage Options
 
-1. **On-chain (10 entries)**: Included in agent account (~$0.60)
+1. **On-chain (10 entries)**: Included in agent account (~$320)
 2. **TokenURI JSON** (unlimited): IPFS/Arweave (~$0.01)
-3. **Extension PDAs** (>10 entries): ~$0.40/entry (recoverable)
+3. **Extension PDAs** (>10 entries): ~$210/entry (recoverable)
 
 ## Contributing
 
