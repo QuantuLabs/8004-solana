@@ -160,8 +160,167 @@ pub mod reputation_registry {
         Ok(())
     }
 
-    // TODO: Jour 3 - Implement revoke_feedback instruction
-    // TODO: Jour 3 - Implement append_response instruction
+    /// Revoke feedback (ERC-8004 spec: revokeFeedback)
+    ///
+    /// Marks feedback as revoked while preserving it in storage for audit trail.
+    /// Only the original feedback author (client) can revoke their own feedback.
+    /// Updates cached reputation metadata to exclude revoked feedback from aggregates.
+    ///
+    /// # Arguments
+    /// * `agent_id` - Agent ID from Identity Registry
+    /// * `feedback_index` - Index of feedback to revoke
+    ///
+    /// # Events
+    /// * `FeedbackRevoked` - Emitted when feedback is successfully revoked
+    ///
+    /// # Errors
+    /// * `Unauthorized` - Caller is not the original feedback author
+    /// * `AlreadyRevoked` - Feedback was already revoked
+    /// * `FeedbackNotFound` - Feedback doesn't exist
+    pub fn revoke_feedback(
+        ctx: Context<RevokeFeedback>,
+        agent_id: u64,
+        feedback_index: u64,
+    ) -> Result<()> {
+        let feedback = &mut ctx.accounts.feedback_account;
+
+        // Validate caller is the original feedback author
+        require!(
+            feedback.client_address == ctx.accounts.client.key(),
+            ReputationError::Unauthorized
+        );
+
+        // Validate feedback is not already revoked
+        require!(!feedback.is_revoked, ReputationError::AlreadyRevoked);
+
+        // Mark as revoked
+        feedback.is_revoked = true;
+
+        // Update agent reputation metadata (subtract from aggregates)
+        let metadata = &mut ctx.accounts.agent_reputation;
+
+        metadata.total_feedbacks = metadata
+            .total_feedbacks
+            .checked_sub(1)
+            .ok_or(ReputationError::Overflow)?;
+
+        metadata.total_score_sum = metadata
+            .total_score_sum
+            .checked_sub(feedback.score as u64)
+            .ok_or(ReputationError::Overflow)?;
+
+        // Recalculate average (avoid division by zero)
+        metadata.average_score = if metadata.total_feedbacks == 0 {
+            0
+        } else {
+            (metadata.total_score_sum / metadata.total_feedbacks) as u8
+        };
+
+        metadata.last_updated = Clock::get()?.unix_timestamp;
+
+        // Emit event
+        emit!(FeedbackRevoked {
+            agent_id,
+            client_address: ctx.accounts.client.key(),
+            feedback_index,
+        });
+
+        msg!(
+            "Feedback revoked: agent_id={}, client={}, index={}",
+            agent_id,
+            ctx.accounts.client.key(),
+            feedback_index
+        );
+
+        Ok(())
+    }
+
+    /// Append response to feedback (ERC-8004 spec: appendResponse)
+    ///
+    /// Allows anyone (agent, third-party aggregator, etc.) to append a response
+    /// to existing feedback. Responses are stored in separate PDA accounts,
+    /// enabling unlimited responses per feedback. Common use cases:
+    /// - Agent showing refund/resolution
+    /// - Data aggregator flagging spam
+    /// - Community providing additional context
+    ///
+    /// # Arguments
+    /// * `agent_id` - Agent ID from Identity Registry
+    /// * `client_address` - Original feedback author address
+    /// * `feedback_index` - Index of feedback being responded to
+    /// * `response_uri` - IPFS/Arweave link to response content (max 200 bytes)
+    /// * `response_hash` - SHA-256 hash of response file
+    ///
+    /// # Events
+    /// * `ResponseAppended` - Emitted when response is successfully added
+    ///
+    /// # Errors
+    /// * `ResponseUriTooLong` - URI exceeds 200 bytes
+    /// * `FeedbackNotFound` - Referenced feedback doesn't exist
+    pub fn append_response(
+        ctx: Context<AppendResponse>,
+        agent_id: u64,
+        client_address: Pubkey,
+        feedback_index: u64,
+        response_uri: String,
+        response_hash: [u8; 32],
+    ) -> Result<()> {
+        // Validate URI length
+        require!(
+            response_uri.len() <= ResponseAccount::MAX_URI_LENGTH,
+            ReputationError::ResponseUriTooLong
+        );
+
+        // Get or initialize response index account
+        let response_index_account = &mut ctx.accounts.response_index;
+        let response_index = if response_index_account.agent_id == 0 {
+            // First response to this feedback
+            response_index_account.agent_id = agent_id;
+            response_index_account.client_address = client_address;
+            response_index_account.feedback_index = feedback_index;
+            response_index_account.next_index = 1; // Next response will be index 1
+            response_index_account.bump = ctx.bumps.response_index;
+            0u64
+        } else {
+            let current_index = response_index_account.next_index;
+            response_index_account.next_index = current_index
+                .checked_add(1)
+                .ok_or(ReputationError::Overflow)?;
+            current_index
+        };
+
+        // Initialize response account
+        let response = &mut ctx.accounts.response_account;
+        response.agent_id = agent_id;
+        response.client_address = client_address;
+        response.feedback_index = feedback_index;
+        response.response_index = response_index;
+        response.responder = ctx.accounts.responder.key();
+        response.response_uri = response_uri.clone();
+        response.response_hash = response_hash;
+        response.created_at = Clock::get()?.unix_timestamp;
+        response.bump = ctx.bumps.response_account;
+
+        // Emit event
+        emit!(ResponseAppended {
+            agent_id,
+            client_address,
+            feedback_index,
+            response_index,
+            responder: ctx.accounts.responder.key(),
+            response_uri,
+        });
+
+        msg!(
+            "Response appended: agent_id={}, feedback_index={}, response_index={}, responder={}",
+            agent_id,
+            feedback_index,
+            response_index,
+            ctx.accounts.responder.key()
+        );
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -227,6 +386,93 @@ pub struct GiveFeedback<'info> {
     /// Identity Registry program (for CPI validation)
     /// CHECK: Program ID verified via seeds::program constraint
     pub identity_registry_program: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+/// Accounts for revoke_feedback instruction
+#[derive(Accounts)]
+#[instruction(agent_id: u64, feedback_index: u64)]
+pub struct RevokeFeedback<'info> {
+    /// Client revoking their feedback (must be original author)
+    pub client: Signer<'info>,
+
+    /// Feedback account to revoke
+    #[account(
+        mut,
+        seeds = [
+            b"feedback",
+            agent_id.to_le_bytes().as_ref(),
+            client.key().as_ref(),
+            feedback_index.to_le_bytes().as_ref()
+        ],
+        bump = feedback_account.bump
+    )]
+    pub feedback_account: Account<'info, FeedbackAccount>,
+
+    /// Agent reputation metadata (update aggregates)
+    #[account(
+        mut,
+        seeds = [b"agent_reputation", agent_id.to_le_bytes().as_ref()],
+        bump = agent_reputation.bump
+    )]
+    pub agent_reputation: Account<'info, AgentReputationMetadata>,
+}
+
+/// Accounts for append_response instruction
+#[derive(Accounts)]
+#[instruction(agent_id: u64, client_address: Pubkey, feedback_index: u64, _response_uri: String, _response_hash: [u8; 32])]
+pub struct AppendResponse<'info> {
+    /// Responder (can be anyone - agent, aggregator, etc.)
+    pub responder: Signer<'info>,
+
+    /// Payer for response account creation
+    /// Can be same as responder or different for sponsorship
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    /// Feedback account being responded to (validation)
+    #[account(
+        seeds = [
+            b"feedback",
+            agent_id.to_le_bytes().as_ref(),
+            client_address.as_ref(),
+            feedback_index.to_le_bytes().as_ref()
+        ],
+        bump = feedback_account.bump
+    )]
+    pub feedback_account: Account<'info, FeedbackAccount>,
+
+    /// Response index account (tracks next response index for this feedback)
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = ResponseIndexAccount::SIZE,
+        seeds = [
+            b"response_index",
+            agent_id.to_le_bytes().as_ref(),
+            client_address.as_ref(),
+            feedback_index.to_le_bytes().as_ref()
+        ],
+        bump
+    )]
+    pub response_index: Account<'info, ResponseIndexAccount>,
+
+    /// Response account (one per response)
+    #[account(
+        init,
+        payer = payer,
+        space = ResponseAccount::MAX_SIZE,
+        seeds = [
+            b"response",
+            agent_id.to_le_bytes().as_ref(),
+            client_address.as_ref(),
+            feedback_index.to_le_bytes().as_ref(),
+            response_index.next_index.to_le_bytes().as_ref()
+        ],
+        bump
+    )]
+    pub response_account: Account<'info, ResponseAccount>,
 
     pub system_program: Program<'info, System>,
 }
