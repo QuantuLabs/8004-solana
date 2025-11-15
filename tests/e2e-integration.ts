@@ -630,5 +630,204 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(response1Index.nextIndex.toNumber(), 2);
       assert.equal(response2Index.nextIndex.toNumber(), 1);
     });
+
+    // ==================================================================================
+    // Part 3: Read Functions Tests (ERC-8004 Compliance)
+    // ==================================================================================
+    it("✅ readFeedback: Fetch single feedback with all fields", async () => {
+      const [feedbackPda] = getFeedbackPda(agent1Id, client1.publicKey, 0);
+      const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+
+      assert.equal(feedback.agentId.toNumber(), agent1Id);
+      assert.equal(feedback.clientAddress.toBase58(), client1.publicKey.toBase58());
+      assert.equal(feedback.feedbackIndex.toNumber(), 0);
+      assert.equal(feedback.score, 85);
+      assert.equal(feedback.isRevoked, false);
+      assert.ok(feedback.createdAt.toNumber() > 0);
+    });
+
+    it("✅ readFeedback: Returns null for non-existent feedback", async () => {
+      const [feedbackPda] = getFeedbackPda(agent1Id, client1.publicKey, 999);
+
+      try {
+        await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+        assert.fail("Should throw error for non-existent account");
+      } catch (err) {
+        assert.ok(err.message.includes("Account does not exist"));
+      }
+    });
+
+    it("✅ readAllFeedback: Fetch all feedbacks for a client", async () => {
+      const [clientIndexPda] = getClientIndexPda(agent1Id, client1.publicKey);
+      const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+      const lastIndex = clientIndex.lastIndex.toNumber();
+
+      assert.equal(lastIndex, 0); // Client1 has 1 feedback (index 0)
+
+      const feedbacks = [];
+      for (let i = 0; i <= lastIndex; i++) {
+        const [feedbackPda] = getFeedbackPda(agent1Id, client1.publicKey, i);
+        const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+        feedbacks.push(feedback);
+      }
+
+      assert.equal(feedbacks.length, 1);
+      assert.equal(feedbacks[0].score, 85);
+    });
+
+    it("✅ readAllFeedback: Filter out revoked feedbacks", async () => {
+      const [clientIndexPda] = getClientIndexPda(agent1Id, client3.publicKey);
+      const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+      const lastIndex = clientIndex.lastIndex.toNumber();
+
+      const feedbacks = [];
+      for (let i = 0; i <= lastIndex; i++) {
+        const [feedbackPda] = getFeedbackPda(agent1Id, client3.publicKey, i);
+        const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+
+        // Filter: includeRevoked = false
+        if (!feedback.isRevoked) {
+          feedbacks.push(feedback);
+        }
+      }
+
+      assert.equal(feedbacks.length, 0); // client3's feedback was revoked
+    });
+
+    it("✅ getLastIndex: Returns correct last feedback index", async () => {
+      const [clientIndexPda] = getClientIndexPda(agent1Id, client1.publicKey);
+      const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+
+      assert.equal(clientIndex.agentId.toNumber(), agent1Id);
+      assert.equal(clientIndex.clientAddress.toBase58(), client1.publicKey.toBase58());
+      assert.equal(clientIndex.lastIndex.toNumber(), 0);
+    });
+
+    it("✅ getLastIndex: Returns 0 for client with no feedbacks", async () => {
+      const newClient = Keypair.generate();
+      const [clientIndexPda] = getClientIndexPda(agent1Id, newClient.publicKey);
+
+      try {
+        await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+        assert.fail("Should not exist");
+      } catch (err) {
+        // Account doesn't exist = lastIndex is implicitly 0
+        assert.ok(err.message.includes("Account does not exist"));
+      }
+    });
+
+    it("✅ getClients: List all clients who gave feedback", async () => {
+      const accounts = await reputationProgram.account.clientIndexAccount.all([
+        {
+          memcmp: {
+            offset: 8,
+            bytes: anchor.utils.bytes.bs58.encode(Buffer.from(new anchor.BN(agent1Id).toArray("le", 8))),
+          },
+        },
+      ]);
+
+      // Should have client1, client2, client3
+      assert.ok(accounts.length >= 3);
+
+      const clientAddresses = accounts.map(acc => acc.account.clientAddress.toBase58());
+      assert.ok(clientAddresses.includes(client1.publicKey.toBase58()));
+      assert.ok(clientAddresses.includes(client2.publicKey.toBase58()));
+      assert.ok(clientAddresses.includes(client3.publicKey.toBase58()));
+    });
+
+    it("✅ getResponseCount: Returns correct response count", async () => {
+      const [responseIndexPda] = getResponseIndexPda(agent1Id, client1.publicKey, 0);
+      const responseIndex = await reputationProgram.account.responseIndexAccount.fetch(responseIndexPda);
+
+      assert.equal(responseIndex.agentId.toNumber(), agent1Id);
+      assert.equal(responseIndex.clientAddress.toBase58(), client1.publicKey.toBase58());
+      assert.equal(responseIndex.feedbackIndex.toNumber(), 0);
+      assert.equal(responseIndex.nextIndex.toNumber(), 2); // 2 responses added
+    });
+
+    it("✅ getResponseCount: Returns 0 for feedback with no responses", async () => {
+      const [responseIndexPda] = getResponseIndexPda(agent1Id, client3.publicKey, 0);
+
+      try {
+        await reputationProgram.account.responseIndexAccount.fetch(responseIndexPda);
+        assert.fail("Should not exist (client3 has no responses)");
+      } catch (err) {
+        // Account doesn't exist = 0 responses
+        assert.ok(err.message.includes("Account does not exist"));
+      }
+    });
+
+    it("✅ getSummary: Aggregate stats without filters", async () => {
+      const [reputationPda] = getAgentReputationPda(agent1Id);
+      const metadata = await reputationProgram.account.agentReputationMetadata.fetch(reputationPda);
+
+      // Active feedbacks: client1 (85), client2 (90)
+      // client3 (60) is revoked
+      assert.equal(metadata.totalFeedbacks.toNumber(), 2);
+      assert.ok(metadata.averageScore > 0);
+      console.log(`      Agent #${agent1Id} summary: ${metadata.totalFeedbacks} feedbacks, avg ${metadata.averageScore}`);
+    });
+
+    it("✅ getSummary: Client-side filtering by minScore", async () => {
+      const allClients = [client1, client2, client3];
+      const minScore = 85;
+
+      let count = 0;
+      let totalScore = 0;
+
+      for (const client of allClients) {
+        try {
+          const [clientIndexPda] = getClientIndexPda(agent1Id, client.publicKey);
+          const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+          const lastIndex = clientIndex.lastIndex.toNumber();
+
+          for (let i = 0; i <= lastIndex; i++) {
+            const [feedbackPda] = getFeedbackPda(agent1Id, client.publicKey, i);
+            const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+
+            if (!feedback.isRevoked && feedback.score >= minScore) {
+              count++;
+              totalScore += feedback.score;
+            }
+          }
+        } catch (err) {
+          // Client has no feedbacks, skip
+        }
+      }
+
+      // client1: 85, client2: 90 (both >= 85)
+      assert.equal(count, 2);
+      assert.equal(totalScore, 175); // 85 + 90
+    });
+
+    it("✅ getSummary: Client-side filtering by clientAddresses", async () => {
+      const targetClients = [client1.publicKey];
+
+      let count = 0;
+      let totalScore = 0;
+
+      for (const clientAddress of targetClients) {
+        try {
+          const [clientIndexPda] = getClientIndexPda(agent1Id, clientAddress);
+          const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+          const lastIndex = clientIndex.lastIndex.toNumber();
+
+          for (let i = 0; i <= lastIndex; i++) {
+            const [feedbackPda] = getFeedbackPda(agent1Id, clientAddress, i);
+            const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+
+            if (!feedback.isRevoked) {
+              count++;
+              totalScore += feedback.score;
+            }
+          }
+        } catch (err) {
+          // Skip
+        }
+      }
+
+      assert.equal(count, 1); // client1 has 1 feedback
+      assert.equal(totalScore, 85);
+    });
   });
 });
