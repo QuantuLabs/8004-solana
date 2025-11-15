@@ -293,15 +293,15 @@ Comprehensive technical documentation is available in `/docs`:
 
 ## Storage & Costs
 
-### On-Chain Costs (Solana @ $160/SOL)
+### On-Chain Costs
 
-| Operation | Accounts | Rent (SOL) | USD Cost |
-|-----------|----------|-----------|----------|
-| Register Agent | 4 | 0.050 | $8.00 |
-| Give Feedback (1st) | 3 | 0.026 | $4.16 |
-| Give Feedback (next) | 1 | 0.024 | $3.84 |
-| Revoke Feedback | 0 | 0.000 | $0.000 |
-| Append Response | 1-2 | 0.023-0.025 | $3.68-$4.00 |
+| Operation | Accounts | Rent (SOL) |
+|-----------|----------|-----------|
+| Register Agent | 4 | 0.050 |
+| Give Feedback (1st) | 3 | 0.026 |
+| Give Feedback (next) | 1 | 0.024 |
+| Revoke Feedback | 0 | 0.000 |
+| Append Response | 1-2 | 0.023-0.025 |
 
 **Rent is recoverable** when accounts are closed.
 
