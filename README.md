@@ -307,9 +307,9 @@ Comprehensive technical documentation is available in `/docs`:
 
 ### Metadata Storage Options
 
-1. **On-chain (10 entries)**: Included in agent account (~$320)
+1. **On-chain (10 entries)**: Included in agent account rent
 2. **TokenURI JSON** (unlimited): IPFS/Arweave (~$0.01)
-3. **Extension PDAs** (>10 entries): ~$210/entry (recoverable)
+3. **Extension PDAs** (>10 entries): Additional account rent (recoverable)
 
 ## Contributing
 
