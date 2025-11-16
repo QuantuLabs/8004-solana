@@ -11,6 +11,8 @@ import {
   computeHash,
   requestValidation,
   respondToValidation,
+  initializeIdentityRegistry,
+  initializeValidationRegistry,
 } from "./validation-helpers";
 
 describe("Validation Registry - Respond to Validation", () => {
@@ -27,6 +29,12 @@ describe("Validation Registry - Respond to Validation", () => {
   const validator2 = Keypair.generate();
 
   before(async () => {
+    // Initialize Identity Registry first
+    await initializeIdentityRegistry(identityProgram, provider);
+
+    // Initialize Validation Registry
+    await initializeValidationRegistry(validationProgram, identityProgram, provider);
+
     // Airdrop to validators
     for (const validator of [validator1, validator2]) {
       const sig = await provider.connection.requestAirdrop(

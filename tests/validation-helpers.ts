@@ -70,6 +70,93 @@ export function computeHash(content: string): Buffer {
   return crypto.createHash("sha256").update(content).digest();
 }
 
+// Helper function: Initialize Validation Registry
+export async function initializeValidationRegistry(
+  validationProgram: Program<ValidationRegistry>,
+  identityProgram: Program<IdentityRegistry>,
+  provider: anchor.AnchorProvider
+): Promise<void> {
+  const [validationConfig] = getValidationConfigPda(validationProgram.programId);
+
+  // Check if already initialized
+  try {
+    await validationProgram.account.validationConfig.fetch(validationConfig);
+    return; // Already initialized, skip
+  } catch (err) {
+    // Not initialized, continue
+  }
+
+  await validationProgram.methods
+    .initialize(identityProgram.programId)
+    .accounts({
+      config: validationConfig,
+      authority: provider.wallet.publicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+}
+
+// Helper function: Initialize Identity Registry (needed for each test file)
+export async function initializeIdentityRegistry(
+  identityProgram: Program<IdentityRegistry>,
+  provider: anchor.AnchorProvider
+): Promise<void> {
+  const [configPda] = getIdentityConfigPda(identityProgram.programId);
+
+  // Check if already initialized
+  try {
+    await identityProgram.account.registryConfig.fetch(configPda);
+    // Already initialized, skip
+    return;
+  } catch (err) {
+    // Not initialized, continue
+  }
+
+  const collectionMint = Keypair.generate();
+  const [collectionMetadata] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("metadata"),
+      MPL_TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+      collectionMint.publicKey.toBuffer(),
+    ],
+    MPL_TOKEN_METADATA_PROGRAM_ID
+  );
+
+  const [collectionMasterEdition] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("metadata"),
+      MPL_TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+      collectionMint.publicKey.toBuffer(),
+      Buffer.from("edition"),
+    ],
+    MPL_TOKEN_METADATA_PROGRAM_ID
+  );
+
+  const collectionTokenAccount = await getAssociatedTokenAddress(
+    collectionMint.publicKey,
+    provider.wallet.publicKey
+  );
+
+  await identityProgram.methods
+    .initialize()
+    .accounts({
+      config: configPda,
+      collectionMint: collectionMint.publicKey,
+      collectionMetadata,
+      collectionMasterEdition,
+      collectionTokenAccount,
+      authority: provider.wallet.publicKey,
+      systemProgram: SystemProgram.programId,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+      sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+    })
+    .signers([collectionMint])
+    .rpc();
+}
+
 // Helper function: Register an agent in Identity Registry
 export async function registerAgent(
   identityProgram: Program<IdentityRegistry>,

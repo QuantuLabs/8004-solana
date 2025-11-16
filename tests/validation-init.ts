@@ -4,7 +4,7 @@ import { ValidationRegistry } from "../target/types/validation_registry";
 import { IdentityRegistry } from "../target/types/identity_registry";
 import { SystemProgram } from "@solana/web3.js";
 import { assert } from "chai";
-import { getValidationConfigPda } from "./validation-helpers";
+import { getValidationConfigPda, initializeIdentityRegistry } from "./validation-helpers";
 
 describe("Validation Registry - Initialization", () => {
   const provider = anchor.AnchorProvider.env();
@@ -15,6 +15,11 @@ describe("Validation Registry - Initialization", () => {
   const authority = provider.wallet as anchor.Wallet;
 
   const [validationConfig] = getValidationConfigPda(validationProgram.programId);
+
+  before(async () => {
+    // Initialize Identity Registry first
+    await initializeIdentityRegistry(identityProgram, provider);
+  });
 
   it("✅ Initialize Validation Registry with Identity Registry reference", async () => {
     await validationProgram.methods
