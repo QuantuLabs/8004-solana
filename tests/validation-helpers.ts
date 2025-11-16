@@ -73,20 +73,15 @@ export function computeHash(content: string): Buffer {
 // Helper function: Register an agent in Identity Registry
 export async function registerAgent(
   identityProgram: Program<IdentityRegistry>,
-  provider: anchor.AnchorProvider,
-  owner: Keypair
+  provider: anchor.AnchorProvider
 ): Promise<{
   id: number;
-  owner: Keypair;
+  owner: PublicKey;
   mint: Keypair;
   account: PublicKey;
 }> {
-  // Airdrop SOL to owner
-  const airdropSig = await provider.connection.requestAirdrop(
-    owner.publicKey,
-    2 * LAMPORTS_PER_SOL
-  );
-  await provider.connection.confirmTransaction(airdropSig);
+  // Use provider.wallet as owner (simpler - avoids Metaplex authority mismatch)
+  const owner = provider.wallet.publicKey;
 
   const agentMint = Keypair.generate();
   const [agentAccount] = getAgentAccountPda(identityProgram.programId, agentMint.publicKey);
@@ -118,7 +113,7 @@ export async function registerAgent(
 
   const tokenAccount = await getAssociatedTokenAddress(
     agentMint.publicKey,
-    owner.publicKey
+    owner
   );
 
   // Get collection metadata PDAs
@@ -141,11 +136,12 @@ export async function registerAgent(
     MPL_TOKEN_METADATA_PROGRAM_ID
   );
 
+  // Use provider.wallet as both authority and owner (avoids Metaplex authority mismatch)
   await identityProgram.methods
     .registerEmpty()
     .accounts({
       config: configPda,
-      authority: config.authority,
+      authority: owner,
       agentAccount,
       agentMint: agentMint.publicKey,
       agentMetadata: metadata,
@@ -154,7 +150,7 @@ export async function registerAgent(
       collectionMint: config.collectionMint,
       collectionMetadata,
       collectionMasterEdition,
-      owner: owner.publicKey,
+      owner: owner,
       systemProgram: SystemProgram.programId,
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -162,7 +158,7 @@ export async function registerAgent(
       tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
       sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
     })
-    .signers([owner, agentMint])
+    .signers([agentMint])
     .rpc();
 
   return {
@@ -181,7 +177,7 @@ export async function requestValidation(
     validationConfig: PublicKey;
     agentId: number;
     agentAccount: PublicKey;
-    agentOwner: Keypair;
+    agentOwner: PublicKey;
     validatorAddress: PublicKey;
     nonce: number;
     requestUri: string;
@@ -205,14 +201,13 @@ export async function requestValidation(
     )
     .accounts({
       config: config.validationConfig,
-      requester: config.agentOwner.publicKey,
-      payer: config.agentOwner.publicKey,
+      requester: config.agentOwner,
+      payer: config.agentOwner,
       agentAccount: config.agentAccount,
       validationRequest,
       identityRegistryProgram: identityProgram.programId,
       systemProgram: SystemProgram.programId,
     })
-    .signers([config.agentOwner])
     .rpc();
 
   return validationRequest;

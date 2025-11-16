@@ -22,7 +22,7 @@ describe("Validation Registry - Respond to Validation", () => {
 
   const [validationConfig] = getValidationConfigPda(validationProgram.programId);
 
-  let agent1: { id: number; owner: Keypair; mint: Keypair; account: PublicKey };
+  let agent1: { id: number; owner: PublicKey; mint: Keypair; account: PublicKey };
   const validator1 = Keypair.generate();
   const validator2 = Keypair.generate();
 
@@ -36,8 +36,8 @@ describe("Validation Registry - Respond to Validation", () => {
       await provider.connection.confirmTransaction(sig);
     }
 
-    // Register test agent
-    agent1 = await registerAgent(identityProgram, provider, Keypair.generate());
+    // Register test agent (using provider.wallet as owner)
+    agent1 = await registerAgent(identityProgram, provider);
 
     console.log(`Registered agent #${agent1.id} for response testing`);
   });

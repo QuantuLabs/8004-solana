@@ -23,8 +23,8 @@ describe("Validation Registry - E2E Lifecycle", () => {
 
   const [validationConfig] = getValidationConfigPda(validationProgram.programId);
 
-  let agent1: { id: number; owner: Keypair; mint: Keypair; account: PublicKey };
-  let agent2: { id: number; owner: Keypair; mint: Keypair; account: PublicKey };
+  let agent1: { id: number; owner: PublicKey; mint: Keypair; account: PublicKey };
+  let agent2: { id: number; owner: PublicKey; mint: Keypair; account: PublicKey };
   const validator1 = Keypair.generate();
   const validator2 = Keypair.generate();
   const validator3 = Keypair.generate();
@@ -39,9 +39,9 @@ describe("Validation Registry - E2E Lifecycle", () => {
       await provider.connection.confirmTransaction(sig);
     }
 
-    // Register test agents
-    agent1 = await registerAgent(identityProgram, provider, Keypair.generate());
-    agent2 = await registerAgent(identityProgram, provider, Keypair.generate());
+    // Register test agents (using provider.wallet as owner)
+    agent1 = await registerAgent(identityProgram, provider);
+    agent2 = await registerAgent(identityProgram, provider);
 
     console.log(`Registered agent #${agent1.id} and #${agent2.id} for E2E testing`);
   });
@@ -277,22 +277,21 @@ describe("Validation Registry - E2E Lifecycle", () => {
     });
 
     // Get balance before closing
-    const balanceBefore = await provider.connection.getBalance(agent1.owner.publicKey);
+    const balanceBefore = await provider.connection.getBalance(agent1.owner);
 
     // Close validation account
     await validationProgram.methods
       .closeValidation()
       .accounts({
-        authority: agent1.owner.publicKey,
+        authority: agent1.owner,
         validationRequest,
-        rentReceiver: agent1.owner.publicKey,
+        rentReceiver: agent1.owner,
         identityRegistryProgram: null,
       })
-      .signers([agent1.owner])
       .rpc();
 
     // Verify rent was recovered
-    const balanceAfter = await provider.connection.getBalance(agent1.owner.publicKey);
+    const balanceAfter = await provider.connection.getBalance(agent1.owner);
     assert.isAbove(balanceAfter, balanceBefore);
 
     // Verify account is closed
