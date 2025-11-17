@@ -64,13 +64,22 @@ pub mod reputation_registry {
             ReputationError::UriTooLong
         );
 
-        // Validate agent exists in Identity Registry
-        // AgentAccount PDA must exist and match the agent_id
-        let agent_account = &ctx.accounts.agent_account;
-        require!(
-            agent_account.agent_id == agent_id,
-            ReputationError::AgentNotFound
+        // Validate agent exists in Identity Registry via manual deserialization
+        // Required because agent_account discriminator differs across programs
+        let agent_data = ctx.accounts.agent_account.try_borrow_data()?;
+
+        // Verify minimum size (discriminator + agent_id)
+        require!(agent_data.len() >= 8 + 8, ReputationError::AgentNotFound);
+
+        // Skip 8-byte discriminator, read agent_id (next 8 bytes)
+        let stored_agent_id = u64::from_le_bytes(
+            agent_data[8..16]
+                .try_into()
+                .map_err(|_| ReputationError::AgentNotFound)?
         );
+
+        // Verify agent_id matches
+        require!(stored_agent_id == agent_id, ReputationError::AgentNotFound);
 
         // Get or initialize client index account
         let client_index = &mut ctx.accounts.client_index;
@@ -346,13 +355,13 @@ pub struct GiveFeedback<'info> {
 
     /// Agent account from Identity Registry (validation)
     /// PDA derivation uses agent_mint to match Identity Registry's scheme
-    /// CHECK: Validated via PDA seeds and agent_id match in instruction logic
+    /// CHECK: Validated via PDA seeds, program ownership, and manual deserialization
     #[account(
         seeds = [b"agent", agent_mint.key().as_ref()],
         bump,
         seeds::program = identity_registry_program.key()
     )]
-    pub agent_account: Account<'info, AgentAccountStub>,
+    pub agent_account: UncheckedAccount<'info>,
 
     /// Client index account (tracks next feedback index for this client-agent pair)
     #[account(
@@ -483,10 +492,3 @@ pub struct AppendResponse<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Stub for AgentAccount from Identity Registry (for CPI validation)
-/// We only need agent_id field for validation
-#[account]
-pub struct AgentAccountStub {
-    pub agent_id: u64,
-    // Other fields omitted (not needed for validation)
-}
