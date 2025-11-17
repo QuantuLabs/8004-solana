@@ -339,10 +339,16 @@ pub struct GiveFeedback<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
+    /// Agent NFT mint (required to derive agent PDA correctly)
+    /// This must be passed by the client who knows the agent's mint address
+    /// CHECK: Will be validated via agent_account PDA derivation
+    pub agent_mint: UncheckedAccount<'info>,
+
     /// Agent account from Identity Registry (validation)
-    /// CHECK: Validated via agent_id match in instruction logic
+    /// PDA derivation uses agent_mint to match Identity Registry's scheme
+    /// CHECK: Validated via PDA seeds and agent_id match in instruction logic
     #[account(
-        seeds = [b"agent", agent_id.to_le_bytes().as_ref()],
+        seeds = [b"agent", agent_mint.key().as_ref()],
         bump,
         seeds::program = identity_registry_program.key()
     )]
