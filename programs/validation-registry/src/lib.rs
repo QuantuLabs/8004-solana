@@ -65,7 +65,9 @@ pub mod validation_registry {
         require!(agent_data.len() >= 8 + 8 + 32, ValidationError::AgentNotFound);
 
         let stored_agent_id = u64::from_le_bytes(
-            agent_data[8..16].try_into().unwrap()
+            agent_data[8..16]
+                .try_into()
+                .map_err(|_| ValidationError::AgentNotFound)?
         );
         let stored_owner = Pubkey::try_from(&agent_data[16..48])
             .map_err(|_| ValidationError::AgentNotFound)?;
