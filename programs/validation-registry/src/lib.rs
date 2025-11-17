@@ -57,8 +57,27 @@ pub mod validation_registry {
             ValidationError::RequestUriTooLong
         );
 
-        // Verify requester owns the agent (via Identity Registry CPI check)
-        // This is handled by the constraint in RequestValidation context
+        // Manually deserialize and verify agent account
+        let agent_data = ctx.accounts.agent_account.try_borrow_data()?;
+
+        // Skip 8-byte discriminator, then read fields:
+        // agent_id (8 bytes), owner (32 bytes), agent_mint (32 bytes)
+        require!(agent_data.len() >= 8 + 8 + 32, ValidationError::AgentNotFound);
+
+        let stored_agent_id = u64::from_le_bytes(
+            agent_data[8..16].try_into().unwrap()
+        );
+        let stored_owner = Pubkey::try_from(&agent_data[16..48])
+            .map_err(|_| ValidationError::AgentNotFound)?;
+
+        // Verify agent_id matches
+        require!(stored_agent_id == agent_id, ValidationError::AgentNotFound);
+
+        // Verify requester is the owner
+        require!(
+            stored_owner == ctx.accounts.requester.key(),
+            ValidationError::UnauthorizedRequester
+        );
 
         let config = &mut ctx.accounts.config;
         let validation_request = &mut ctx.accounts.validation_request;
@@ -227,15 +246,11 @@ pub struct RequestValidation<'info> {
     pub payer: Signer<'info>,
 
     /// Agent account from Identity Registry (for ownership verification)
-    /// We only need to verify it exists and requester owns it
+    /// CHECK: Verified via program ownership and manual deserialization
     #[account(
-        seeds = [b"agent", agent_account.agent_mint.as_ref()],
-        bump,
-        seeds::program = config.identity_registry,
-        constraint = agent_account.owner == requester.key() @ ValidationError::UnauthorizedRequester,
-        constraint = agent_account.agent_id == agent_id @ ValidationError::AgentNotFound
+        constraint = agent_account.owner == &config.identity_registry @ ValidationError::AgentNotFound
     )]
-    pub agent_account: Account<'info, AgentAccountStub>,
+    pub agent_account: UncheckedAccount<'info>,
 
     /// Validation request PDA
     #[account(
@@ -310,16 +325,3 @@ pub struct CloseValidation<'info> {
     pub identity_registry_program: Option<UncheckedAccount<'info>>,
 }
 
-// ============================================================================
-// Stub Account for CPI (Identity Registry)
-// ============================================================================
-
-/// Minimal stub of AgentAccount from Identity Registry
-/// We only need the fields required for validation
-#[account]
-pub struct AgentAccountStub {
-    pub agent_id: u64,
-    pub owner: Pubkey,
-    pub agent_mint: Pubkey,
-    // Other fields omitted
-}
