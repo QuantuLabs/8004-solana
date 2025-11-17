@@ -656,10 +656,22 @@ pub mod identity_registry {
             1, // NFT amount
         )?;
 
-        // Step 2: Automatic sync_owner
+        // Step 2: Transfer Metaplex update_authority to new owner (ERC-8004 compliance)
+        // This allows the new owner to modify tokenURI via set_agent_uri()
+        let new_owner = ctx.accounts.to_token_account.owner;
+        UpdateV1CpiBuilder::new(&ctx.accounts.token_metadata_program.to_account_info())
+            .authority(&ctx.accounts.owner.to_account_info())
+            .mint(&ctx.accounts.agent_mint.to_account_info())
+            .metadata(&ctx.accounts.agent_metadata.to_account_info())
+            .payer(&ctx.accounts.owner.to_account_info())
+            .system_program(&ctx.accounts.system_program.to_account_info())
+            .sysvar_instructions(&ctx.accounts.sysvar_instructions.to_account_info())
+            .new_update_authority(new_owner)
+            .invoke()?;
+
+        // Step 3: Automatic sync_owner
         let agent = &mut ctx.accounts.agent_account;
         let old_owner = agent.owner;
-        let new_owner = ctx.accounts.to_token_account.owner;
         agent.owner = new_owner;
 
         emit!(AgentOwnerSynced {
@@ -1024,8 +1036,30 @@ pub struct TransferAgent<'info> {
     )]
     pub to_token_account: Account<'info, TokenAccount>,
 
+    /// Agent NFT mint (for Metaplex authority transfer)
+    pub agent_mint: Account<'info, Mint>,
+
+    /// CHECK: Metaplex metadata PDA verified via seeds constraint
+    #[account(
+        mut,
+        seeds = [
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            agent_mint.key().as_ref(),
+        ],
+        bump,
+        seeds::program = TOKEN_METADATA_PROGRAM_ID
+    )]
+    pub agent_metadata: UncheckedAccount<'info>,
+
     pub owner: Signer<'info>,
     pub token_program: Program<'info, Token>,
+    pub token_metadata_program: Program<'info, Metadata>,
+    pub system_program: Program<'info, System>,
+
+    /// CHECK: Metaplex requires this for authorization
+    #[account(address = anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub sysvar_instructions: UncheckedAccount<'info>,
 }
 
 // ============================================================================
