@@ -23,7 +23,7 @@
 - ✅ Update authority transfer (new owners can modify)
 - ✅ Full ERC-8004 spec compliance
 - ✅ **43/43 tests passing**
-- ✅ **Devnet deployed**: `AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR`
+- ✅ **Devnet deployed**
 
 ### ✅ Phase 2: Reputation Registry - COMPLETE (100%)
 
@@ -35,14 +35,9 @@
 - ✅ **Full ERC-8004 spec compliance** (write + read)
 - ✅ **89 tests total** (43 identity + 25 E2E + 20 reputation unit + 1 stub)
 - ✅ **Comprehensive audits** (3 audit documents)
-- ✅ **Devnet deployed**: `9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa`
+- ✅ **Devnet deployed**
 
 ### ⏳ Phase 3: Validation Registry - NOT STARTED
-
-**Devnet Program IDs:**
-- Identity Registry: `AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR`
-- Reputation Registry: `9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa`
-- Validation Registry: `2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x`
 
 ## What is ERC-8004?
 
@@ -53,7 +48,7 @@
 - **Validation Registry**: Third-party verification and attestation
 
 This Solana implementation leverages the platform's unique architecture:
-- **Low-cost operations** (~$0.007 per feedback on Solana)
+- **Low-cost operations** (~$0.31-$0.55 per operation)
 - **O(1) queries** via cached aggregates
 - **Unlimited responses** using PDA architecture
 - **Native sponsorship** through multi-signer support
@@ -106,10 +101,11 @@ This implementation takes advantage of Solana's architecture:
 
 | Feature | Implementation | Benefits |
 |---------|----------------|----------|
-| **Transaction Costs** | ~$0.007 per feedback | Enables high-frequency usage |
+| **Transaction Costs** | $0.31-$0.55 per operation | Enables high-frequency usage |
 | **Reputation Queries** | Cached aggregates (O(1)) | Instant reputation lookups |
 | **Response Storage** | Unlimited PDAs | No storage constraints |
 | **Transaction Sponsorship** | Multi-signer support | Gasless UX for end users |
+| **Rent Recovery** | Close accounts to recover | Effectively "free" storage |
 
 ### Reputation Registry Features
 
@@ -293,23 +289,20 @@ Comprehensive technical documentation is available in `/docs`:
 
 ## Storage & Costs
 
-### On-Chain Costs
+### Operation Costs (Measured on Devnet)
 
-| Operation | Accounts | Rent (SOL) |
-|-----------|----------|-----------|
-| Register Agent | 4 | 0.050 |
-| Give Feedback (1st) | 3 | 0.026 |
-| Give Feedback (next) | 1 | 0.024 |
-| Revoke Feedback | 0 | 0.000 |
-| Append Response | 1-2 | 0.023-0.025 |
+| Operation | Cost (SOL) | Cost (USD @ $150) |
+|-----------|------------|-------------------|
+| Register Agent | 0.002 | $0.31 |
+| Give Feedback | 0.004 | $0.55 |
+| Set Metadata | 0.002 | $0.32 |
+| Append Response | 0.002 | $0.34 |
+| Request Validation | 0.001 | $0.15 |
+| Updates (URI, revoke, etc.) | 0.000005 | $0.0008 |
 
-**Rent is recoverable** when accounts are closed.
+**Deployment**: 4.576 SOL (~$686 USD) - one-time cost
 
-### Metadata Storage Options
-
-1. **On-chain (10 entries)**: Included in agent account rent
-2. **TokenURI JSON** (unlimited): IPFS/Arweave (~$0.01)
-3. **Extension PDAs** (>10 entries): Additional account rent (recoverable)
+**Note**: Rent is recoverable when closing accounts
 
 ## Contributing
 

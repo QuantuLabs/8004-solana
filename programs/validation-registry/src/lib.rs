@@ -8,7 +8,7 @@ use error::ValidationError;
 use events::{ValidationRequested, ValidationResponded};
 use state::{ValidationConfig, ValidationRequest};
 
-declare_id!("2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x");
+declare_id!("CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW");
 
 #[program]
 pub mod validation_registry {
