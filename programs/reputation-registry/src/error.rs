@@ -31,4 +31,20 @@ pub enum ReputationError {
 
     #[msg("Response not found")]
     ResponseNotFound,
+
+    // FeedbackAuth errors
+    #[msg("FeedbackAuth client_address does not match signer")]
+    FeedbackAuthClientMismatch,
+
+    #[msg("FeedbackAuth expired")]
+    FeedbackAuthExpired,
+
+    #[msg("FeedbackAuth index_limit exceeded")]
+    FeedbackAuthIndexLimitExceeded,
+
+    #[msg("FeedbackAuth signature invalid")]
+    InvalidFeedbackAuthSignature,
+
+    #[msg("FeedbackAuth signer is not agent owner")]
+    UnauthorizedSigner,
 }

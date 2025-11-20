@@ -35,6 +35,7 @@ pub mod reputation_registry {
     /// * `file_uri` - IPFS/Arweave link (max 200 bytes)
     /// * `file_hash` - SHA-256 hash of feedback file
     /// * `feedback_index` - Expected index (must match client_index.last_index)
+    /// * `feedback_auth` - Signature-based authorization from agent owner (ERC-8004 spam prevention)
     ///
     /// # Events
     /// * `NewFeedback` - Emitted when feedback is successfully created
@@ -45,6 +46,10 @@ pub mod reputation_registry {
     /// * `AgentNotFound` - Agent doesn't exist in Identity Registry
     /// * `InvalidFeedbackIndex` - Provided index doesn't match expected
     /// * `Overflow` - Arithmetic overflow in index or stats
+    /// * `FeedbackAuthClientMismatch` - feedbackAuth.client_address doesn't match signer
+    /// * `FeedbackAuthExpired` - feedbackAuth expired
+    /// * `FeedbackAuthIndexLimitExceeded` - Client exceeded authorized feedback limit
+    /// * `UnauthorizedSigner` - feedbackAuth signer is not agent owner
     pub fn give_feedback(
         ctx: Context<GiveFeedback>,
         agent_id: u64,
@@ -54,6 +59,7 @@ pub mod reputation_registry {
         file_uri: String,
         file_hash: [u8; 32],
         feedback_index: u64,
+        feedback_auth: FeedbackAuth,
     ) -> Result<()> {
         // Validate score (0-100)
         require!(score <= 100, ReputationError::InvalidScore);
@@ -68,8 +74,8 @@ pub mod reputation_registry {
         // Required because agent_account discriminator differs across programs
         let agent_data = ctx.accounts.agent_account.try_borrow_data()?;
 
-        // Verify minimum size (discriminator + agent_id)
-        require!(agent_data.len() >= 8 + 8, ReputationError::AgentNotFound);
+        // Verify minimum size (discriminator + agent_id + owner)
+        require!(agent_data.len() >= 8 + 8 + 32, ReputationError::AgentNotFound);
 
         // Skip 8-byte discriminator, read agent_id (next 8 bytes)
         let stored_agent_id = u64::from_le_bytes(
@@ -81,8 +87,31 @@ pub mod reputation_registry {
         // Verify agent_id matches
         require!(stored_agent_id == agent_id, ReputationError::AgentNotFound);
 
+        // Read agent owner (bytes 16-48) for feedbackAuth verification
+        let agent_owner_bytes: [u8; 32] = agent_data[16..48]
+            .try_into()
+            .map_err(|_| ReputationError::AgentNotFound)?;
+        let agent_owner = Pubkey::new_from_array(agent_owner_bytes);
+
+        // Verify feedbackAuth signer is agent owner (ERC-8004 requirement)
+        require!(
+            feedback_auth.signer_address == agent_owner,
+            ReputationError::UnauthorizedSigner
+        );
+
         // Get or initialize client index account
         let client_index = &mut ctx.accounts.client_index;
+
+        // Determine current index for feedbackAuth verification
+        let current_index = if client_index.last_index == 0 && client_index.agent_id == 0 {
+            0u64 // First feedback from this client to this agent
+        } else {
+            client_index.last_index // Next feedback index
+        };
+
+        // Verify feedbackAuth (checks client, expiry, index_limit, signature)
+        let current_time = Clock::get()?.unix_timestamp;
+        feedback_auth.verify(&ctx.accounts.client.key(), current_index, current_time)?;
 
         // Validate feedback_index matches expected
         if client_index.last_index == 0 && client_index.agent_id == 0 {
@@ -337,7 +366,7 @@ pub struct Initialize {}
 
 /// Accounts for give_feedback instruction
 #[derive(Accounts)]
-#[instruction(agent_id: u64, _score: u8, _tag1: [u8; 32], _tag2: [u8; 32], _file_uri: String, _file_hash: [u8; 32], feedback_index: u64)]
+#[instruction(agent_id: u64, _score: u8, _tag1: [u8; 32], _tag2: [u8; 32], _file_uri: String, _file_hash: [u8; 32], feedback_index: u64, _feedback_auth: FeedbackAuth)]
 pub struct GiveFeedback<'info> {
     /// Client giving the feedback (signer & author)
     #[account(mut)]
