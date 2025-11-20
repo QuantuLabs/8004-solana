@@ -22,6 +22,9 @@ dist/
 test-ledger/
 .test-keypairs/
 
+# SDK tests (local development only)
+tests/sdk/
+
 # Documentation (implementation notes - not for public repo)
 docs/
 
