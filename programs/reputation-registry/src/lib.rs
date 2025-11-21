@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::sysvar::instructions;
 
 declare_id!("9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa");
 
@@ -109,9 +110,14 @@ pub mod reputation_registry {
             client_index.last_index // Next feedback index
         };
 
-        // Verify feedbackAuth (checks client, expiry, index_limit, signature)
+        // Verify feedbackAuth (checks client, expiry, index_limit, Ed25519 signature)
         let current_time = Clock::get()?.unix_timestamp;
-        feedback_auth.verify(&ctx.accounts.client.key(), current_index, current_time)?;
+        feedback_auth.verify(
+            &ctx.accounts.client.key(),
+            current_index,
+            current_time,
+            &ctx.accounts.instruction_sysvar.to_account_info(),
+        )?;
 
         // Validate feedback_index matches expected
         if client_index.last_index == 0 && client_index.agent_id == 0 {
@@ -430,6 +436,11 @@ pub struct GiveFeedback<'info> {
     /// Identity Registry program (for CPI validation)
     /// CHECK: Program ID verified via seeds::program constraint
     pub identity_registry_program: UncheckedAccount<'info>,
+
+    /// Instructions Sysvar for Ed25519 signature verification
+    /// CHECK: This is the Solana Instructions sysvar account
+    #[account(address = instructions::ID)]
+    pub instruction_sysvar: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
 }

@@ -1,4 +1,8 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::{
+    sysvar::instructions::{load_instruction_at_checked, load_current_index_checked},
+    ed25519_program,
+};
 
 /// Feedback account - One per feedback (per client-agent pair)
 /// Seeds: [b"feedback", agent_id, client_address, feedback_index]
@@ -210,6 +214,7 @@ impl FeedbackAuth {
     /// * `client` - The client public key attempting to give feedback
     /// * `current_index` - The current feedback index for this client
     /// * `current_time` - Current Unix timestamp
+    /// * `instruction_sysvar` - Instructions sysvar for Ed25519 verification
     ///
     /// # Returns
     /// * `Ok(())` if signature is valid
@@ -219,6 +224,7 @@ impl FeedbackAuth {
         client: &Pubkey,
         current_index: u64,
         current_time: i64,
+        instruction_sysvar: &AccountInfo,
     ) -> Result<()> {
         use crate::error::ReputationError;
 
@@ -241,18 +247,131 @@ impl FeedbackAuth {
         );
 
         // 4. Construct message to verify signature
-        let _message = self.construct_message();
+        let message = self.construct_message();
 
-        // 5. Verify Ed25519 signature
-        // Note: For production, use ed25519-dalek crate or solana_program::ed25519_program
-        // For now, we'll add a TODO and implement in next iteration
-        // TODO: Implement Ed25519 signature verification
-        // let signature = ed25519_dalek::Signature::from_bytes(&self.signature)?;
-        // let public_key = ed25519_dalek::PublicKey::from_bytes(self.signer_address.as_ref())?;
-        // public_key.verify(&_message, &signature)
-        //     .map_err(|_| ReputationError::InvalidFeedbackAuthSignature)?;
+        // 5. Verify Ed25519 signature via instruction introspection
+        // This verifies that an Ed25519Program.verify() instruction was executed
+        // immediately before the current instruction with matching parameters
 
-        msg!("FeedbackAuth verified for client: {}", client);
+        // Load current instruction index
+        let current_ix_index = load_current_index_checked(instruction_sysvar)
+            .map_err(|_| ReputationError::InvalidFeedbackAuthSignature)?;
+
+        // Verify there is a preceding instruction
+        require!(
+            current_ix_index > 0,
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+
+        // Load preceding instruction (should be Ed25519Program)
+        let ed25519_ix_index = current_ix_index.saturating_sub(1) as usize;
+        let ed25519_ix = load_instruction_at_checked(ed25519_ix_index, instruction_sysvar)
+            .map_err(|_| ReputationError::InvalidFeedbackAuthSignature)?;
+
+        // Verify instruction is from Ed25519Program
+        require!(
+            ed25519_ix.program_id == ed25519_program::ID,
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+
+        // Verify instruction has no accounts (stateless requirement)
+        require!(
+            ed25519_ix.accounts.is_empty(),
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+
+        // Parse Ed25519 instruction data
+        // Data layout (as per Solana Ed25519Program spec):
+        // [0]: num_signatures (u8) - should be 1
+        // [1]: padding (u8)
+        // [2-3]: signature_offset (u16 LE)
+        // [4-5]: signature_instruction_index (u16 LE) - should be 0xFFFF (current ix)
+        // [6-7]: public_key_offset (u16 LE)
+        // [8-9]: public_key_instruction_index (u16 LE) - should be 0xFFFF
+        // [10-11]: message_data_offset (u16 LE)
+        // [12-13]: message_data_size (u16 LE)
+        // [14-15]: message_instruction_index (u16 LE) - should be 0xFFFF
+        // [16+]: actual data (public_key, signature, message)
+        let ix_data = &ed25519_ix.data;
+        require!(
+            ix_data.len() >= 16,
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+
+        let num_signatures = ix_data[0];
+        require!(
+            num_signatures == 1,
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+
+        // Parse offsets (little-endian)
+        let sig_offset = u16::from_le_bytes([ix_data[2], ix_data[3]]) as usize;
+        let sig_ix_index = u16::from_le_bytes([ix_data[4], ix_data[5]]);
+        let pubkey_offset = u16::from_le_bytes([ix_data[6], ix_data[7]]) as usize;
+        let pubkey_ix_index = u16::from_le_bytes([ix_data[8], ix_data[9]]);
+        let message_offset = u16::from_le_bytes([ix_data[10], ix_data[11]]) as usize;
+        let message_size = u16::from_le_bytes([ix_data[12], ix_data[13]]) as usize;
+        let message_ix_index = u16::from_le_bytes([ix_data[14], ix_data[15]]);
+
+        // Verify all data is in current instruction (0xFFFF sentinel)
+        require!(
+            sig_ix_index == u16::MAX
+                && pubkey_ix_index == u16::MAX
+                && message_ix_index == u16::MAX,
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+
+        // Extract and verify public key (32 bytes)
+        require!(
+            pubkey_offset + 32 <= ix_data.len(),
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+        let pubkey_bytes = &ix_data[pubkey_offset..pubkey_offset + 32];
+        let verified_pubkey = Pubkey::new_from_array(
+            pubkey_bytes
+                .try_into()
+                .map_err(|_| ReputationError::InvalidFeedbackAuthSignature)?,
+        );
+
+        // Verify public key matches signer_address
+        require!(
+            verified_pubkey == self.signer_address,
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+
+        // Extract and verify signature (64 bytes)
+        require!(
+            sig_offset + 64 <= ix_data.len(),
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+        let sig_bytes = &ix_data[sig_offset..sig_offset + 64];
+        let verified_signature: [u8; 64] = sig_bytes
+            .try_into()
+            .map_err(|_| ReputationError::InvalidFeedbackAuthSignature)?;
+
+        // Verify signature matches feedbackAuth.signature
+        require!(
+            verified_signature == self.signature,
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+
+        // Extract and verify message
+        require!(
+            message_offset + message_size <= ix_data.len(),
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+        let verified_message = &ix_data[message_offset..message_offset + message_size];
+
+        // Verify message matches constructed message
+        require!(
+            verified_message == message.as_slice(),
+            ReputationError::InvalidFeedbackAuthSignature
+        );
+
+        msg!(
+            "FeedbackAuth signature verified via Ed25519Program introspection for client: {}",
+            client
+        );
         Ok(())
     }
 
