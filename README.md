@@ -1,11 +1,11 @@
 # ERC-8004 on Solana
 
-> Solana implementation of ERC-8004 (Trustless Agents Registry) with comprehensive test coverage and production-ready architecture
+> Solana implementation of ERC-8004 (Trustless Agents Registry) with comprehensive test coverage and devnet-ready architecture
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Anchor Version](https://img.shields.io/badge/Anchor-0.32.1-blue)](https://github.com/coral-xyz/anchor)
 [![Solana](https://img.shields.io/badge/Solana-Compatible-green)](https://solana.com)
-[![Status](https://img.shields.io/badge/Status-Production%20Ready-success)]()
+[![Status](https://img.shields.io/badge/Status-Devnet%20Ready-success)]()
 [![Progress](https://img.shields.io/badge/Progress-95%25%20Complete-brightgreen)]()
 [![Tests](https://img.shields.io/badge/Tests-80%2B%20Passing-brightgreen)]()
 [![Spec Conformity](https://img.shields.io/badge/ERC--8004-95%25%20Conformity-success)]()
@@ -90,7 +90,7 @@ This Solana implementation leverages the platform's unique architecture:
 
 ### 95% ERC-8004 Spec Conformity
 
-All three registries achieve **production-ready compliance** with the ERC-8004 specification:
+All three registries achieve **devnet-ready compliance** with the ERC-8004 specification:
 
 | Registry | Write Functions | Read Functions | Events | Storage | Status |
 |----------|----------------|----------------|---------|---------|--------|
@@ -244,7 +244,7 @@ anchor test --skip-build tests/e2e-integration.ts
 - [ ] Gather feedback and iterate
 - [ ] Create version tags (v1.0.0)
 
-### 🔜 Phase 5: Production Readiness
+### 🔜 Phase 5: Mainnet Readiness
 
 - [ ] Implement full Ed25519 signature verification (5% remaining)
 - [ ] Mainnet deployment preparation
@@ -309,7 +309,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status**: ✅ **Production Ready** - All 3 registries complete | 95% ERC-8004 conformity | 80+ tests passing
+**Status**: ✅ **Devnet Ready** - All 3 registries complete | 95% ERC-8004 conformity | 80+ tests passing
 
 **Last Updated**: 2025-01-21
 
