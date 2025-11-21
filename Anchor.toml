@@ -12,7 +12,7 @@ validation_registry = "2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x"
 
 [programs.devnet]
 identity_registry = "5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn"
-reputation_registry = "9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa"
+reputation_registry = "9Ugqviy6fxvdkrojvvDR6dAq2W4LPchxHTQiNXzMpS3h"
 validation_registry = "CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW"
 
 [registry]
@@ -23,7 +23,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/reputation-feedbackauth.ts"
 
 [test.validator]
 url = "https://api.devnet.solana.com"

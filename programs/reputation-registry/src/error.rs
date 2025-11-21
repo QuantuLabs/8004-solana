@@ -47,4 +47,7 @@ pub enum ReputationError {
 
     #[msg("FeedbackAuth signer is not agent owner")]
     UnauthorizedSigner,
+
+    #[msg("FeedbackAuth chain_id does not match expected chain")]
+    InvalidChainId,
 }

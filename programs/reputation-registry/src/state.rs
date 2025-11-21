@@ -4,6 +4,17 @@ use anchor_lang::solana_program::{
     ed25519_program,
 };
 
+/// Expected chain_id for feedbackAuth validation
+/// This prevents replay attacks when using same program keypairs across chains
+#[cfg(feature = "mainnet")]
+pub const EXPECTED_CHAIN_ID: &str = "solana-mainnet";
+
+#[cfg(feature = "devnet")]
+pub const EXPECTED_CHAIN_ID: &str = "solana-devnet";
+
+#[cfg(all(not(feature = "mainnet"), not(feature = "devnet")))]
+pub const EXPECTED_CHAIN_ID: &str = "solana-localnet";
+
 /// Feedback account - One per feedback (per client-agent pair)
 /// Seeds: [b"feedback", agent_id, client_address, feedback_index]
 #[account]
@@ -246,10 +257,17 @@ impl FeedbackAuth {
             ReputationError::FeedbackAuthIndexLimitExceeded
         );
 
-        // 4. Construct message to verify signature
+        // 4. Verify chain_id matches expected chain
+        // Prevents replay attacks when using same program keypairs across chains
+        require!(
+            self.chain_id == EXPECTED_CHAIN_ID,
+            ReputationError::InvalidChainId
+        );
+
+        // 5. Construct message to verify signature
         let message = self.construct_message();
 
-        // 5. Verify Ed25519 signature via instruction introspection
+        // 6. Verify Ed25519 signature via instruction introspection
         // This verifies that an Ed25519Program.verify() instruction was executed
         // immediately before the current instruction with matching parameters
 

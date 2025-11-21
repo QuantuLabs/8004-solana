@@ -10,6 +10,8 @@ name = "reputation_registry"
 
 [features]
 default = []
+devnet = []
+mainnet = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []

@@ -1,6 +1,13 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
+import {
+  PublicKey,
+  Keypair,
+  SystemProgram,
+  Ed25519Program,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
+  Transaction,
+} from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -12,6 +19,7 @@ import { assert } from "chai";
 import { ReputationRegistry } from "../target/types/reputation_registry";
 import { IdentityRegistry } from "../target/types/identity_registry";
 import { Metaplex, keypairIdentity } from "@metaplex-foundation/js";
+import * as nacl from "tweetnacl";
 
 /**
  * LOT 1: FeedbackAuth Tests
@@ -58,25 +66,45 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
     await provider.connection.confirmTransaction(sig);
   }
 
-  // Helper: Create FeedbackAuth object
+  // Helper: Create FeedbackAuth object with Ed25519 signature
   function createFeedbackAuth(
     agentId: number,
     clientAddress: PublicKey,
     indexLimit: number,
     expiryOffset: number, // seconds from now
-    signerAddress: PublicKey
+    signerKeypair: Keypair // Changed to Keypair to sign
   ): any {
     const now = Math.floor(Date.now() / 1000);
+    const expiry = now + expiryOffset;
+
+    // Construct message to sign (matches Rust implementation)
+    const message = `feedback_auth:${agentId}:${clientAddress.toBase58()}:${indexLimit}:${expiry}:solana-localnet:${identityProgram.programId.toBase58()}`;
+    const messageBytes = Buffer.from(message, 'utf8');
+
+    // Sign with Ed25519 using nacl
+    const signature = nacl.sign.detached(messageBytes, signerKeypair.secretKey);
+
     return {
       agentId: new anchor.BN(agentId),
       clientAddress: clientAddress,
       indexLimit: new anchor.BN(indexLimit),
-      expiry: new anchor.BN(now + expiryOffset),
+      expiry: new anchor.BN(expiry),
       chainId: "solana-localnet",
       identityRegistry: identityProgram.programId,
-      signerAddress: signerAddress,
-      signature: Buffer.alloc(64), // Mock signature (Ed25519 verification is TODO)
+      signerAddress: signerKeypair.publicKey,
+      signature: Buffer.from(signature),
+      // Store message bytes for Ed25519 instruction
+      _messageBytes: messageBytes,
     };
+  }
+
+  // Helper: Create Ed25519Program verification instruction
+  function createEd25519Instruction(feedbackAuth: any): anchor.web3.TransactionInstruction {
+    return Ed25519Program.createInstructionWithPublicKey({
+      publicKey: feedbackAuth.signerAddress.toBytes(),
+      message: feedbackAuth._messageBytes,
+      signature: feedbackAuth.signature,
+    });
   }
 
   // Helper: Get PDAs
@@ -191,7 +219,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client1.publicKey,
         5, // Can submit up to 5 feedbacks
         3600, // Valid for 1 hour
-        agentOwner.publicKey // Signed by agent owner
+        agentOwner // Pass Keypair to sign
       );
 
       const score = 85;
@@ -206,6 +234,9 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
       const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
       const [feedbackPda] = getFeedbackPda(agentId, client1.publicKey, feedbackIndex);
       const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Create Ed25519 verification instruction
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
 
       await reputationProgram.methods
         .giveFeedback(
@@ -227,8 +258,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
           feedbackAccount: feedbackPda,
           agentReputation: reputationPda,
           identityRegistryProgram: identityProgram.programId,
+          instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           systemProgram: SystemProgram.programId,
         })
+        .preInstructions([ed25519Ix]) // Prepend Ed25519 verification
         .signers([client1])
         .rpc();
 
@@ -244,7 +277,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client2.publicKey,
         5,
         -3600, // Expired 1 hour ago
-        agentOwner.publicKey
+        agentOwner
       );
 
       const score = 90;
@@ -257,6 +290,9 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
       const [clientIndexPda] = getClientIndexPda(agentId, client2.publicKey);
       const [feedbackPda] = getFeedbackPda(agentId, client2.publicKey, feedbackIndex);
       const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Create Ed25519 verification instruction
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
 
       try {
         await reputationProgram.methods
@@ -279,8 +315,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
             feedbackAccount: feedbackPda,
             agentReputation: reputationPda,
             identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
             systemProgram: SystemProgram.programId,
           })
+          .preInstructions([ed25519Ix])
           .signers([client2])
           .rpc();
 
@@ -298,7 +336,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client2.publicKey, // Auth for client2
         5,
         3600,
-        agentOwner.publicKey
+        agentOwner
       );
 
       const score = 75;
@@ -311,6 +349,9 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
       const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
       const [feedbackPda] = getFeedbackPda(agentId, client1.publicKey, feedbackIndex);
       const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Create Ed25519 verification instruction
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
 
       try {
         await reputationProgram.methods
@@ -333,8 +374,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
             feedbackAccount: feedbackPda,
             agentReputation: reputationPda,
             identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
             systemProgram: SystemProgram.programId,
           })
+          .preInstructions([ed25519Ix])
           .signers([client1])
           .rpc();
 
@@ -351,7 +394,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client2.publicKey,
         1, // Only 1 feedback allowed (index 0)
         3600,
-        agentOwner.publicKey
+        agentOwner
       );
 
       // First feedback should succeed (index 0)
@@ -364,6 +407,9 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
       const [clientIndexPda] = getClientIndexPda(agentId, client2.publicKey);
       const [feedbackPda1] = getFeedbackPda(agentId, client2.publicKey, 0);
       const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Create Ed25519 verification instruction
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
 
       await reputationProgram.methods
         .giveFeedback(
@@ -385,8 +431,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
           feedbackAccount: feedbackPda1,
           agentReputation: reputationPda,
           identityRegistryProgram: identityProgram.programId,
+          instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           systemProgram: SystemProgram.programId,
         })
+        .preInstructions([ed25519Ix])
         .signers([client2])
         .rpc();
 
@@ -416,8 +464,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
             feedbackAccount: feedbackPda2,
             agentReputation: reputationPda,
             identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
             systemProgram: SystemProgram.programId,
           })
+          .preInstructions([ed25519Ix])
           .signers([client2])
           .rpc();
 
@@ -434,7 +484,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client1.publicKey,
         5,
         3600,
-        unauthorized.publicKey // Wrong signer (not agent owner)
+        unauthorized // Wrong signer (not agent owner)
       );
 
       const score = 70;
@@ -447,6 +497,9 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
       const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
       const [feedbackPda] = getFeedbackPda(agentId, client1.publicKey, feedbackIndex);
       const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Create Ed25519 verification instruction
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
 
       try {
         await reputationProgram.methods
@@ -469,8 +522,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
             feedbackAccount: feedbackPda,
             agentReputation: reputationPda,
             identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
             systemProgram: SystemProgram.programId,
           })
+          .preInstructions([ed25519Ix])
           .signers([client1])
           .rpc();
 
@@ -494,12 +549,15 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client1.publicKey,
         5,
         3600,
-        agentOwner.publicKey
+        agentOwner
       );
 
       const [clientIndexPda1] = getClientIndexPda(agentId, client1.publicKey);
       const [feedbackPda1] = getFeedbackPda(agentId, client1.publicKey, 1);
       const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Create Ed25519 verification instruction
+      const ed25519Ix = createEd25519Instruction(feedbackAuth1);
 
       await reputationProgram.methods
         .giveFeedback(
@@ -521,8 +579,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
           feedbackAccount: feedbackPda1,
           agentReputation: reputationPda,
           identityRegistryProgram: identityProgram.programId,
+          instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           systemProgram: SystemProgram.programId,
         })
+        .preInstructions([ed25519Ix])
         .signers([client1])
         .rpc();
 
@@ -537,11 +597,14 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client1.publicKey,
         5,
         3600,
-        agentOwner.publicKey
+        agentOwner
       );
 
       const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
       const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Create Ed25519 verification instruction
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
 
       // Submit feedback at index 2
       const [feedbackPda2] = getFeedbackPda(agentId, client1.publicKey, 2);
@@ -565,8 +628,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
           feedbackAccount: feedbackPda2,
           agentReputation: reputationPda,
           identityRegistryProgram: identityProgram.programId,
+          instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           systemProgram: SystemProgram.programId,
         })
+        .preInstructions([ed25519Ix])
         .signers([client1])
         .rpc();
 
@@ -592,8 +657,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
           feedbackAccount: feedbackPda3,
           agentReputation: reputationPda,
           identityRegistryProgram: identityProgram.programId,
+          instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           systemProgram: SystemProgram.programId,
         })
+        .preInstructions([ed25519Ix])
         .signers([client1])
         .rpc();
 
@@ -608,12 +675,15 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client1.publicKey,
         10, // Higher limit
         3600,
-        agentOwner.publicKey
+        agentOwner
       );
 
       const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
       const [feedbackPda4] = getFeedbackPda(agentId, client1.publicKey, 4);
       const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Create Ed25519 verification instruction
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
 
       // Submit at correct index (4)
       await reputationProgram.methods
@@ -636,8 +706,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
           feedbackAccount: feedbackPda4,
           agentReputation: reputationPda,
           identityRegistryProgram: identityProgram.programId,
+          instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           systemProgram: SystemProgram.programId,
         })
+        .preInstructions([ed25519Ix])
         .signers([client1])
         .rpc();
 
@@ -665,8 +737,10 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
             feedbackAccount: feedbackPda6,
             agentReputation: reputationPda,
             identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
             systemProgram: SystemProgram.programId,
           })
+          .preInstructions([ed25519Ix])
           .signers([client1])
           .rpc();
 
