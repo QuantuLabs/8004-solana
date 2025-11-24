@@ -68,9 +68,28 @@ pub mod identity_registry {
             .print_supply(PrintSupply::Zero)
             .invoke()?;
 
+        // IMMEDIATELY transfer collection update_authority to PDA (atomique!)
+        // This allows the program to sign for collection verification without requiring deployer signature
+        UpdateV1CpiBuilder::new(&ctx.accounts.token_metadata_program.to_account_info())
+            .authority(&ctx.accounts.authority.to_account_info())
+            .mint(&ctx.accounts.collection_mint.to_account_info())
+            .metadata(&ctx.accounts.collection_metadata)
+            .payer(&ctx.accounts.authority.to_account_info())
+            .system_program(&ctx.accounts.system_program.to_account_info())
+            .sysvar_instructions(&ctx.accounts.sysvar_instructions)
+            .new_update_authority(ctx.accounts.collection_authority_pda.key())
+            .invoke()?;
+
+        // Save collection_authority_pda bump for invoke_signed in register()
+        config.collection_authority_bump = ctx.bumps.collection_authority_pda;
+
         msg!(
             "Identity Registry initialized with collection mint: {}",
             config.collection_mint
+        );
+        msg!(
+            "Collection authority transferred to PDA: {}",
+            ctx.accounts.collection_authority_pda.key()
         );
 
         Ok(())
@@ -170,6 +189,10 @@ pub mod identity_registry {
             );
         }
 
+        // Extract bump before taking mutable reference (borrow checker)
+        let collection_authority_bump = ctx.accounts.config.collection_authority_bump;
+        let collection_mint = ctx.accounts.config.collection_mint;
+
         let config = &mut ctx.accounts.config;
         let agent_id = config.next_agent_id;
 
@@ -222,22 +245,29 @@ pub mod identity_registry {
             .print_supply(PrintSupply::Zero)
             .collection(Collection {
                 verified: false,
-                key: config.collection_mint,
+                key: collection_mint,
             })
             .invoke()?;
 
-        // Verify collection membership (requires collection authority)
+        // Verify collection membership (PDA signs via invoke_signed)
+        // Program can sign automatically without requiring deployer signature
+        let collection_authority_seeds = &[
+            b"collection_authority".as_ref(),
+            &[collection_authority_bump],
+        ];
+        let collection_authority_signer = &[&collection_authority_seeds[..]];
+
         SetAndVerifyCollectionCpiBuilder::new(
             &ctx.accounts.token_metadata_program.to_account_info(),
         )
         .metadata(&ctx.accounts.agent_metadata)
-        .collection_authority(&ctx.accounts.authority.to_account_info())
+        .collection_authority(&ctx.accounts.collection_authority_pda.to_account_info())
         .payer(&ctx.accounts.owner.to_account_info())
         .update_authority(&ctx.accounts.owner.to_account_info())
         .collection_mint(&ctx.accounts.collection_mint.to_account_info())
         .collection(&ctx.accounts.collection_metadata)
         .collection_master_edition_account(&ctx.accounts.collection_master_edition)
-        .invoke()?;
+        .invoke_signed(collection_authority_signer)?;
 
         // Initialize agent account
         let agent = &mut ctx.accounts.agent_account;
@@ -736,6 +766,14 @@ pub struct Initialize<'info> {
     )]
     pub collection_token_account: Account<'info, TokenAccount>,
 
+    /// Collection authority PDA (will own collection after init)
+    /// CHECK: PDA derived and verified via seeds
+    #[account(
+        seeds = [b"collection_authority"],
+        bump
+    )]
+    pub collection_authority_pda: UncheckedAccount<'info>,
+
     #[account(mut)]
     pub authority: Signer<'info>,
 
@@ -762,10 +800,13 @@ pub struct Register<'info> {
     )]
     pub config: Account<'info, RegistryConfig>,
 
-    /// Registry authority (needed to verify collection)
-    /// CHECK: Must match config.authority
-    #[account(constraint = authority.key() == config.authority)]
-    pub authority: UncheckedAccount<'info>,
+    /// Collection authority PDA (signs for SetAndVerifyCollection)
+    /// CHECK: PDA verified via seeds
+    #[account(
+        seeds = [b"collection_authority"],
+        bump = config.collection_authority_bump
+    )]
+    pub collection_authority_pda: UncheckedAccount<'info>,
 
     #[account(
         init,
