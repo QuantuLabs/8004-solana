@@ -50,4 +50,7 @@ pub enum ReputationError {
 
     #[msg("FeedbackAuth chain_id does not match expected chain")]
     InvalidChainId,
+
+    #[msg("Invalid Identity Registry program ID - security check failed")]
+    InvalidIdentityRegistry,
 }

@@ -3,6 +3,10 @@ use anchor_lang::solana_program::sysvar::instructions;
 
 declare_id!("9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa");
 
+// SECURITY: Hardcoded Identity Registry Program ID to prevent fake agent attacks
+// This ensures only agents from the legitimate Identity Registry can receive feedback
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn");
+
 pub mod error;
 pub mod events;
 pub mod state;
@@ -434,7 +438,8 @@ pub struct GiveFeedback<'info> {
     pub agent_reputation: Account<'info, AgentReputationMetadata>,
 
     /// Identity Registry program (for CPI validation)
-    /// CHECK: Program ID verified via seeds::program constraint
+    /// CHECK: Hardcoded program ID verified via constraint to prevent fake agent attacks
+    #[account(constraint = identity_registry_program.key() == IDENTITY_REGISTRY_ID @ ReputationError::InvalidIdentityRegistry)]
     pub identity_registry_program: UncheckedAccount<'info>,
 
     /// Instructions Sysvar for Ed25519 signature verification
