@@ -3,9 +3,19 @@ use anchor_lang::solana_program::sysvar::instructions;
 
 declare_id!("9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa");
 
-// SECURITY: Hardcoded Identity Registry Program ID to prevent fake agent attacks
+// SECURITY: Dynamic Identity Registry Program ID based on deployment environment
 // This ensures only agents from the legitimate Identity Registry can receive feedback
+// Configured via Cargo features matching Anchor.toml deployment targets
+
+#[cfg(feature = "devnet")]
 pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn");
+
+#[cfg(feature = "mainnet")]
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("MAINNET_ID_TBD_AFTER_DEPLOYMENT_REPLACE_THIS");
+
+// Default to localnet for local development and testing
+#[cfg(not(any(feature = "devnet", feature = "mainnet")))]
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR");
 
 pub mod error;
 pub mod events;

@@ -10,6 +10,20 @@ use state::{ValidationConfig, ValidationRequest};
 
 declare_id!("CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW");
 
+// SECURITY: Dynamic Identity Registry Program ID based on deployment environment
+// This ensures only agents from the legitimate Identity Registry can be validated
+// Configured via Cargo features matching Anchor.toml deployment targets
+
+#[cfg(feature = "devnet")]
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn");
+
+#[cfg(feature = "mainnet")]
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("MAINNET_ID_TBD_AFTER_DEPLOYMENT_REPLACE_THIS");
+
+// Default to localnet for local development and testing
+#[cfg(not(any(feature = "devnet", feature = "mainnet")))]
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR");
+
 #[program]
 pub mod validation_registry {
     use super::*;
@@ -269,8 +283,9 @@ pub struct RequestValidation<'info> {
     )]
     pub validation_request: Account<'info, ValidationRequest>,
 
-    /// Identity Registry program (for CPI)
-    /// CHECK: Program ID verified via seeds::program constraint above
+    /// Identity Registry program (for CPI validation)
+    /// CHECK: Hardcoded program ID verified via constraint to prevent fake agent attacks
+    #[account(constraint = identity_registry_program.key() == IDENTITY_REGISTRY_ID @ ValidationError::InvalidIdentityRegistry)]
     pub identity_registry_program: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,

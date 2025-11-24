@@ -31,4 +31,7 @@ pub enum ValidationError {
 
     #[msg("Request hash mismatch")]
     RequestHashMismatch,
+
+    #[msg("Invalid Identity Registry program ID - security check failed")]
+    InvalidIdentityRegistry,
 }
