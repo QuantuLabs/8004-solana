@@ -10,7 +10,7 @@ use mpl_token_metadata::{
     ID as TOKEN_METADATA_PROGRAM_ID,
 };
 
-declare_id!("5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn");
+declare_id!("2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ");
 
 mod state;
 mod error;
@@ -61,8 +61,8 @@ pub mod identity_registry {
             .system_program(&ctx.accounts.system_program.to_account_info())
             .sysvar_instructions(&ctx.accounts.sysvar_instructions)
             .spl_token_program(Some(&ctx.accounts.token_program.to_account_info()))
-            .name("ERC-8004 Agent Registry".to_string())
-            .uri("https://erc8004.org/collection.json".to_string())
+            .name("ERC8004".to_string())
+            .uri("".to_string())
             .seller_fee_basis_points(0)
             .token_standard(TokenStandard::NonFungible)
             .print_supply(PrintSupply::Zero)
@@ -115,16 +115,16 @@ pub mod identity_registry {
     /// The contract creates and mints the NFT to the caller as part of the collection.
     ///
     /// # Arguments
-    /// * `token_uri` - IPFS/Arweave/HTTP URI (max 200 bytes, can be empty string)
+    /// * `agent_uri` - IPFS/Arweave/HTTP URI (max 200 bytes, can be empty string)
     ///
     /// # Events
     /// * `AgentRegistered` - Emitted when agent is successfully registered
     ///
     /// # Errors
-    /// * `UriTooLong` - If token_uri exceeds 200 bytes
+    /// * `UriTooLong` - If agent_uri exceeds 200 bytes
     /// * `Overflow` - If agent ID counter overflows
-    pub fn register(ctx: Context<Register>, token_uri: String) -> Result<()> {
-        register_internal(ctx, token_uri, vec![])
+    pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
+        register_internal(ctx, agent_uri, vec![])
     }
 
     /// Register a new agent with URI and initial metadata (ERC-8004 spec: register(tokenURI, metadata[]))
@@ -134,7 +134,7 @@ pub mod identity_registry {
     /// The contract creates and mints the NFT to the caller as part of the collection.
     ///
     /// # Arguments
-    /// * `token_uri` - IPFS/Arweave/HTTP URI (max 200 bytes, can be empty string)
+    /// * `agent_uri` - IPFS/Arweave/HTTP URI (max 200 bytes, can be empty string)
     /// * `metadata` - Initial metadata entries (max 10 entries)
     ///
     /// # Events
@@ -142,17 +142,17 @@ pub mod identity_registry {
     /// * `MetadataSet` - Emitted for each metadata entry
     ///
     /// # Errors
-    /// * `UriTooLong` - If token_uri exceeds 200 bytes
+    /// * `UriTooLong` - If agent_uri exceeds 200 bytes
     /// * `KeyTooLong` - If any key exceeds 32 bytes
     /// * `ValueTooLong` - If any value exceeds 256 bytes
     /// * `MetadataLimitReached` - If more than 10 entries provided
     /// * `Overflow` - If agent ID counter overflows
     pub fn register_with_metadata(
         ctx: Context<Register>,
-        token_uri: String,
+        agent_uri: String,
         metadata: Vec<MetadataEntry>,
     ) -> Result<()> {
-        register_internal(ctx, token_uri, metadata)
+        register_internal(ctx, agent_uri, metadata)
     }
 
     /// Internal registration logic shared by all register functions
@@ -163,12 +163,12 @@ pub mod identity_registry {
     #[doc(hidden)]
     pub fn register_internal(
         mut ctx: Context<Register>,
-        token_uri: String,
+        agent_uri: String,
         metadata: Vec<MetadataEntry>,
     ) -> Result<()> {
         // Validate token URI length (ERC-8004 spec: max 200 bytes)
         require!(
-            token_uri.len() <= AgentAccount::MAX_URI_LENGTH,
+            agent_uri.len() <= AgentAccount::MAX_URI_LENGTH,
             IdentityError::UriTooLong
         );
 
@@ -180,11 +180,11 @@ pub mod identity_registry {
 
         for entry in &metadata {
             require!(
-                entry.key.len() <= MetadataEntry::MAX_KEY_LENGTH,
+                entry.metadata_key.len() <= MetadataEntry::MAX_KEY_LENGTH,
                 IdentityError::KeyTooLong
             );
             require!(
-                entry.value.len() <= MetadataEntry::MAX_VALUE_LENGTH,
+                entry.metadata_value.len() <= MetadataEntry::MAX_VALUE_LENGTH,
                 IdentityError::ValueTooLong
             );
         }
@@ -222,10 +222,10 @@ pub mod identity_registry {
 
         // Create Metaplex NFT metadata + master edition WITH collection reference
         let agent_name = format!("Agent #{}", agent_id);
-        let metadata_uri = if token_uri.is_empty() {
+        let metadata_uri = if agent_uri.is_empty() {
             String::new()
         } else {
-            token_uri.clone()
+            agent_uri.clone()
         };
 
         CreateV1CpiBuilder::new(&ctx.accounts.token_metadata_program.to_account_info())
@@ -263,7 +263,7 @@ pub mod identity_registry {
         .metadata(&ctx.accounts.agent_metadata)
         .collection_authority(&ctx.accounts.collection_authority_pda.to_account_info())
         .payer(&ctx.accounts.owner.to_account_info())
-        .update_authority(&ctx.accounts.owner.to_account_info())
+        .update_authority(&ctx.accounts.collection_authority_pda.to_account_info())
         .collection_mint(&ctx.accounts.collection_mint.to_account_info())
         .collection(&ctx.accounts.collection_metadata)
         .collection_master_edition_account(&ctx.accounts.collection_master_edition)
@@ -274,7 +274,7 @@ pub mod identity_registry {
         agent.agent_id = agent_id;
         agent.owner = ctx.accounts.owner.key();
         agent.agent_mint = ctx.accounts.agent_mint.key();
-        agent.token_uri = token_uri.clone();
+        agent.agent_uri = agent_uri.clone();
         agent.nft_name = agent_name.clone();
         agent.nft_symbol = String::new(); // Empty symbol for now
         agent.metadata = metadata.clone();
@@ -284,7 +284,7 @@ pub mod identity_registry {
         // Emit registration event (ERC-8004 spec: Registered event)
         emit!(Registered {
             agent_id,
-            token_uri,
+            agent_uri,
             owner: ctx.accounts.owner.key(),
             agent_mint: ctx.accounts.agent_mint.key(),
         });
@@ -293,9 +293,9 @@ pub mod identity_registry {
         for entry in &metadata {
             emit!(MetadataSet {
                 agent_id,
-                indexed_key: entry.key.clone(),
-                key: entry.key.clone(),
-                value: entry.value.clone(),
+                indexed_key: entry.metadata_key.clone(),
+                key: entry.metadata_key.clone(),
+                value: entry.metadata_value.clone(),
             });
         }
 
@@ -327,8 +327,8 @@ pub mod identity_registry {
         let agent = &ctx.accounts.agent_account;
 
         // Find metadata entry
-        if let Some(entry) = agent.metadata.iter().find(|e| e.key == key) {
-            Ok(entry.value.clone())
+        if let Some(entry) = agent.metadata.iter().find(|e| e.metadata_key == key) {
+            Ok(entry.metadata_value.clone())
         } else {
             Ok(Vec::new())
         }
@@ -374,7 +374,7 @@ pub mod identity_registry {
         // Find existing entry or add new one
         if let Some(entry) = agent.find_metadata_mut(&key) {
             // Update existing entry
-            entry.value = value.clone();
+            entry.metadata_value = value.clone();
         } else {
             // Add new entry (max 10 entries)
             require!(
@@ -383,8 +383,8 @@ pub mod identity_registry {
             );
 
             agent.metadata.push(MetadataEntry {
-                key: key.clone(),
-                value: value.clone(),
+                metadata_key: key.clone(),
+                metadata_value: value.clone(),
             });
         }
 
@@ -428,7 +428,7 @@ pub mod identity_registry {
         let agent = &mut ctx.accounts.agent_account;
 
         // Update AgentAccount URI
-        agent.token_uri = new_uri.clone();
+        agent.agent_uri = new_uri.clone();
 
         // Sync URI to Metaplex NFT metadata using UpdateAsUpdateAuthorityV2
         // This ensures wallets and marketplaces display the updated URI
@@ -613,14 +613,14 @@ pub mod identity_registry {
 
         // Check if metadata key already exists, update it
         if let Some(entry) = extension.find_metadata_mut(&key) {
-            entry.value = value.clone();
+            entry.metadata_value = value.clone();
         } else {
             // Add new entry if under limit
             require!(
                 extension.metadata.len() < MetadataExtension::MAX_METADATA_ENTRIES,
                 IdentityError::MetadataLimitReached
             );
-            extension.metadata.push(MetadataEntry { key: key.clone(), value: value.clone() });
+            extension.metadata.push(MetadataEntry { metadata_key: key.clone(), metadata_value: value.clone() });
         }
 
         // Emit event
@@ -649,7 +649,7 @@ pub mod identity_registry {
     ) -> Result<Vec<u8>> {
         let extension = &ctx.accounts.metadata_extension;
         if let Some(entry) = extension.find_metadata(&key) {
-            Ok(entry.value.clone())
+            Ok(entry.metadata_value.clone())
         } else {
             Ok(Vec::new())
         }
@@ -803,6 +803,7 @@ pub struct Register<'info> {
     /// Collection authority PDA (signs for SetAndVerifyCollection)
     /// CHECK: PDA verified via seeds
     #[account(
+        mut,
         seeds = [b"collection_authority"],
         bump = config.collection_authority_bump
     )]
@@ -1111,7 +1112,7 @@ pub struct TransferAgent<'info> {
 #[event]
 pub struct Registered {
     pub agent_id: u64,
-    pub token_uri: String,
+    pub agent_uri: String,
     pub owner: Pubkey,
     pub agent_mint: Pubkey, // Solana-specific: SPL Token mint address
 }

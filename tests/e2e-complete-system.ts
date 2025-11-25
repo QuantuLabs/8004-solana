@@ -471,7 +471,7 @@ describe("E2E Complete System Tests with Cost Measurement", () => {
       agent1Pda = agentAccount;
       agent1Id = Number(fetchedAgent.agentId);
 
-      assert.equal(fetchedAgent.tokenUri, "ipfs://agent1-metadata");
+      assert.equal(fetchedAgent.agentUri, "ipfs://agent1-metadata");
       console.log(`✅ Agent 1 registered (ID: ${agent1Id})`);
     });
 

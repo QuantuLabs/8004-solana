@@ -40,9 +40,9 @@ pub struct AgentAccount {
     /// Agent NFT mint (SPL Token with supply=1, decimals=0)
     pub agent_mint: Pubkey,
 
-    /// Token URI (IPFS/Arweave/HTTP link)
+    /// Agent URI (IPFS/Arweave/HTTP link)
     /// Max 200 bytes per ERC-8004 spec
-    pub token_uri: String,
+    pub agent_uri: String,
 
     /// NFT name stored for UpdateMetadata CPI (e.g., "Agent #123")
     /// Max 32 bytes per Metaplex spec
@@ -65,7 +65,7 @@ pub struct AgentAccount {
 impl AgentAccount {
     /// Maximum size for AgentAccount
     /// 8 (discriminator) + 8 (agent_id) + 32 (owner) + 32 (agent_mint)
-    /// + 4 + 200 (token_uri) + 4 + 32 (nft_name) + 4 + 10 (nft_symbol)
+    /// + 4 + 200 (agent_uri) + 4 + 32 (nft_name) + 4 + 10 (nft_symbol)
     /// + 4 + (10 * MetadataEntry::MAX_SIZE) (metadata)
     /// + 8 (created_at) + 1 (bump)
     pub const MAX_SIZE: usize = 8 + 8 + 32 + 32 + 4 + 200 + 4 + 32 + 4 + 10 + 4 + (10 * MetadataEntry::MAX_SIZE) + 8 + 1;
@@ -78,12 +78,12 @@ impl AgentAccount {
 
     /// Find metadata entry by key
     pub fn find_metadata(&self, key: &str) -> Option<&MetadataEntry> {
-        self.metadata.iter().find(|entry| entry.key == key)
+        self.metadata.iter().find(|entry| entry.metadata_key == key)
     }
 
     /// Find mutable metadata entry by key
     pub fn find_metadata_mut(&mut self, key: &str) -> Option<&mut MetadataEntry> {
-        self.metadata.iter_mut().find(|entry| entry.key == key)
+        self.metadata.iter_mut().find(|entry| entry.metadata_key == key)
     }
 }
 
@@ -115,23 +115,23 @@ impl MetadataExtension {
 
     /// Find metadata entry by key
     pub fn find_metadata(&self, key: &str) -> Option<&MetadataEntry> {
-        self.metadata.iter().find(|entry| entry.key == key)
+        self.metadata.iter().find(|entry| entry.metadata_key == key)
     }
 
     /// Find mutable metadata entry by key
     pub fn find_metadata_mut(&mut self, key: &str) -> Option<&mut MetadataEntry> {
-        self.metadata.iter_mut().find(|entry| entry.key == key)
+        self.metadata.iter_mut().find(|entry| entry.metadata_key == key)
     }
 }
 
-/// Metadata entry (key-value pair)
+/// Metadata entry (metadata_key-metadata_value pair)
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct MetadataEntry {
     /// Metadata key (max 32 bytes)
-    pub key: String,
+    pub metadata_key: String,
 
     /// Metadata value (arbitrary bytes, max 256 bytes)
-    pub value: Vec<u8>,
+    pub metadata_value: Vec<u8>,
 }
 
 impl MetadataEntry {
