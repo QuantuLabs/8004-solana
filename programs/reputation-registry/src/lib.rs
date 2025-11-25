@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::sysvar::instructions;
 
 declare_id!("9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa");
 
@@ -8,7 +7,7 @@ declare_id!("9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa");
 // Configured via Cargo features matching Anchor.toml deployment targets
 
 #[cfg(feature = "devnet")]
-pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn");
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ");
 
 #[cfg(feature = "mainnet")]
 pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("MAINNET_ID_TBD_AFTER_DEPLOYMENT_REPLACE_THIS");
@@ -45,12 +44,11 @@ pub mod reputation_registry {
     /// # Arguments
     /// * `agent_id` - Agent ID from Identity Registry
     /// * `score` - Rating 0-100 (validated on-chain)
-    /// * `tag1` - Full bytes32 tag (ERC-8004 spec requirement)
-    /// * `tag2` - Full bytes32 tag (ERC-8004 spec requirement)
+    /// * `tag1` - String tag for categorization (max 32 bytes, ERC-8004 spec)
+    /// * `tag2` - String tag for categorization (max 32 bytes, ERC-8004 spec)
     /// * `file_uri` - IPFS/Arweave link (max 200 bytes)
     /// * `file_hash` - SHA-256 hash of feedback file
     /// * `feedback_index` - Expected index (must match client_index.last_index)
-    /// * `feedback_auth` - Signature-based authorization from agent owner (ERC-8004 spam prevention)
     ///
     /// # Events
     /// * `NewFeedback` - Emitted when feedback is successfully created
@@ -61,23 +59,28 @@ pub mod reputation_registry {
     /// * `AgentNotFound` - Agent doesn't exist in Identity Registry
     /// * `InvalidFeedbackIndex` - Provided index doesn't match expected
     /// * `Overflow` - Arithmetic overflow in index or stats
-    /// * `FeedbackAuthClientMismatch` - feedbackAuth.client_address doesn't match signer
-    /// * `FeedbackAuthExpired` - feedbackAuth expired
-    /// * `FeedbackAuthIndexLimitExceeded` - Client exceeded authorized feedback limit
-    /// * `UnauthorizedSigner` - feedbackAuth signer is not agent owner
     pub fn give_feedback(
         ctx: Context<GiveFeedback>,
         agent_id: u64,
         score: u8,
-        tag1: [u8; 32],
-        tag2: [u8; 32],
+        tag1: String,
+        tag2: String,
         file_uri: String,
         file_hash: [u8; 32],
         feedback_index: u64,
-        feedback_auth: FeedbackAuth,
     ) -> Result<()> {
         // Validate score (0-100)
         require!(score <= 100, ReputationError::InvalidScore);
+
+        // Validate tag lengths
+        require!(
+            tag1.len() <= FeedbackAccount::MAX_TAG_LENGTH,
+            ReputationError::UriTooLong
+        );
+        require!(
+            tag2.len() <= FeedbackAccount::MAX_TAG_LENGTH,
+            ReputationError::UriTooLong
+        );
 
         // Validate URI length
         require!(
@@ -102,36 +105,8 @@ pub mod reputation_registry {
         // Verify agent_id matches
         require!(stored_agent_id == agent_id, ReputationError::AgentNotFound);
 
-        // Read agent owner (bytes 16-48) for feedbackAuth verification
-        let agent_owner_bytes: [u8; 32] = agent_data[16..48]
-            .try_into()
-            .map_err(|_| ReputationError::AgentNotFound)?;
-        let agent_owner = Pubkey::new_from_array(agent_owner_bytes);
-
-        // Verify feedbackAuth signer is agent owner (ERC-8004 requirement)
-        require!(
-            feedback_auth.signer_address == agent_owner,
-            ReputationError::UnauthorizedSigner
-        );
-
         // Get or initialize client index account
         let client_index = &mut ctx.accounts.client_index;
-
-        // Determine current index for feedbackAuth verification
-        let current_index = if client_index.last_index == 0 && client_index.agent_id == 0 {
-            0u64 // First feedback from this client to this agent
-        } else {
-            client_index.last_index // Next feedback index
-        };
-
-        // Verify feedbackAuth (checks client, expiry, index_limit, Ed25519 signature)
-        let current_time = Clock::get()?.unix_timestamp;
-        feedback_auth.verify(
-            &ctx.accounts.client.key(),
-            current_index,
-            current_time,
-            &ctx.accounts.instruction_sysvar.to_account_info(),
-        )?;
 
         // Validate feedback_index matches expected
         if client_index.last_index == 0 && client_index.agent_id == 0 {
@@ -160,8 +135,8 @@ pub mod reputation_registry {
         feedback.client_address = ctx.accounts.client.key();
         feedback.feedback_index = feedback_index;
         feedback.score = score;
-        feedback.tag1 = tag1;
-        feedback.tag2 = tag2;
+        feedback.tag1 = tag1.clone();
+        feedback.tag2 = tag2.clone();
         feedback.file_uri = file_uri.clone();
         feedback.file_hash = file_hash;
         feedback.is_revoked = false;
@@ -179,6 +154,9 @@ pub mod reputation_registry {
             metadata.average_score = score;
             metadata.bump = ctx.bumps.agent_reputation;
         } else {
+            // Validate agent_id matches (extra safety check)
+            require!(metadata.agent_id == agent_id, ReputationError::AgentNotFound);
+
             // Update existing stats
             metadata.total_feedbacks = metadata
                 .total_feedbacks
@@ -190,7 +168,9 @@ pub mod reputation_registry {
                 .checked_add(score as u64)
                 .ok_or(ReputationError::Overflow)?;
 
-            metadata.average_score = (metadata.total_score_sum / metadata.total_feedbacks) as u8;
+            // Cap at 100 to ensure valid range even after any edge case
+            let avg = metadata.total_score_sum / metadata.total_feedbacks;
+            metadata.average_score = std::cmp::min(avg, 100) as u8;
         }
 
         metadata.last_updated = Clock::get()?.unix_timestamp;
@@ -267,11 +247,12 @@ pub mod reputation_registry {
             .checked_sub(feedback.score as u64)
             .ok_or(ReputationError::Overflow)?;
 
-        // Recalculate average (avoid division by zero)
+        // Recalculate average (avoid division by zero, cap at 100)
         metadata.average_score = if metadata.total_feedbacks == 0 {
             0
         } else {
-            (metadata.total_score_sum / metadata.total_feedbacks) as u8
+            let avg = metadata.total_score_sum / metadata.total_feedbacks;
+            std::cmp::min(avg, 100) as u8
         };
 
         metadata.last_updated = Clock::get()?.unix_timestamp;
@@ -386,7 +367,7 @@ pub struct Initialize {}
 
 /// Accounts for give_feedback instruction
 #[derive(Accounts)]
-#[instruction(agent_id: u64, _score: u8, _tag1: [u8; 32], _tag2: [u8; 32], _file_uri: String, _file_hash: [u8; 32], feedback_index: u64, _feedback_auth: FeedbackAuth)]
+#[instruction(agent_id: u64, _score: u8, _tag1: String, _tag2: String, _file_uri: String, _file_hash: [u8; 32], feedback_index: u64)]
 pub struct GiveFeedback<'info> {
     /// Client giving the feedback (signer & author)
     #[account(mut)]
@@ -404,11 +385,12 @@ pub struct GiveFeedback<'info> {
 
     /// Agent account from Identity Registry (validation)
     /// PDA derivation uses agent_mint to match Identity Registry's scheme
-    /// CHECK: Validated via PDA seeds, program ownership, and manual deserialization
+    /// CHECK: Validated via PDA seeds, program ownership check, and manual deserialization
     #[account(
         seeds = [b"agent", agent_mint.key().as_ref()],
         bump,
-        seeds::program = identity_registry_program.key()
+        seeds::program = identity_registry_program.key(),
+        constraint = agent_account.owner == &IDENTITY_REGISTRY_ID @ ReputationError::InvalidIdentityRegistry
     )]
     pub agent_account: UncheckedAccount<'info>,
 
@@ -451,11 +433,6 @@ pub struct GiveFeedback<'info> {
     /// CHECK: Hardcoded program ID verified via constraint to prevent fake agent attacks
     #[account(constraint = identity_registry_program.key() == IDENTITY_REGISTRY_ID @ ReputationError::InvalidIdentityRegistry)]
     pub identity_registry_program: UncheckedAccount<'info>,
-
-    /// Instructions Sysvar for Ed25519 signature verification
-    /// CHECK: This is the Solana Instructions sysvar account
-    #[account(address = instructions::ID)]
-    pub instruction_sysvar: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
 }
