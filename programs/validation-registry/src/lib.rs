@@ -15,7 +15,7 @@ declare_id!("CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW");
 // Configured via Cargo features matching Anchor.toml deployment targets
 
 #[cfg(feature = "devnet")]
-pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn");
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ");
 
 #[cfg(feature = "mainnet")]
 pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("MAINNET_ID_TBD_AFTER_DEPLOYMENT_REPLACE_THIS");
@@ -140,13 +140,13 @@ pub mod validation_registry {
     /// - response: Validation score 0-100 (0=failed, 100=passed)
     /// - response_uri: IPFS/Arweave link to validation report (max 200 bytes)
     /// - response_hash: SHA-256 hash of response content
-    /// - tag: Tag for categorization (e.g., "oasf-v0.8.0", "zkml-verified")
+    /// - tag: String tag for categorization (e.g., "oasf-v0.8.0", "zkml-verified", max 32 bytes)
     pub fn respond_to_validation(
         ctx: Context<RespondToValidation>,
         response: u8,
         response_uri: String,
         response_hash: [u8; 32],
-        tag: [u8; 32],
+        tag: String,
     ) -> Result<()> {
         // Validate response range (ERC-8004 spec: 0-100)
         require!(response <= 100, ValidationError::InvalidResponse);
@@ -207,7 +207,7 @@ pub mod validation_registry {
         response: u8,
         response_uri: String,
         response_hash: [u8; 32],
-        tag: [u8; 32],
+        tag: String,
     ) -> Result<()> {
         // Same logic as respond_to_validation
         // ERC-8004 allows multiple responses (progressive validation)
@@ -261,10 +261,17 @@ pub struct RequestValidation<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
+    /// Agent NFT mint (required to derive agent PDA correctly)
+    /// CHECK: Validated via agent_account PDA derivation
+    pub agent_mint: UncheckedAccount<'info>,
+
     /// Agent account from Identity Registry (for ownership verification)
-    /// CHECK: Verified via program ownership and manual deserialization
+    /// CHECK: Verified via PDA seeds, program ownership check, and manual deserialization
     #[account(
-        constraint = agent_account.owner == &config.identity_registry @ ValidationError::AgentNotFound
+        seeds = [b"agent", agent_mint.key().as_ref()],
+        bump,
+        seeds::program = identity_registry_program.key(),
+        constraint = agent_account.owner == &IDENTITY_REGISTRY_ID @ ValidationError::AgentNotFound
     )]
     pub agent_account: UncheckedAccount<'info>,
 
