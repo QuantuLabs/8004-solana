@@ -323,7 +323,17 @@ pub struct RespondToValidation<'info> {
 
 #[derive(Accounts)]
 pub struct CloseValidation<'info> {
-    /// Agent owner or program authority
+    /// Program config (for authority check)
+    #[account(seeds = [b"config"], bump = config.bump)]
+    pub config: Account<'info, ValidationConfig>,
+
+    /// Must be either program authority OR the original requester
+    #[account(
+        constraint = (
+            authority.key() == config.authority ||
+            authority.key() == validation_request.requester
+        ) @ ValidationError::Unauthorized
+    )]
     pub authority: Signer<'info>,
 
     /// Validation request to close
@@ -343,9 +353,5 @@ pub struct CloseValidation<'info> {
     /// Receiver of recovered rent
     #[account(mut)]
     pub rent_receiver: SystemAccount<'info>,
-
-    /// Identity Registry program (for ownership verification via CPI if needed)
-    /// CHECK: Optional, can be used for additional checks
-    pub identity_registry_program: Option<UncheckedAccount<'info>>,
 }
 

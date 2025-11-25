@@ -2,36 +2,39 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum ValidationError {
-    #[msg("Request URI exceeds maximum length of 200 bytes")]
+    #[msg("ReqURI>200")]
     RequestUriTooLong,
 
-    #[msg("Response URI exceeds maximum length of 200 bytes")]
+    #[msg("RespURI>200")]
     ResponseUriTooLong,
 
-    #[msg("Response must be between 0 and 100")]
+    #[msg("Resp[0-100]")]
     InvalidResponse,
 
-    #[msg("Only the designated validator can respond to this request")]
+    #[msg("!Validator")]
     UnauthorizedValidator,
 
-    #[msg("Only the agent owner can create validation requests")]
+    #[msg("!Owner")]
     UnauthorizedRequester,
 
-    #[msg("Agent not found in Identity Registry")]
+    #[msg("!Agent")]
     AgentNotFound,
 
-    #[msg("Validation request not found")]
+    #[msg("!Req")]
     RequestNotFound,
 
-    #[msg("Arithmetic overflow occurred")]
+    #[msg("Overflow")]
     Overflow,
 
-    #[msg("Invalid nonce value")]
+    #[msg("!Nonce")]
     InvalidNonce,
 
-    #[msg("Request hash mismatch")]
+    #[msg("Hash!=")]
     RequestHashMismatch,
 
-    #[msg("Invalid Identity Registry program ID - security check failed")]
+    #[msg("!IdReg")]
     InvalidIdentityRegistry,
+
+    #[msg("!Auth")]
+    Unauthorized,
 }
