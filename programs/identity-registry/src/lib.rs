@@ -5,12 +5,12 @@ use anchor_spl::{
     token::{self, Mint, MintTo, Token, TokenAccount},
 };
 use mpl_token_metadata::{
-    instructions::{CreateV1CpiBuilder, SetAndVerifyCollectionCpiBuilder, UpdateAsUpdateAuthorityV2CpiBuilder, UpdateV1CpiBuilder},
+    instructions::{CreateV1CpiBuilder, VerifyCollectionV1CpiBuilder, UpdateAsUpdateAuthorityV2CpiBuilder, UpdateV1CpiBuilder},
     types::{Collection, Data, PrintSupply, TokenStandard},
     ID as TOKEN_METADATA_PROGRAM_ID,
 };
 
-declare_id!("2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ");
+declare_id!("28oby6bmCvmoybb7849stjECZWxiU6gfJJM6DKA2Kj4f");
 
 mod state;
 mod error;
@@ -257,16 +257,20 @@ pub mod identity_registry {
         ];
         let collection_authority_signer = &[&collection_authority_seeds[..]];
 
-        SetAndVerifyCollectionCpiBuilder::new(
+        // Use VerifyCollectionV1 instead of SetAndVerifyCollection
+        // VerifyCollection doesn't require matching update_authority between agent NFT and collection
+        // It only requires the collection_authority (our PDA) to sign
+        VerifyCollectionV1CpiBuilder::new(
             &ctx.accounts.token_metadata_program.to_account_info(),
         )
+        .authority(&ctx.accounts.collection_authority_pda.to_account_info())
+        .delegate_record(None)
         .metadata(&ctx.accounts.agent_metadata)
-        .collection_authority(&ctx.accounts.collection_authority_pda.to_account_info())
-        .payer(&ctx.accounts.owner.to_account_info())
-        .update_authority(&ctx.accounts.collection_authority_pda.to_account_info())
         .collection_mint(&ctx.accounts.collection_mint.to_account_info())
-        .collection(&ctx.accounts.collection_metadata)
-        .collection_master_edition_account(&ctx.accounts.collection_master_edition)
+        .collection_metadata(Some(&ctx.accounts.collection_metadata))
+        .collection_master_edition(Some(&ctx.accounts.collection_master_edition))
+        .system_program(&ctx.accounts.system_program.to_account_info())
+        .sysvar_instructions(&ctx.accounts.sysvar_instructions)
         .invoke_signed(collection_authority_signer)?;
 
         // Initialize agent account
