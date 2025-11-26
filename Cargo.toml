@@ -5,9 +5,13 @@ members = [
 resolver = "2"
 
 [profile.release]
-overflow-checks = true
+opt-level = "z"
+overflow-checks = false
 lto = "fat"
 codegen-units = 1
+panic = 'abort'
+strip = true
+
 [profile.release.build-override]
 opt-level = 3
 incremental = false

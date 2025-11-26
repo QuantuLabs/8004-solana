@@ -21,6 +21,7 @@ dist/
 # Test keys
 test-ledger/
 .test-keypairs/
+.test-wallets.json
 
 # SDK tests (local development only)
 tests/sdk/

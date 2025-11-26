@@ -25,7 +25,7 @@ const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
 );
 
 const IDENTITY_PROGRAM_ID = new PublicKey(
-  "5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn"
+  "2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ"
 );
 
 async function main() {
