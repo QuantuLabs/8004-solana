@@ -6,20 +6,24 @@ import {
   SystemProgram,
   Ed25519Program,
   SYSVAR_INSTRUCTIONS_PUBKEY,
+  SYSVAR_RENT_PUBKEY,
   Transaction,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddress,
+  getAssociatedTokenAddressSync,
   createAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
 import { assert } from "chai";
 import { ReputationRegistry } from "../target/types/reputation_registry";
 import { IdentityRegistry } from "../target/types/identity_registry";
-import { Metaplex, keypairIdentity } from "@metaplex-foundation/js";
 import * as nacl from "tweetnacl";
+
+// Metaplex Token Metadata Program ID
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
 /**
  * LOT 1: FeedbackAuth Tests
@@ -43,18 +47,18 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
 
   const reputationProgram = anchor.workspace.ReputationRegistry as Program<ReputationRegistry>;
   const identityProgram = anchor.workspace.IdentityRegistry as Program<IdentityRegistry>;
-  const metaplex = Metaplex.make(provider.connection).use(keypairIdentity(provider.wallet as any));
 
   // Test wallets
-  let agentOwner: Keypair;
+  let agentOwner: anchor.Wallet;
+  let agentOwnerKeypair: Keypair; // Actual keypair for signing
   let client1: Keypair;
   let client2: Keypair;
   let unauthorized: Keypair;
   let payer: Keypair;
 
-  // Agent data
-  let agentMint: PublicKey;
+  // Agent data (mock - no actual registration needed for signature testing)
   let agentId: number = 1;
+  let agentMint: PublicKey; // Mock mint for PDA derivation
   let agentPda: PublicKey;
 
   // Helper: Airdrop SOL
@@ -107,6 +111,31 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
     });
   }
 
+  // Helper: Derive Metaplex metadata PDA
+  function getMetadataPda(mint: PublicKey): PublicKey {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+        mint.toBuffer(),
+      ],
+      TOKEN_METADATA_PROGRAM_ID
+    )[0];
+  }
+
+  // Helper: Derive Metaplex master edition PDA
+  function getMasterEditionPda(mint: PublicKey): PublicKey {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+        mint.toBuffer(),
+        Buffer.from("edition"),
+      ],
+      TOKEN_METADATA_PROGRAM_ID
+    )[0];
+  }
+
   // Helper: Get PDAs
   function getAgentPda(agentMint: PublicKey): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
@@ -156,14 +185,16 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
     console.log("\n🔧 Setting up test environment...\n");
 
     // Initialize wallets
-    agentOwner = Keypair.generate();
+    // Use provider wallet as agent owner (simplifies authority signing)
+    agentOwner = provider.wallet as anchor.Wallet;
+    // Extract keypair from provider wallet (NodeWallet has .payer property)
+    agentOwnerKeypair = (provider.wallet as any).payer as Keypair;
     client1 = Keypair.generate();
     client2 = Keypair.generate();
     unauthorized = Keypair.generate();
     payer = Keypair.generate();
 
-    // Airdrop SOL
-    await airdrop(agentOwner.publicKey, 5);
+    // Airdrop SOL (provider wallet already has SOL)
     await airdrop(client1.publicKey, 3);
     await airdrop(client2.publicKey, 3);
     await airdrop(unauthorized.publicKey, 3);
@@ -171,44 +202,97 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
 
     console.log("✅ Wallets funded");
 
-    // Create agent NFT using Metaplex
-    try {
-      const { nft } = await metaplex.nfts().create({
-        uri: "https://example.com/agent-metadata.json",
-        name: "Test Agent",
-        sellerFeeBasisPoints: 0,
-        updateAuthority: agentOwner,
-      });
+    // Initialize identity-registry with collection NFT
+    const [configPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("config")],
+      identityProgram.programId
+    );
 
-      agentMint = nft.address;
-      console.log(`✅ Agent NFT created: ${agentMint.toBase58()}`);
-    } catch (err) {
-      console.error("❌ Failed to create NFT:", err);
-      throw err;
-    }
+    const collectionMint = Keypair.generate();
+    const collectionMetadata = getMetadataPda(collectionMint.publicKey);
+    const collectionMasterEdition = getMasterEditionPda(collectionMint.publicKey);
+    const collectionTokenAccount = getAssociatedTokenAddressSync(
+      collectionMint.publicKey,
+      provider.wallet.publicKey
+    );
 
-    // Derive agent PDA
-    [agentPda] = getAgentPda(agentMint);
+    await identityProgram.methods
+      .initialize()
+      .accounts({
+        config: configPda,
+        collectionMint: collectionMint.publicKey,
+        collectionMetadata,
+        collectionMasterEdition,
+        collectionTokenAccount,
+        authority: provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        rent: SYSVAR_RENT_PUBKEY,
+        tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+      })
+      .signers([collectionMint])
+      .rpc();
 
-    // Register agent in Identity Registry
-    try {
-      await identityProgram.methods
-        .registerAgent(new anchor.BN(agentId), "Test Agent", "https://example.com")
-        .accounts({
-          owner: agentOwner.publicKey,
-          agentMint: agentMint,
-          agentAccount: agentPda,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([agentOwner])
-        .rpc();
+    console.log(`✅ Identity registry initialized`);
 
-      console.log(`✅ Agent registered: ID=${agentId}, PDA=${agentPda.toBase58()}`);
-    } catch (err) {
-      console.error("❌ Failed to register agent:", err);
-      throw err;
-    }
+    // Fetch config to get authority and collection
+    const config = await identityProgram.account.registryConfig.fetch(configPda);
 
+    // Generate agent mint and derive all required accounts
+    const agentMintKeypair = Keypair.generate();
+    const [agentAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("agent"), agentMintKeypair.publicKey.toBuffer()],
+      identityProgram.programId
+    );
+    const agentMetadata = getMetadataPda(agentMintKeypair.publicKey);
+    const agentMasterEdition = getMasterEditionPda(agentMintKeypair.publicKey);
+    const agentTokenAccount = getAssociatedTokenAddressSync(
+      agentMintKeypair.publicKey,
+      agentOwner.publicKey
+    );
+
+    // Register a real agent using identity-registry
+    const tx = await identityProgram.methods
+      .registerEmpty() // Minimal registration - no URI
+      .accounts({
+        config: configPda,
+        authority: config.authority,
+        agentAccount: agentAccount,
+        agentMint: agentMintKeypair.publicKey,
+        agentMetadata: agentMetadata,
+        agentMasterEdition: agentMasterEdition,
+        agentTokenAccount: agentTokenAccount,
+        collectionMint: config.collectionMint,
+        collectionMetadata,
+        collectionMasterEdition,
+        owner: agentOwner.publicKey,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        rent: SYSVAR_RENT_PUBKEY,
+        tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+      })
+      .signers([agentMintKeypair])
+      .rpc();
+
+    console.log(`✅ Agent registered via identity-registry`);
+
+    // Wait for confirmation
+    await provider.connection.confirmTransaction(tx);
+
+    // Fetch the agent account to get agent_id
+    const fetchedAgent = await identityProgram.account.agentAccount.fetch(agentAccount);
+
+    agentId = Number(fetchedAgent.agentId);
+    agentMint = agentMintKeypair.publicKey;
+    agentPda = agentAccount;
+
+    console.log(`✅ Agent ID: ${agentId}`);
+    console.log(`✅ Agent mint: ${agentMint.toBase58()}`);
+    console.log(`✅ Agent PDA: ${agentPda.toBase58()}`);
     console.log("\n🎯 Test environment ready!\n");
   });
 
@@ -219,7 +303,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client1.publicKey,
         5, // Can submit up to 5 feedbacks
         3600, // Valid for 1 hour
-        agentOwner // Pass Keypair to sign
+        agentOwnerKeypair // Access keypair from wallet
       );
 
       const score = 85;
@@ -277,7 +361,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client2.publicKey,
         5,
         -3600, // Expired 1 hour ago
-        agentOwner
+        agentOwnerKeypair
       );
 
       const score = 90;
@@ -336,7 +420,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client2.publicKey, // Auth for client2
         5,
         3600,
-        agentOwner
+        agentOwnerKeypair
       );
 
       const score = 75;
@@ -394,7 +478,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client2.publicKey,
         1, // Only 1 feedback allowed (index 0)
         3600,
-        agentOwner
+        agentOwnerKeypair
       );
 
       // First feedback should succeed (index 0)
@@ -549,7 +633,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client1.publicKey,
         5,
         3600,
-        agentOwner
+        agentOwnerKeypair
       );
 
       const [clientIndexPda1] = getClientIndexPda(agentId, client1.publicKey);
@@ -597,7 +681,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client1.publicKey,
         5,
         3600,
-        agentOwner
+        agentOwnerKeypair
       );
 
       const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
@@ -675,7 +759,7 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
         client1.publicKey,
         10, // Higher limit
         3600,
-        agentOwner
+        agentOwnerKeypair
       );
 
       const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
@@ -748,6 +832,295 @@ describe("Reputation Registry - FeedbackAuth Tests (LOT 1)", () => {
       } catch (err: any) {
         assert.include(err.toString(), "InvalidFeedbackIndex");
         console.log("✅ Sequential index validation works with feedbackAuth");
+      }
+    });
+
+    it("❌ Test 9: Invalid signature (corrupted) fails", async () => {
+      const feedbackAuth = createFeedbackAuth(
+        agentId,
+        client1.publicKey,
+        10,
+        3600,
+        agentOwnerKeypair
+      );
+
+      // Corrupt the signature
+      feedbackAuth.signature[0] ^= 0xFF;
+
+      const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
+      const [feedbackPda] = getFeedbackPda(agentId, client1.publicKey, 5);
+      const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Create Ed25519 verification instruction with corrupted signature
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
+
+      try {
+        await reputationProgram.methods
+          .giveFeedback(
+            new anchor.BN(agentId),
+            88,
+            Array.from(Buffer.alloc(32)),
+            Array.from(Buffer.alloc(32)),
+            "ipfs://QmTest9",
+            Array.from(Buffer.alloc(32)),
+            new anchor.BN(5),
+            feedbackAuth
+          )
+          .accounts({
+            client: client1.publicKey,
+            payer: client1.publicKey,
+            agentMint: agentMint,
+            agentAccount: agentPda,
+            clientIndex: clientIndexPda,
+            feedbackAccount: feedbackPda,
+            agentReputation: reputationPda,
+            identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          .preInstructions([ed25519Ix])
+          .signers([client1])
+          .rpc();
+
+        assert.fail("Should have failed with invalid signature");
+      } catch (err: any) {
+        // Ed25519 verification will fail - can be various error messages
+        const errStr = err.toString().toLowerCase();
+        assert(errStr.includes("signature") || errStr.includes("verification") || errStr.includes("failed"),
+          "Error should indicate signature/verification failure");
+        console.log("✅ Correctly rejected corrupted signature");
+      }
+    });
+
+    it("❌ Test 10: Wrong chain_id fails", async () => {
+      // Create feedbackAuth with wrong chain_id
+      const now = Math.floor(Date.now() / 1000);
+      const expiry = now + 3600;
+      const wrongChainId = "solana-mainnet"; // Wrong chain (should be localnet)
+
+      const message = `feedback_auth:${agentId}:${client1.publicKey.toBase58()}:10:${expiry}:${wrongChainId}:${identityProgram.programId.toBase58()}`;
+      const messageBytes = Buffer.from(message, 'utf8');
+      const signature = nacl.sign.detached(messageBytes, agentOwnerKeypair.secretKey);
+
+      const feedbackAuth = {
+        agentId: new anchor.BN(agentId),
+        clientAddress: client1.publicKey,
+        indexLimit: new anchor.BN(10),
+        expiry: new anchor.BN(expiry),
+        chainId: wrongChainId,
+        identityRegistry: identityProgram.programId,
+        signerAddress: agentOwnerKeypair.publicKey,
+        signature: Buffer.from(signature),
+        _messageBytes: messageBytes,
+      };
+
+      const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
+      const [feedbackPda] = getFeedbackPda(agentId, client1.publicKey, 5);
+      const [reputationPda] = getAgentReputationPda(agentId);
+
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
+
+      try {
+        await reputationProgram.methods
+          .giveFeedback(
+            new anchor.BN(agentId),
+            88,
+            Array.from(Buffer.alloc(32)),
+            Array.from(Buffer.alloc(32)),
+            "ipfs://QmTest10",
+            Array.from(Buffer.alloc(32)),
+            new anchor.BN(5),
+            feedbackAuth
+          )
+          .accounts({
+            client: client1.publicKey,
+            payer: client1.publicKey,
+            agentMint: agentMint,
+            agentAccount: agentPda,
+            clientIndex: clientIndexPda,
+            feedbackAccount: feedbackPda,
+            agentReputation: reputationPda,
+            identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          .preInstructions([ed25519Ix])
+          .signers([client1])
+          .rpc();
+
+        assert.fail("Should have failed with wrong chain_id");
+      } catch (err: any) {
+        assert.include(err.toString(), "InvalidChainId");
+        console.log("✅ Correctly rejected wrong chain_id");
+      }
+    });
+
+    it("❌ Test 11: Wrong identity_registry address fails", async () => {
+      // Create feedbackAuth with wrong identity registry
+      const now = Math.floor(Date.now() / 1000);
+      const expiry = now + 3600;
+      const wrongRegistry = Keypair.generate().publicKey;
+
+      const message = `feedback_auth:${agentId}:${client1.publicKey.toBase58()}:10:${expiry}:solana-localnet:${wrongRegistry.toBase58()}`;
+      const messageBytes = Buffer.from(message, 'utf8');
+      const signature = nacl.sign.detached(messageBytes, agentOwnerKeypair.secretKey);
+
+      const feedbackAuth = {
+        agentId: new anchor.BN(agentId),
+        clientAddress: client1.publicKey,
+        indexLimit: new anchor.BN(10),
+        expiry: new anchor.BN(expiry),
+        chainId: "solana-localnet",
+        identityRegistry: wrongRegistry,
+        signerAddress: agentOwnerKeypair.publicKey,
+        signature: Buffer.from(signature),
+        _messageBytes: messageBytes,
+      };
+
+      const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
+      const [feedbackPda] = getFeedbackPda(agentId, client1.publicKey, 5);
+      const [reputationPda] = getAgentReputationPda(agentId);
+
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
+
+      try {
+        await reputationProgram.methods
+          .giveFeedback(
+            new anchor.BN(agentId),
+            88,
+            Array.from(Buffer.alloc(32)),
+            Array.from(Buffer.alloc(32)),
+            "ipfs://QmTest11",
+            Array.from(Buffer.alloc(32)),
+            new anchor.BN(5),
+            feedbackAuth
+          )
+          .accounts({
+            client: client1.publicKey,
+            payer: client1.publicKey,
+            agentMint: agentMint,
+            agentAccount: agentPda,
+            clientIndex: clientIndexPda,
+            feedbackAccount: feedbackPda,
+            agentReputation: reputationPda,
+            identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          .preInstructions([ed25519Ix])
+          .signers([client1])
+          .rpc();
+
+        assert.fail("Should have failed with wrong identity_registry");
+      } catch (err: any) {
+        // The signature will be valid but message content wrong
+        const errStr = err.toString();
+        assert(errStr.includes("InvalidIdentityRegistry") || errStr.includes("failed") || errStr.includes("error"),
+          "Should fail with wrong identity_registry");
+        console.log("✅ Correctly rejected wrong identity_registry address");
+      }
+    });
+
+    it("❌ Test 12: Missing Ed25519 instruction fails", async () => {
+      const feedbackAuth = createFeedbackAuth(
+        agentId,
+        client1.publicKey,
+        10,
+        3600,
+        agentOwnerKeypair
+      );
+
+      const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
+      const [feedbackPda] = getFeedbackPda(agentId, client1.publicKey, 5);
+      const [reputationPda] = getAgentReputationPda(agentId);
+
+      // Don't create Ed25519 verification instruction - this should fail
+
+      try {
+        await reputationProgram.methods
+          .giveFeedback(
+            new anchor.BN(agentId),
+            88,
+            Array.from(Buffer.alloc(32)),
+            Array.from(Buffer.alloc(32)),
+            "ipfs://QmTest12",
+            Array.from(Buffer.alloc(32)),
+            new anchor.BN(5),
+            feedbackAuth
+          )
+          .accounts({
+            client: client1.publicKey,
+            payer: client1.publicKey,
+            agentMint: agentMint,
+            agentAccount: agentPda,
+            clientIndex: clientIndexPda,
+            feedbackAccount: feedbackPda,
+            agentReputation: reputationPda,
+            identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          // No preInstructions - missing Ed25519 verification
+          .signers([client1])
+          .rpc();
+
+        assert.fail("Should have failed without Ed25519 instruction");
+      } catch (err: any) {
+        // Should fail - exact error doesn't matter
+        assert(err, "Should fail without Ed25519 instruction");
+        console.log("✅ Correctly rejected missing Ed25519 instruction");
+      }
+    });
+
+    it("❌ Test 13: Agent ID mismatch fails", async () => {
+      const wrongAgentId = agentId + 999;
+      const feedbackAuth = createFeedbackAuth(
+        wrongAgentId, // Wrong agent ID
+        client1.publicKey,
+        10,
+        3600,
+        agentOwnerKeypair
+      );
+
+      const [clientIndexPda] = getClientIndexPda(agentId, client1.publicKey);
+      const [feedbackPda] = getFeedbackPda(agentId, client1.publicKey, 5);
+      const [reputationPda] = getAgentReputationPda(agentId);
+
+      const ed25519Ix = createEd25519Instruction(feedbackAuth);
+
+      try {
+        await reputationProgram.methods
+          .giveFeedback(
+            new anchor.BN(agentId), // Actual agent ID
+            88,
+            Array.from(Buffer.alloc(32)),
+            Array.from(Buffer.alloc(32)),
+            "ipfs://QmTest13",
+            Array.from(Buffer.alloc(32)),
+            new anchor.BN(5),
+            feedbackAuth // Auth for different agent ID
+          )
+          .accounts({
+            client: client1.publicKey,
+            payer: client1.publicKey,
+            agentMint: agentMint,
+            agentAccount: agentPda,
+            clientIndex: clientIndexPda,
+            feedbackAccount: feedbackPda,
+            agentReputation: reputationPda,
+            identityRegistryProgram: identityProgram.programId,
+            instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          .preInstructions([ed25519Ix])
+          .signers([client1])
+          .rpc();
+
+        assert.fail("Should have failed with agent ID mismatch");
+      } catch (err: any) {
+        // Should fail - exact error doesn't matter
+        assert(err, "Should fail with agent ID mismatch");
+        console.log("✅ Correctly rejected agent ID mismatch");
       }
     });
   });

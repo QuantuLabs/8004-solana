@@ -4,7 +4,6 @@ import {
   PublicKey,
   Keypair,
   SystemProgram,
-  SYSVAR_INSTRUCTIONS_PUBKEY,
   ComputeBudgetProgram,
   Transaction,
 } from "@solana/web3.js";
@@ -19,6 +18,9 @@ import { ReputationRegistry } from "../target/types/reputation_registry";
 
 // Metaplex Token Metadata Program ID
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+
+// Sleep helper to respect RPC rate limits
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 describe("E2E Integration: Identity Registry + Reputation Registry", () => {
   const provider = anchor.AnchorProvider.env();
@@ -145,13 +147,17 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
     );
   }
 
-  // Helper: Airdrop SOL
-  async function airdrop(pubkey: PublicKey, amount: number = 2) {
-    const sig = await provider.connection.requestAirdrop(
-      pubkey,
-      amount * anchor.web3.LAMPORTS_PER_SOL
+  // Helper: Fund wallet with transfer from provider (small amounts to avoid rate limits)
+  async function fundWallet(pubkey: PublicKey, amount: number = 0.1) {
+    console.log(`💸 Transferring ${amount} SOL to ${pubkey.toBase58().slice(0, 8)}...`);
+    const tx = new anchor.web3.Transaction().add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: provider.wallet.publicKey,
+        toPubkey: pubkey,
+        lamports: amount * anchor.web3.LAMPORTS_PER_SOL,
+      })
     );
-    await provider.connection.confirmTransaction(sig);
+    await provider.sendAndConfirm(tx);
   }
 
   before(async () => {
@@ -161,11 +167,15 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
     client3 = Keypair.generate();
     sponsor = Keypair.generate();
 
-    // Airdrop SOL
-    await airdrop(client1.publicKey, 2);
-    await airdrop(client2.publicKey, 2);
-    await airdrop(client3.publicKey, 2);
-    await airdrop(sponsor.publicKey, 5);
+    // Fund wallets with small amounts from provider wallet
+    console.log("💰 Funding client wallets from provider...");
+    await fundWallet(client1.publicKey, 0.1);
+    await fundWallet(client2.publicKey, 0.1);
+    await fundWallet(client3.publicKey, 0.1);
+    await fundWallet(sponsor.publicKey, 0.2);
+
+    console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+    await sleep(3000);
 
     // Derive config PDA
     [configPda] = PublicKey.findProgramAddressSync(
@@ -175,41 +185,43 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
   });
 
   describe("Setup: Initialize Identity Registry", () => {
-    it("✅ Initializes Identity Registry with Collection NFT", async () => {
-      collectionMint = Keypair.generate();
-      collectionMetadata = getMetadataPda(collectionMint.publicKey);
-      collectionMasterEdition = getMasterEditionPda(collectionMint.publicKey);
+    it("✅ Check/Initialize Identity Registry", async () => {
+      console.log("🔍 Checking if Identity Registry is already initialized...");
+
+      // Check if config PDA already exists on devnet
+      const accountInfo = await provider.connection.getAccountInfo(configPda);
+
+      if (!accountInfo) {
+        throw new Error("❌ Config not found on devnet - registry must be initialized first");
+      }
+
+      // DEVNET ONLY - Parse collection_mint from raw account data
+      // Cannot use .fetch() because devnet config has OLD layout
+      console.log("ℹ️  Identity Registry already initialized on devnet");
+      console.log(`   Config account size: ${accountInfo.data.length} bytes`);
+
+      // Parse collection_mint manually from raw bytes
+      // Layout: 8-byte discriminator + 32-byte authority + 8-byte next_id + 8-byte total + 32-byte collection_mint
+      const COLLECTION_MINT_OFFSET = 8 + 32 + 8 + 8; // = 56 bytes
+      const collectionMintBytes = accountInfo.data.slice(
+        COLLECTION_MINT_OFFSET,
+        COLLECTION_MINT_OFFSET + 32
+      );
+      const collectionMintPubkey = new PublicKey(collectionMintBytes);
+
+      // Create mock keypair and derive PDAs
+      collectionMint = { publicKey: collectionMintPubkey } as Keypair;
+      collectionMetadata = getMetadataPda(collectionMintPubkey);
+      collectionMasterEdition = getMasterEditionPda(collectionMintPubkey);
       collectionTokenAccount = getAssociatedTokenAddressSync(
-        collectionMint.publicKey,
+        collectionMintPubkey,
         provider.wallet.publicKey
       );
 
-      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 });
+      console.log(`✅ Using existing collection mint: ${collectionMintPubkey.toBase58()}`);
 
-      const initIx = await identityProgram.methods
-        .initialize()
-        .accounts({
-          authority: provider.wallet.publicKey,
-          config: configPda,
-          collectionMint: collectionMint.publicKey,
-          collectionMetadata: collectionMetadata,
-          collectionMasterEdition: collectionMasterEdition,
-          collectionTokenAccount: collectionTokenAccount,
-          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-        })
-        .instruction();
-
-      const tx = new Transaction().add(computeBudgetIx, initIx);
-      await provider.sendAndConfirm(tx, [collectionMint]);
-
-      const config = await identityProgram.account.registryConfig.fetch(configPda);
-      assert.equal(config.nextAgentId.toNumber(), 0);
-      assert.equal(config.totalAgents.toNumber(), 0);
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
   });
 
@@ -224,10 +236,16 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         provider.wallet.publicKey
       );
 
+      // Derive collection_authority_pda
+      const [collectionAuthorityPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("collection_authority")],
+        identityProgram.programId
+      );
+
       const tokenUri = "ipfs://QmAgentMetadata";
       const metadata = [
-        { key: "name", value: Buffer.from("Alice AI") },
-        { key: "type", value: Buffer.from("customer_support") },
+        { metadataKey: "name", metadataValue: Buffer.from("Alice AI") },
+        { metadataKey: "type", metadataValue: Buffer.from("customer_support") },
       ];
 
       const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 });
@@ -237,6 +255,7 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         .accounts({
           owner: provider.wallet.publicKey,
           config: configPda,
+          collectionAuthorityPda: collectionAuthorityPda,  // NEW - Required for collection verification
           agentAccount: agent1Pda,
           agentMint: agent1Mint.publicKey,
           agentMetadata: agent1Metadata,
@@ -249,13 +268,16 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
-          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+          sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,  // NEW - Required by Metaplex
         })
         .instruction();
 
       const tx = new Transaction().add(computeBudgetIx, registerIx);
       await provider.sendAndConfirm(tx, [agent1Mint]);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
 
       const agent = await identityProgram.account.agentAccount.fetch(agent1Pda);
       assert.equal(agent.agentId.toNumber(), 0);
@@ -264,16 +286,17 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
 
       agent1Id = agent.agentId.toNumber();
       console.log(`      Agent registered: ID=${agent1Id}, Mint=${agent1Mint.publicKey.toBase58()}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
   });
 
   describe("E2E Flow: Give Feedback", () => {
     it("✅ Client1 gives first feedback (score 85)", async () => {
       const score = 85;
-      const tag1 = Buffer.alloc(32);
-      tag1.write("quality");
-      const tag2 = Buffer.alloc(32);
-      tag2.write("responsive");
+      const tag1 = "quality";
+      const tag2 = "responsive";
       const fileUri = "ipfs://QmFeedback1";
       const fileHash = Buffer.alloc(32);
       const feedbackIndex = 0;
@@ -287,8 +310,8 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         .giveFeedback(
           new anchor.BN(agent1Id),
           score,
-          Array.from(tag1),
-          Array.from(tag2),
+          tag1,
+          tag2,
           fileUri,
           Array.from(fileHash),
           new anchor.BN(feedbackIndex)
@@ -306,6 +329,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         .signers([client1])
         .rpc();
 
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
       // Verify feedback
       const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
       assert.equal(feedback.score, 85);
@@ -317,12 +343,15 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(reputation.averageScore, 85);
 
       console.log(`      Feedback given: score=${score}, avg=${reputation.averageScore}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ Client2 gives feedback with sponsorship (score 90)", async () => {
       const score = 90;
-      const tag1 = Buffer.alloc(32);
-      const tag2 = Buffer.alloc(32);
+      const tag1 = "";
+      const tag2 = "";
       const fileUri = "ipfs://QmFeedback2";
       const fileHash = Buffer.alloc(32);
       const feedbackIndex = 0;
@@ -338,8 +367,8 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         .giveFeedback(
           new anchor.BN(agent1Id),
           score,
-          Array.from(tag1),
-          Array.from(tag2),
+          tag1,
+          tag2,
           fileUri,
           Array.from(fileHash),
           new anchor.BN(feedbackIndex)
@@ -357,6 +386,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         .signers([client2, sponsor])
         .rpc();
 
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
       const sponsorBalanceAfter = await provider.connection.getBalance(sponsor.publicKey);
       assert.isBelow(sponsorBalanceAfter, sponsorBalanceBefore);
 
@@ -366,12 +398,15 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(reputation.averageScore, 87);
 
       console.log(`      Sponsored feedback: score=${score}, sponsor paid rent`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ Client3 gives low score (score 60)", async () => {
       const score = 60;
-      const tag1 = Buffer.alloc(32);
-      const tag2 = Buffer.alloc(32);
+      const tag1 = "";
+      const tag2 = "";
       const fileUri = "ipfs://QmFeedback3";
       const fileHash = Buffer.alloc(32);
       const feedbackIndex = 0;
@@ -385,8 +420,8 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         .giveFeedback(
           new anchor.BN(agent1Id),
           score,
-          Array.from(tag1),
-          Array.from(tag2),
+          tag1,
+          tag2,
           fileUri,
           Array.from(fileHash),
           new anchor.BN(feedbackIndex)
@@ -404,12 +439,18 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         .signers([client3])
         .rpc();
 
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
       const reputation = await reputationProgram.account.agentReputationMetadata.fetch(reputationPda);
       assert.equal(reputation.totalFeedbacks.toNumber(), 3);
       // Average: (85 + 90 + 60) / 3 = 78.33 -> 78
       assert.equal(reputation.averageScore, 78);
 
       console.log(`      Low score feedback: avg dropped to ${reputation.averageScore}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
   });
 
@@ -429,6 +470,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         .signers([client3])
         .rpc();
 
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
       // Verify revocation
       const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
       assert.equal(feedback.isRevoked, true);
@@ -440,6 +484,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(reputation.averageScore, 87);
 
       console.log(`      Feedback revoked: avg increased to ${reputation.averageScore}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("❌ Client1 cannot revoke Client2's feedback", async () => {
@@ -463,6 +510,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         assert.include(error.toString(), "Unauthorized");
         console.log(`      ✓ Correctly rejected unauthorized revocation`);
       }
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
   });
 
@@ -495,6 +545,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         })
         .rpc();
 
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
       // Verify response
       const response = await reputationProgram.account.responseAccount.fetch(responsePda);
       assert.equal(response.responseUri, responseUri);
@@ -505,6 +558,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(responseIndex.nextIndex.toNumber(), 1);
 
       console.log(`      Agent responded to feedback`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ Third party appends response (spam flag)", async () => {
@@ -536,10 +592,16 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         .signers([client3])
         .rpc();
 
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
       const response = await reputationProgram.account.responseAccount.fetch(responsePda);
       assert.equal(response.responder.toBase58(), client3.publicKey.toBase58());
 
       console.log(`      Third party flagged feedback as spam`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ Multiple responses to same feedback", async () => {
@@ -570,10 +632,16 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         })
         .rpc();
 
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
       const responseIndex = await reputationProgram.account.responseIndexAccount.fetch(responseIndexPda);
       assert.equal(responseIndex.nextIndex.toNumber(), 2);
 
       console.log(`      Multiple responses: count=${responseIndex.nextIndex.toNumber()}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
   });
 
@@ -589,6 +657,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
 
       assert.equal(reputation.totalFeedbacks.toNumber(), 2);
       assert.equal(reputation.averageScore, 87);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ Lists all feedback accounts created", async () => {
@@ -612,6 +683,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(feedback1.isRevoked, false);
       assert.equal(feedback2.isRevoked, false);
       assert.equal(feedback3.isRevoked, true); // Revoked
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ Lists all response counts", async () => {
@@ -629,6 +703,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
 
       assert.equal(response1Index.nextIndex.toNumber(), 2);
       assert.equal(response2Index.nextIndex.toNumber(), 1);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     // ==================================================================================
@@ -644,6 +721,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(feedback.score, 85);
       assert.equal(feedback.isRevoked, false);
       assert.ok(feedback.createdAt.toNumber() > 0);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ readFeedback: Returns null for non-existent feedback", async () => {
@@ -655,6 +735,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       } catch (err) {
         assert.ok(err.message.includes("Account does not exist"));
       }
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ readAllFeedback: Fetch all feedbacks for a client", async () => {
@@ -673,6 +756,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
 
       assert.equal(feedbacks.length, 1);
       assert.equal(feedbacks[0].score, 85);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ readAllFeedback: Filter out revoked feedbacks", async () => {
@@ -692,6 +778,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       }
 
       assert.equal(feedbacks.length, 0); // client3's feedback was revoked
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ getLastIndex: Returns correct last feedback index", async () => {
@@ -701,6 +790,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(clientIndex.agentId.toNumber(), agent1Id);
       assert.equal(clientIndex.clientAddress.toBase58(), client1.publicKey.toBase58());
       assert.equal(clientIndex.lastIndex.toNumber(), 0);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ getLastIndex: Returns 0 for client with no feedbacks", async () => {
@@ -714,6 +806,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         // Account doesn't exist = lastIndex is implicitly 0
         assert.ok(err.message.includes("Account does not exist"));
       }
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ getClients: List all clients who gave feedback", async () => {
@@ -733,6 +828,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.ok(clientAddresses.includes(client1.publicKey.toBase58()));
       assert.ok(clientAddresses.includes(client2.publicKey.toBase58()));
       assert.ok(clientAddresses.includes(client3.publicKey.toBase58()));
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ getResponseCount: Returns correct response count", async () => {
@@ -743,6 +841,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(responseIndex.clientAddress.toBase58(), client1.publicKey.toBase58());
       assert.equal(responseIndex.feedbackIndex.toNumber(), 0);
       assert.equal(responseIndex.nextIndex.toNumber(), 2); // 2 responses added
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ getResponseCount: Returns 0 for feedback with no responses", async () => {
@@ -755,6 +856,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
         // Account doesn't exist = 0 responses
         assert.ok(err.message.includes("Account does not exist"));
       }
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ getSummary: Aggregate stats without filters", async () => {
@@ -766,6 +870,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       assert.equal(metadata.totalFeedbacks.toNumber(), 2);
       assert.ok(metadata.averageScore > 0);
       console.log(`      Agent #${agent1Id} summary: ${metadata.totalFeedbacks} feedbacks, avg ${metadata.averageScore}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ getSummary: Client-side filtering by minScore", async () => {
@@ -798,6 +905,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
       // client1: 85, client2: 90 (both >= 85)
       assert.equal(count, 2);
       assert.equal(totalScore, 175); // 85 + 90
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
 
     it("✅ getSummary: Client-side filtering by clientAddresses", async () => {
@@ -828,6 +938,9 @@ describe("E2E Integration: Identity Registry + Reputation Registry", () => {
 
       assert.equal(count, 1); // client1 has 1 feedback
       assert.equal(totalScore, 85);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
     });
   });
 });
