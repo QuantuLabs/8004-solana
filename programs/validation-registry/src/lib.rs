@@ -15,7 +15,7 @@ declare_id!("CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW");
 // Configured via Cargo features matching Anchor.toml deployment targets
 
 #[cfg(feature = "devnet")]
-pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ");
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("28oby6bmCvmoybb7849stjECZWxiU6gfJJM6DKA2Kj4f");
 
 #[cfg(feature = "mainnet")]
 pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("MAINNET_ID_TBD_AFTER_DEPLOYMENT_REPLACE_THIS");
@@ -219,8 +219,26 @@ pub mod validation_registry {
     /// Only the agent owner or program authority can close validations.
     /// Rent is returned to the specified receiver.
     pub fn close_validation(
-        _ctx: Context<CloseValidation>,
+        ctx: Context<CloseValidation>,
     ) -> Result<()> {
+        // Verify closer is either agent owner or program authority
+        // Manually deserialize agent account to get owner
+        let agent_data = ctx.accounts.agent_account.try_borrow_data()?;
+        require!(agent_data.len() >= 8 + 8 + 32, ValidationError::AgentNotFound);
+
+        // Skip 8-byte discriminator, skip agent_id (8 bytes), read owner (32 bytes)
+        let stored_owner = Pubkey::try_from(&agent_data[16..48])
+            .map_err(|_| ValidationError::AgentNotFound)?;
+
+        // Check closer is either agent owner OR program authority
+        let is_agent_owner = stored_owner == ctx.accounts.closer.key();
+        let is_authority = ctx.accounts.config.authority == ctx.accounts.closer.key();
+
+        require!(
+            is_agent_owner || is_authority,
+            ValidationError::Unauthorized
+        );
+
         // Account closure is handled automatically by Anchor's `close` constraint
         msg!("Validation request closed, rent recovered");
         Ok(())
@@ -323,18 +341,27 @@ pub struct RespondToValidation<'info> {
 
 #[derive(Accounts)]
 pub struct CloseValidation<'info> {
-    /// Program config (for authority check)
+    /// Program config (for authority check as fallback)
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, ValidationConfig>,
 
-    /// Must be either program authority OR the original requester
+    /// Agent owner OR program authority can close validations
+    /// Verified via custom constraint in instruction
+    pub closer: Signer<'info>,
+
+    /// Agent NFT mint (required to derive agent PDA correctly)
+    /// CHECK: Validated via agent_account PDA derivation
+    pub agent_mint: UncheckedAccount<'info>,
+
+    /// Agent account from Identity Registry (for ownership verification)
+    /// CHECK: Verified via PDA seeds and program ownership check
     #[account(
-        constraint = (
-            authority.key() == config.authority ||
-            authority.key() == validation_request.requester
-        ) @ ValidationError::Unauthorized
+        seeds = [b"agent", agent_mint.key().as_ref()],
+        bump,
+        seeds::program = identity_registry_program.key(),
+        constraint = agent_account.owner == &IDENTITY_REGISTRY_ID @ ValidationError::AgentNotFound
     )]
-    pub authority: Signer<'info>,
+    pub agent_account: UncheckedAccount<'info>,
 
     /// Validation request to close
     #[account(
@@ -349,6 +376,11 @@ pub struct CloseValidation<'info> {
         bump = validation_request.bump
     )]
     pub validation_request: Account<'info, ValidationRequest>,
+
+    /// Identity Registry program (for CPI validation)
+    /// CHECK: Hardcoded program ID verified via constraint
+    #[account(constraint = identity_registry_program.key() == IDENTITY_REGISTRY_ID @ ValidationError::InvalidIdentityRegistry)]
+    pub identity_registry_program: UncheckedAccount<'info>,
 
     /// Receiver of recovered rent
     #[account(mut)]

@@ -23,6 +23,6 @@ pub struct ValidationResponded {
     pub response: u8,
     pub response_uri: String,
     pub response_hash: [u8; 32],
-    pub tag: [u8; 32],
+    pub tag: String,
     pub responded_at: i64,
 }
