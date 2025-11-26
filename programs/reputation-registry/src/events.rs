@@ -7,8 +7,8 @@ pub struct NewFeedback {
     pub client_address: Pubkey,
     pub feedback_index: u64,
     pub score: u8,
-    pub tag1: [u8; 32],
-    pub tag2: [u8; 32],
+    pub tag1: String,
+    pub tag2: String,
     pub file_uri: String,
     pub file_hash: [u8; 32],
 }

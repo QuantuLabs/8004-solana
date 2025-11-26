@@ -7,7 +7,7 @@ declare_id!("9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa");
 // Configured via Cargo features matching Anchor.toml deployment targets
 
 #[cfg(feature = "devnet")]
-pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ");
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("28oby6bmCvmoybb7849stjECZWxiU6gfJJM6DKA2Kj4f");
 
 #[cfg(feature = "mainnet")]
 pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("MAINNET_ID_TBD_AFTER_DEPLOYMENT_REPLACE_THIS");

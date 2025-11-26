@@ -2,55 +2,36 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum ReputationError {
-    #[msg("Score must be between 0 and 100")]
+    #[msg("Score[0-100]")]
     InvalidScore,
 
-    #[msg("File URI exceeds maximum length of 200 bytes")]
+    #[msg("URI>200")]
     UriTooLong,
 
-    #[msg("Response URI exceeds maximum length of 200 bytes")]
+    #[msg("RespURI>200")]
     ResponseUriTooLong,
 
-    #[msg("Only feedback author can revoke")]
+    #[msg("!author")]
     Unauthorized,
 
-    #[msg("Feedback already revoked")]
+    #[msg("Revoked")]
     AlreadyRevoked,
 
-    #[msg("Arithmetic overflow occurred")]
+    #[msg("Overflow")]
     Overflow,
 
-    #[msg("Agent not found in Identity Registry")]
+    #[msg("!Agent")]
     AgentNotFound,
 
-    #[msg("Feedback not found")]
+    #[msg("!Feedback")]
     FeedbackNotFound,
 
-    #[msg("Invalid feedback index")]
+    #[msg("!FbIdx")]
     InvalidFeedbackIndex,
 
-    #[msg("Response not found")]
+    #[msg("!Resp")]
     ResponseNotFound,
 
-    // FeedbackAuth errors
-    #[msg("FeedbackAuth client_address does not match signer")]
-    FeedbackAuthClientMismatch,
-
-    #[msg("FeedbackAuth expired")]
-    FeedbackAuthExpired,
-
-    #[msg("FeedbackAuth index_limit exceeded")]
-    FeedbackAuthIndexLimitExceeded,
-
-    #[msg("FeedbackAuth signature invalid")]
-    InvalidFeedbackAuthSignature,
-
-    #[msg("FeedbackAuth signer is not agent owner")]
-    UnauthorizedSigner,
-
-    #[msg("FeedbackAuth chain_id does not match expected chain")]
-    InvalidChainId,
-
-    #[msg("Invalid Identity Registry program ID - security check failed")]
+    #[msg("!IdReg")]
     InvalidIdentityRegistry,
 }

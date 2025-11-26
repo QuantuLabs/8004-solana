@@ -1,19 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    sysvar::instructions::{load_instruction_at_checked, load_current_index_checked},
-    ed25519_program,
-};
-
-/// Expected chain_id for feedbackAuth validation
-/// This prevents replay attacks when using same program keypairs across chains
-#[cfg(feature = "mainnet")]
-pub const EXPECTED_CHAIN_ID: &str = "solana-mainnet";
-
-#[cfg(feature = "devnet")]
-pub const EXPECTED_CHAIN_ID: &str = "solana-devnet";
-
-#[cfg(all(not(feature = "mainnet"), not(feature = "devnet")))]
-pub const EXPECTED_CHAIN_ID: &str = "solana-localnet";
 
 /// Feedback account - One per feedback (per client-agent pair)
 /// Seeds: [b"feedback", agent_id, client_address, feedback_index]
@@ -33,11 +18,11 @@ pub struct FeedbackAccount {
     /// Score (0-100, validated on-chain)
     pub score: u8,
 
-    /// Tag1 - Full bytes32 (ERC-8004 spec requirement)
-    pub tag1: [u8; 32],
+    /// Tag1 - String tag for categorization (ERC-8004 spec, max 32 bytes)
+    pub tag1: String,
 
-    /// Tag2 - Full bytes32 (ERC-8004 spec requirement)
-    pub tag2: [u8; 32],
+    /// Tag2 - String tag for categorization (ERC-8004 spec, max 32 bytes)
+    pub tag2: String,
 
     /// File URI (IPFS/Arweave link, max 200 bytes)
     pub file_uri: String,
@@ -58,12 +43,15 @@ pub struct FeedbackAccount {
 impl FeedbackAccount {
     /// Maximum size calculation
     /// 8 (discriminator) + 8 (agent_id) + 32 (client_address) + 8 (feedback_index)
-    /// + 1 (score) + 32 (tag1) + 32 (tag2) + 4 + 200 (file_uri)
+    /// + 1 (score) + 4+32 (tag1 String) + 4+32 (tag2 String) + 4+200 (file_uri String)
     /// + 32 (file_hash) + 1 (is_revoked) + 8 (created_at) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 1 + 32 + 32 + 4 + 200 + 32 + 1 + 8 + 1;
+    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 1 + (4+32) + (4+32) + (4+200) + 32 + 1 + 8 + 1;
 
     /// Maximum URI length (ERC-8004 spec)
     pub const MAX_URI_LENGTH: usize = 200;
+
+    /// Maximum tag length (ERC-8004 spec)
+    pub const MAX_TAG_LENGTH: usize = 32;
 }
 
 /// Response account - Separate account per response (unlimited responses)
@@ -187,225 +175,4 @@ impl ResponseIndexAccount {
     /// 8 (discriminator) + 8 (agent_id) + 32 (client_address) + 8 (feedback_index)
     /// + 8 (next_index) + 1 (bump)
     pub const SIZE: usize = 8 + 8 + 32 + 8 + 8 + 1;
-}
-
-/// Feedback authentication signature (ERC-8004 spec requirement)
-/// Prevents spam by requiring agent owner pre-authorization
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct FeedbackAuth {
-    /// Agent ID this auth is for
-    pub agent_id: u64,
-
-    /// Client address authorized to give feedback
-    pub client_address: Pubkey,
-
-    /// Maximum number of feedbacks this client can submit
-    pub index_limit: u64,
-
-    /// Expiry timestamp (Unix epoch seconds)
-    pub expiry: i64,
-
-    /// Chain identifier (e.g., "solana-mainnet", "solana-devnet")
-    pub chain_id: String,
-
-    /// Identity Registry program ID
-    pub identity_registry: Pubkey,
-
-    /// Signer address (agent owner or delegate)
-    pub signer_address: Pubkey,
-
-    /// Ed25519 signature (64 bytes)
-    pub signature: [u8; 64],
-}
-
-impl FeedbackAuth {
-    /// Verify the feedback authentication signature
-    ///
-    /// # Arguments
-    /// * `client` - The client public key attempting to give feedback
-    /// * `current_index` - The current feedback index for this client
-    /// * `current_time` - Current Unix timestamp
-    /// * `instruction_sysvar` - Instructions sysvar for Ed25519 verification
-    ///
-    /// # Returns
-    /// * `Ok(())` if signature is valid
-    /// * `Err` with appropriate error code if validation fails
-    pub fn verify(
-        &self,
-        client: &Pubkey,
-        current_index: u64,
-        current_time: i64,
-        instruction_sysvar: &AccountInfo,
-    ) -> Result<()> {
-        use crate::error::ReputationError;
-
-        // 1. Verify client_address matches
-        require!(
-            self.client_address == *client,
-            ReputationError::FeedbackAuthClientMismatch
-        );
-
-        // 2. Verify not expired
-        require!(
-            current_time < self.expiry,
-            ReputationError::FeedbackAuthExpired
-        );
-
-        // 3. Verify index_limit not exceeded
-        require!(
-            current_index < self.index_limit,
-            ReputationError::FeedbackAuthIndexLimitExceeded
-        );
-
-        // 4. Verify chain_id matches expected chain
-        // Prevents replay attacks when using same program keypairs across chains
-        require!(
-            self.chain_id == EXPECTED_CHAIN_ID,
-            ReputationError::InvalidChainId
-        );
-
-        // 5. Construct message to verify signature
-        let message = self.construct_message();
-
-        // 6. Verify Ed25519 signature via instruction introspection
-        // This verifies that an Ed25519Program.verify() instruction was executed
-        // immediately before the current instruction with matching parameters
-
-        // Load current instruction index
-        let current_ix_index = load_current_index_checked(instruction_sysvar)
-            .map_err(|_| ReputationError::InvalidFeedbackAuthSignature)?;
-
-        // Verify there is a preceding instruction
-        require!(
-            current_ix_index > 0,
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-
-        // Load preceding instruction (should be Ed25519Program)
-        let ed25519_ix_index = current_ix_index.saturating_sub(1) as usize;
-        let ed25519_ix = load_instruction_at_checked(ed25519_ix_index, instruction_sysvar)
-            .map_err(|_| ReputationError::InvalidFeedbackAuthSignature)?;
-
-        // Verify instruction is from Ed25519Program
-        require!(
-            ed25519_ix.program_id == ed25519_program::ID,
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-
-        // Verify instruction has no accounts (stateless requirement)
-        require!(
-            ed25519_ix.accounts.is_empty(),
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-
-        // Parse Ed25519 instruction data
-        // Data layout (as per Solana Ed25519Program spec):
-        // [0]: num_signatures (u8) - should be 1
-        // [1]: padding (u8)
-        // [2-3]: signature_offset (u16 LE)
-        // [4-5]: signature_instruction_index (u16 LE) - should be 0xFFFF (current ix)
-        // [6-7]: public_key_offset (u16 LE)
-        // [8-9]: public_key_instruction_index (u16 LE) - should be 0xFFFF
-        // [10-11]: message_data_offset (u16 LE)
-        // [12-13]: message_data_size (u16 LE)
-        // [14-15]: message_instruction_index (u16 LE) - should be 0xFFFF
-        // [16+]: actual data (public_key, signature, message)
-        let ix_data = &ed25519_ix.data;
-        require!(
-            ix_data.len() >= 16,
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-
-        let num_signatures = ix_data[0];
-        require!(
-            num_signatures == 1,
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-
-        // Parse offsets (little-endian)
-        let sig_offset = u16::from_le_bytes([ix_data[2], ix_data[3]]) as usize;
-        let sig_ix_index = u16::from_le_bytes([ix_data[4], ix_data[5]]);
-        let pubkey_offset = u16::from_le_bytes([ix_data[6], ix_data[7]]) as usize;
-        let pubkey_ix_index = u16::from_le_bytes([ix_data[8], ix_data[9]]);
-        let message_offset = u16::from_le_bytes([ix_data[10], ix_data[11]]) as usize;
-        let message_size = u16::from_le_bytes([ix_data[12], ix_data[13]]) as usize;
-        let message_ix_index = u16::from_le_bytes([ix_data[14], ix_data[15]]);
-
-        // Verify all data is in current instruction (0xFFFF sentinel)
-        require!(
-            sig_ix_index == u16::MAX
-                && pubkey_ix_index == u16::MAX
-                && message_ix_index == u16::MAX,
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-
-        // Extract and verify public key (32 bytes)
-        require!(
-            pubkey_offset + 32 <= ix_data.len(),
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-        let pubkey_bytes = &ix_data[pubkey_offset..pubkey_offset + 32];
-        let verified_pubkey = Pubkey::new_from_array(
-            pubkey_bytes
-                .try_into()
-                .map_err(|_| ReputationError::InvalidFeedbackAuthSignature)?,
-        );
-
-        // Verify public key matches signer_address
-        require!(
-            verified_pubkey == self.signer_address,
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-
-        // Extract and verify signature (64 bytes)
-        require!(
-            sig_offset + 64 <= ix_data.len(),
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-        let sig_bytes = &ix_data[sig_offset..sig_offset + 64];
-        let verified_signature: [u8; 64] = sig_bytes
-            .try_into()
-            .map_err(|_| ReputationError::InvalidFeedbackAuthSignature)?;
-
-        // Verify signature matches feedbackAuth.signature
-        require!(
-            verified_signature == self.signature,
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-
-        // Extract and verify message
-        require!(
-            message_offset + message_size <= ix_data.len(),
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-        let verified_message = &ix_data[message_offset..message_offset + message_size];
-
-        // Verify message matches constructed message
-        require!(
-            verified_message == message.as_slice(),
-            ReputationError::InvalidFeedbackAuthSignature
-        );
-
-        msg!(
-            "FeedbackAuth signature verified via Ed25519Program introspection for client: {}",
-            client
-        );
-        Ok(())
-    }
-
-    /// Construct the message to be signed/verified
-    /// Format: "feedback_auth:{agent_id}:{client}:{index_limit}:{expiry}:{chain_id}:{identity_registry}"
-    fn construct_message(&self) -> Vec<u8> {
-        format!(
-            "feedback_auth:{}:{}:{}:{}:{}:{}",
-            self.agent_id,
-            self.client_address,
-            self.index_limit,
-            self.expiry,
-            self.chain_id,
-            self.identity_registry
-        )
-        .as_bytes()
-        .to_vec()
-    }
 }
