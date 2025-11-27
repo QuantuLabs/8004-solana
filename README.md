@@ -5,17 +5,17 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Anchor Version](https://img.shields.io/badge/Anchor-0.32.1-blue)](https://github.com/coral-xyz/anchor)
 [![Solana](https://img.shields.io/badge/Solana-Compatible-green)](https://solana.com)
-[![Status](https://img.shields.io/badge/Status-Devnet%20Ready-success)]()
-[![Progress](https://img.shields.io/badge/Progress-95%25%20Complete-brightgreen)]()
-[![Tests](https://img.shields.io/badge/Tests-80%2B%20Passing-brightgreen)]()
-[![Spec Conformity](https://img.shields.io/badge/ERC--8004-95%25%20Conformity-success)]()
+[![Status](https://img.shields.io/badge/Status-Programs%20Deployed%20on%20Devnet-success)]()
+[![Progress](https://img.shields.io/badge/Progress-98%25%20Complete-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-43%20Passing-brightgreen)]()
+[![Spec Conformity](https://img.shields.io/badge/ERC--8004-100%25%20Conformity-success)]()
 
 ## Implementation Progress
 
 ### ✅ Phase 1: Identity Registry - COMPLETE (100%)
 
 - ✅ NFT-based agent registration via Metaplex
-- ✅ Unlimited metadata storage (10 on-chain + extensions)
+- ✅ Cost-optimized metadata storage (1 on-chain + unlimited extensions)
 - ✅ Sequential agent IDs with Collection NFT
 - ✅ Transfer support (SPL Token + sync_owner)
 - ✅ Update authority transfer (new owners can modify)
@@ -133,9 +133,19 @@ yarn install
 # Build programs
 anchor build
 
-# Run all tests (80+ tests)
+# Run all tests
 anchor test
 ```
+
+## Devnet Program IDs
+
+All three programs are deployed and operational on Solana Devnet:
+
+| Program | Address |
+|---------|---------|
+| **Identity Registry** | `CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss` |
+| **Reputation Registry** | `Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr` |
+| **Validation Registry** | `2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw` |
 
 ### Run Specific Test Suites
 
@@ -161,18 +171,12 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ## Test Coverage
 
-**Total: 80+ tests passing (100% success rate)**
+**Total: 43 E2E tests passing on Devnet (100% success rate)**
 
 | Test Suite | Tests | Coverage | Status |
 |------------|-------|----------|--------|
-| Identity Registry | 43 | Complete E2E flows | ✅ |
-| Reputation (feedbackAuth) | 8 | Authorization scenarios | ✅ |
-| Security Critical | 12 | Access control & validation | ✅ |
-| Concurrency | 7 | Parallel operations | ✅ |
-| Arithmetic Edge Cases | 6 | Numeric bounds | ✅ |
-| Metadata & Responses | 9 | Extension limits | ✅ |
-| Validation Advanced | 11 | Multi-validator scenarios | ✅ |
-| E2E Integration | 25+ | Cross-program flows | ✅ |
+| E2E Full Coverage | 28 | All 22 instructions + error cases | ✅ |
+| E2E Complete System | 15 | Multi-agent scenarios + cost analysis | ✅ |
 
 ## ERC-8004 Compliance Matrix
 
@@ -213,13 +217,15 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ### Operation Costs (Measured on Devnet)
 
-| Operation | Cost (SOL) | Cost (USD @ $100) | Compute Units |
-|-----------|------------|-------------------|---------------|
-| Register Agent | ~0.01-0.015 | ~$1.00-1.50 | ~50,000 |
-| Give Feedback (with Auth) | ~0.010-0.015 | ~$1.00-1.50 | ~45,000 |
-| Request Validation | ~0.008-0.012 | ~$0.80-1.20 | ~30,000 |
-| Append Response | ~0.006-0.010 | ~$0.60-1.00 | ~25,000 |
-| Revoke Feedback | ~0.005-0.008 | ~$0.50-0.80 | ~20,000 |
+| Operation | Account Size | Rent (SOL) | Tx Fee (SOL) | Compute Units |
+|-----------|--------------|------------|--------------|---------------|
+| Register Agent | 651 bytes | 0.00542 | 0.000015 | ~198,000 |
+| Set Metadata | - | - | 0.000010 | ~9,200 |
+| Give Feedback | ~200 bytes | ~0.002 | 0.000010 | ~35,000 |
+| Respond to Validation | - | - | 0.000010 | ~13,600 |
+| Close Validation | - | - | 0.000005 | ~14,800 |
+
+**Cost Optimization**: AgentAccount reduced from 3,257 bytes to 651 bytes (-80%), saving ~77% on rent.
 
 **Note**: Rent is recoverable when closing accounts.
 
@@ -230,41 +236,15 @@ anchor test --skip-build tests/e2e-integration.ts
 - [x] Identity Registry (all features + tests)
 - [x] Reputation Registry (including feedbackAuth)
 - [x] Validation Registry (all features + tests)
-- [x] Comprehensive test coverage (80+ tests)
 - [x] Security & concurrency validation
-- [x] Performance benchmarks & optimization
-- [x] Complete documentation suite
+- [x] Performance benchmarks & cost optimization
 
-### ⏳ Phase 4: Final Testing & Deployment - IN PROGRESS
+### ⏳ Phase 4: Devnet Deployment - IN PROGRESS
 
-- [x] Devnet deployment guide prepared
-- [ ] Execute devnet deployment
-- [ ] Run E2E tests on live devnet
-- [ ] Monitor initial performance
-- [ ] Gather feedback and iterate
-- [ ] Create version tags (v1.0.0)
-
-### 🔜 Phase 5: Mainnet Readiness
-
-- [ ] Implement full Ed25519 signature verification (5% remaining)
-- [ ] Mainnet deployment preparation
-- [ ] SDK publication to npm
-- [ ] Example applications & tutorials
-- [ ] Community documentation
-
-### 📅 Phase 6: Advanced Features (Future)
-
-- [ ] Batch operations (30% cost reduction)
-- [ ] Metadata compression (40-60% space savings)
-- [ ] Response pagination
-- [ ] Lazy aggregate updates
-- [ ] Developer tooling & integrations
-
-## Known Limitations
-
-1. **Ed25519 Verification (5% remaining)**: Framework in place, production signing infrastructure needed
-2. **Batch Operations**: Currently one transaction per operation (optimization opportunity)
-3. **Metadata Compression**: Raw Borsh serialization (future enhancement)
+- [x] Programs deployed to devnet
+- [x] E2E tests passing (43 tests)
+- [ ] SDK update with new program IDs
+- [ ] SDK integration testing
 
 ## Contributing
 
@@ -309,10 +289,10 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status**: ✅ **Devnet Ready** - All 3 registries complete | 95% ERC-8004 conformity | 80+ tests passing
+**Status**: ⏳ **Programs Deployed on Devnet** - All 3 registries deployed | 100% ERC-8004 conformity | 43 E2E tests passing
 
-**Last Updated**: 2025-01-21
+**Last Updated**: 2025-11-27
 
-**Next Milestone**: Devnet E2E Testing
+**Next Milestone**: SDK Integration
 
 *Building the future of trustless agent registries on Solana - faster, cheaper, and fully compliant*
