@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
 
-declare_id!("9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa");
+declare_id!("Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr");
 
 // SECURITY: Dynamic Identity Registry Program ID based on deployment environment
 // This ensures only agents from the legitimate Identity Registry can receive feedback
 // Configured via Cargo features matching Anchor.toml deployment targets
 
 #[cfg(feature = "devnet")]
-pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("28oby6bmCvmoybb7849stjECZWxiU6gfJJM6DKA2Kj4f");
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss");
 
 #[cfg(feature = "mainnet")]
 pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("MAINNET_ID_TBD_AFTER_DEPLOYMENT_REPLACE_THIS");

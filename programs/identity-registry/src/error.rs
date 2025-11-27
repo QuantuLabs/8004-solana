@@ -11,7 +11,7 @@ pub enum IdentityError {
     #[msg("Val>256")]
     ValueTooLong,
 
-    #[msg("Max10")]
+    #[msg("Max1")]
     MetadataLimitReached,
 
     #[msg("!owner")]

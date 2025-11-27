@@ -8,14 +8,14 @@ use error::ValidationError;
 use events::{ValidationRequested, ValidationResponded};
 use state::{ValidationConfig, ValidationRequest};
 
-declare_id!("CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW");
+declare_id!("2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw");
 
 // SECURITY: Dynamic Identity Registry Program ID based on deployment environment
 // This ensures only agents from the legitimate Identity Registry can be validated
 // Configured via Cargo features matching Anchor.toml deployment targets
 
 #[cfg(feature = "devnet")]
-pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("28oby6bmCvmoybb7849stjECZWxiU6gfJJM6DKA2Kj4f");
+pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss");
 
 #[cfg(feature = "mainnet")]
 pub const IDENTITY_REGISTRY_ID: Pubkey = anchor_lang::solana_program::pubkey!("MAINNET_ID_TBD_AFTER_DEPLOYMENT_REPLACE_THIS");

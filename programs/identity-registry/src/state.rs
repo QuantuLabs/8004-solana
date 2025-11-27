@@ -66,12 +66,13 @@ impl AgentAccount {
     /// Maximum size for AgentAccount
     /// 8 (discriminator) + 8 (agent_id) + 32 (owner) + 32 (agent_mint)
     /// + 4 + 200 (agent_uri) + 4 + 32 (nft_name) + 4 + 10 (nft_symbol)
-    /// + 4 + (10 * MetadataEntry::MAX_SIZE) (metadata)
+    /// + 4 + (1 * MetadataEntry::MAX_SIZE) (metadata)
     /// + 8 (created_at) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 32 + 4 + 200 + 4 + 32 + 4 + 10 + 4 + (10 * MetadataEntry::MAX_SIZE) + 8 + 1;
+    /// = 8 + 8 + 32 + 32 + 204 + 36 + 14 + 300 + 8 + 1 = 643 bytes
+    pub const MAX_SIZE: usize = 8 + 8 + 32 + 32 + 4 + 200 + 4 + 32 + 4 + 10 + 4 + (1 * MetadataEntry::MAX_SIZE) + 8 + 1;
 
-    /// Maximum number of metadata entries allowed
-    pub const MAX_METADATA_ENTRIES: usize = 10;
+    /// Maximum number of metadata entries allowed (use MetadataExtension for more)
+    pub const MAX_METADATA_ENTRIES: usize = 1;
 
     /// Maximum token URI length in bytes
     pub const MAX_URI_LENGTH: usize = 200;
@@ -164,8 +165,9 @@ mod tests {
     fn test_agent_account_max_size() {
         // Should be under 10KB for reasonable rent costs
         assert!(AgentAccount::MAX_SIZE < 10240);
-        // Actual expected size
-        assert_eq!(AgentAccount::MAX_SIZE, 3257);
+        // Actual expected size (optimized: 1 metadata entry instead of 10)
+        // 8 + 8 + 32 + 32 + 204 + 36 + 14 + 300 + 8 + 1 = 643 bytes
+        assert_eq!(AgentAccount::MAX_SIZE, 643);
     }
 
     #[test]

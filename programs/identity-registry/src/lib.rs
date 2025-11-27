@@ -10,7 +10,7 @@ use mpl_token_metadata::{
     ID as TOKEN_METADATA_PROGRAM_ID,
 };
 
-declare_id!("28oby6bmCvmoybb7849stjECZWxiU6gfJJM6DKA2Kj4f");
+declare_id!("CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss");
 
 mod state;
 mod error;
