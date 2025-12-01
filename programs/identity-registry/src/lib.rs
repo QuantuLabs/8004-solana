@@ -894,9 +894,16 @@ pub struct SetMetadata<'info> {
         mut,
         seeds = [b"agent", agent_account.agent_mint.as_ref()],
         bump = agent_account.bump,
-        constraint = owner.key() == agent_account.owner @ IdentityError::Unauthorized
     )]
     pub agent_account: Account<'info, AgentAccount>,
+
+    /// Token account holding the agent NFT - verifies actual ownership
+    #[account(
+        constraint = token_account.mint == agent_account.agent_mint @ IdentityError::InvalidTokenAccount,
+        constraint = token_account.amount == 1 @ IdentityError::InvalidTokenAccount,
+        constraint = owner.key() == token_account.owner @ IdentityError::Unauthorized
+    )]
+    pub token_account: Account<'info, TokenAccount>,
 
     pub owner: Signer<'info>,
 }
@@ -907,9 +914,16 @@ pub struct SetAgentUri<'info> {
         mut,
         seeds = [b"agent", agent_account.agent_mint.as_ref()],
         bump = agent_account.bump,
-        constraint = owner.key() == agent_account.owner @ IdentityError::Unauthorized
     )]
     pub agent_account: Account<'info, AgentAccount>,
+
+    /// Token account holding the agent NFT - verifies actual ownership
+    #[account(
+        constraint = token_account.mint == agent_account.agent_mint @ IdentityError::InvalidTokenAccount,
+        constraint = token_account.amount == 1 @ IdentityError::InvalidTokenAccount,
+        constraint = owner.key() == token_account.owner @ IdentityError::Unauthorized
+    )]
+    pub token_account: Account<'info, TokenAccount>,
 
     /// CHECK: Metaplex metadata PDA verified via seeds constraint
     #[account(
@@ -1006,13 +1020,20 @@ pub struct CreateMetadataExtension<'info> {
     /// Agent NFT mint (for PDA derivation)
     pub agent_mint: Account<'info, Mint>,
 
-    /// Agent account (to verify ownership)
+    /// Agent account (for PDA derivation)
     #[account(
         seeds = [b"agent", agent_mint.key().as_ref()],
         bump = agent_account.bump,
-        constraint = agent_account.owner == owner.key() @ IdentityError::Unauthorized
     )]
     pub agent_account: Account<'info, AgentAccount>,
+
+    /// Token account holding the agent NFT - verifies actual ownership
+    #[account(
+        constraint = token_account.mint == agent_mint.key() @ IdentityError::InvalidTokenAccount,
+        constraint = token_account.amount == 1 @ IdentityError::InvalidTokenAccount,
+        constraint = owner.key() == token_account.owner @ IdentityError::Unauthorized
+    )]
+    pub token_account: Account<'info, TokenAccount>,
 
     #[account(mut)]
     pub owner: Signer<'info>,
@@ -1033,13 +1054,20 @@ pub struct SetMetadataExtended<'info> {
     /// Agent NFT mint (for PDA derivation)
     pub agent_mint: Account<'info, Mint>,
 
-    /// Agent account (to verify ownership)
+    /// Agent account (for PDA derivation)
     #[account(
         seeds = [b"agent", agent_mint.key().as_ref()],
         bump = agent_account.bump,
-        constraint = agent_account.owner == owner.key() @ IdentityError::Unauthorized
     )]
     pub agent_account: Account<'info, AgentAccount>,
+
+    /// Token account holding the agent NFT - verifies actual ownership
+    #[account(
+        constraint = token_account.mint == agent_mint.key() @ IdentityError::InvalidTokenAccount,
+        constraint = token_account.amount == 1 @ IdentityError::InvalidTokenAccount,
+        constraint = owner.key() == token_account.owner @ IdentityError::Unauthorized
+    )]
+    pub token_account: Account<'info, TokenAccount>,
 
     pub owner: Signer<'info>,
 }
