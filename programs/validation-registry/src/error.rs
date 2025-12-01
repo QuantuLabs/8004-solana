@@ -37,4 +37,7 @@ pub enum ValidationError {
 
     #[msg("!Auth")]
     Unauthorized,
+
+    #[msg("!Token")]
+    InvalidTokenAccount,
 }

@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
 
 mod error;
 mod events;
@@ -71,27 +72,24 @@ pub mod validation_registry {
             ValidationError::RequestUriTooLong
         );
 
-        // Manually deserialize and verify agent account
+        // Manually deserialize agent account to verify agent_id
         let agent_data = ctx.accounts.agent_account.try_borrow_data()?;
 
-        // Skip 8-byte discriminator, then read fields:
-        // agent_id (8 bytes), owner (32 bytes), agent_mint (32 bytes)
-        require!(agent_data.len() >= 8 + 8 + 32, ValidationError::AgentNotFound);
+        // Skip 8-byte discriminator, read agent_id (next 8 bytes)
+        require!(agent_data.len() >= 8 + 8, ValidationError::AgentNotFound);
 
         let stored_agent_id = u64::from_le_bytes(
             agent_data[8..16]
                 .try_into()
                 .map_err(|_| ValidationError::AgentNotFound)?
         );
-        let stored_owner = Pubkey::try_from(&agent_data[16..48])
-            .map_err(|_| ValidationError::AgentNotFound)?;
 
         // Verify agent_id matches
         require!(stored_agent_id == agent_id, ValidationError::AgentNotFound);
 
-        // Verify requester is the owner
+        // Verify requester is the actual NFT holder (via token_account)
         require!(
-            stored_owner == ctx.accounts.requester.key(),
+            ctx.accounts.token_account.owner == ctx.accounts.requester.key(),
             ValidationError::UnauthorizedRequester
         );
 
@@ -221,17 +219,9 @@ pub mod validation_registry {
     pub fn close_validation(
         ctx: Context<CloseValidation>,
     ) -> Result<()> {
-        // Verify closer is either agent owner or program authority
-        // Manually deserialize agent account to get owner
-        let agent_data = ctx.accounts.agent_account.try_borrow_data()?;
-        require!(agent_data.len() >= 8 + 8 + 32, ValidationError::AgentNotFound);
-
-        // Skip 8-byte discriminator, skip agent_id (8 bytes), read owner (32 bytes)
-        let stored_owner = Pubkey::try_from(&agent_data[16..48])
-            .map_err(|_| ValidationError::AgentNotFound)?;
-
-        // Check closer is either agent owner OR program authority
-        let is_agent_owner = stored_owner == ctx.accounts.closer.key();
+        // Verify closer is either agent owner (NFT holder) or program authority
+        // Check closer is either actual NFT holder OR program authority
+        let is_agent_owner = ctx.accounts.token_account.owner == ctx.accounts.closer.key();
         let is_authority = ctx.accounts.config.authority == ctx.accounts.closer.key();
 
         require!(
@@ -272,7 +262,7 @@ pub struct RequestValidation<'info> {
     #[account(mut, seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, ValidationConfig>,
 
-    /// Agent owner (must match agent_account.owner)
+    /// Agent owner (must match token_account.owner - the actual NFT holder)
     pub requester: Signer<'info>,
 
     /// Payer for the validation request account (can be different from requester)
@@ -283,7 +273,7 @@ pub struct RequestValidation<'info> {
     /// CHECK: Validated via agent_account PDA derivation
     pub agent_mint: UncheckedAccount<'info>,
 
-    /// Agent account from Identity Registry (for ownership verification)
+    /// Agent account from Identity Registry (for agent_id verification)
     /// CHECK: Verified via PDA seeds, program ownership check, and manual deserialization
     #[account(
         seeds = [b"agent", agent_mint.key().as_ref()],
@@ -292,6 +282,13 @@ pub struct RequestValidation<'info> {
         constraint = agent_account.owner == &IDENTITY_REGISTRY_ID @ ValidationError::AgentNotFound
     )]
     pub agent_account: UncheckedAccount<'info>,
+
+    /// Token account holding the agent NFT - verifies actual ownership
+    #[account(
+        constraint = token_account.mint == agent_mint.key() @ ValidationError::InvalidTokenAccount,
+        constraint = token_account.amount == 1 @ ValidationError::InvalidTokenAccount,
+    )]
+    pub token_account: Account<'info, TokenAccount>,
 
     /// Validation request PDA
     #[account(
@@ -345,15 +342,15 @@ pub struct CloseValidation<'info> {
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, ValidationConfig>,
 
-    /// Agent owner OR program authority can close validations
-    /// Verified via custom constraint in instruction
+    /// Agent owner (NFT holder) OR program authority can close validations
+    /// Verified via token_account.owner in instruction
     pub closer: Signer<'info>,
 
     /// Agent NFT mint (required to derive agent PDA correctly)
     /// CHECK: Validated via agent_account PDA derivation
     pub agent_mint: UncheckedAccount<'info>,
 
-    /// Agent account from Identity Registry (for ownership verification)
+    /// Agent account from Identity Registry (for PDA derivation)
     /// CHECK: Verified via PDA seeds and program ownership check
     #[account(
         seeds = [b"agent", agent_mint.key().as_ref()],
@@ -362,6 +359,13 @@ pub struct CloseValidation<'info> {
         constraint = agent_account.owner == &IDENTITY_REGISTRY_ID @ ValidationError::AgentNotFound
     )]
     pub agent_account: UncheckedAccount<'info>,
+
+    /// Token account holding the agent NFT - verifies actual ownership
+    #[account(
+        constraint = token_account.mint == agent_mint.key() @ ValidationError::InvalidTokenAccount,
+        constraint = token_account.amount == 1 @ ValidationError::InvalidTokenAccount,
+    )]
+    pub token_account: Account<'info, TokenAccount>,
 
     /// Validation request to close
     #[account(
