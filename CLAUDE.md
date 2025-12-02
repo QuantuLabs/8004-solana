@@ -63,9 +63,9 @@ solana program deploy target/deploy/identity_registry.so \
 ```
 
 **Devnet Program IDs**:
-- Identity Registry: `28oby6bmCvmoybb7849stjECZWxiU6gfJJM6DKA2Kj4f`
-- Reputation Registry: `9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa`
-- Validation Registry: `CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW`
+- Identity Registry: `CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss`
+- Reputation Registry: `Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr`
+- Validation Registry: `2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw`
 
 ## Critical Architecture Details
 
