@@ -344,22 +344,21 @@
 <body>
     <div class="container">
         <header>
+            <div class="version-tabs" style="margin-bottom: 1rem;">
+                <a href="v0.1.0.html" style="color: var(--text-secondary); margin-right: 1rem; text-decoration: none;">v0.1.0</a>
+                <a href="index.html" style="color: var(--accent-purple); font-weight: bold; text-decoration: none; border-bottom: 2px solid var(--accent-purple); padding-bottom: 2px;">v0.2.0</a>
+            </div>
             <h1>8004 on Solana</h1>
             <p class="subtitle">Technical Documentation for AI Agent Identity & Reputation Registry</p>
             <div class="program-ids">
-                <div class="program-id identity">
-                    <span class="label">Identity Registry</span>
-                    CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss
-                </div>
-                <div class="program-id reputation">
-                    <span class="label">Reputation Registry</span>
-                    Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr
-                </div>
-                <div class="program-id validation">
-                    <span class="label">Validation Registry</span>
-                    2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw
+                <div class="program-id identity" style="border-left: 3px solid var(--accent-blue);">
+                    <span class="label">AgentRegistry8004 (Devnet)</span>
+                    3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
                 </div>
             </div>
+            <p style="color: var(--text-secondary); margin-top: 1rem; font-size: 0.9rem;">
+                Single program with Identity, Reputation & Validation modules | Metaplex Core | 89 tests
+            </p>
         </header>
 
         <nav>
@@ -367,9 +366,9 @@
                 <li><a href="#overview">Overview</a></li>
                 <li><a href="#architecture">Architecture</a></li>
                 <li><a href="#tools">Tools</a></li>
-                <li><a href="#identity">Identity Registry</a></li>
-                <li><a href="#reputation">Reputation Registry</a></li>
-                <li><a href="#validation">Validation Registry</a></li>
+                <li><a href="#identity">Identity</a></li>
+                <li><a href="#reputation">Reputation</a></li>
+                <li><a href="#validation">Validation</a></li>
                 <li><a href="#security">Security</a></li>
                 <li><a href="#costs">Costs</a></li>
                 <li><a href="#pda-reference">PDA Reference</a></li>
@@ -379,29 +378,29 @@
         <!-- OVERVIEW SECTION -->
         <section id="overview">
             <h2>Overview</h2>
-            <p>8004 is a standard for on-chain AI agent registries. This Solana implementation provides:</p>
+            <p>8004 is a standard for on-chain AI agent registries. This Solana implementation (v0.2.0) provides a single program with three modules:</p>
 
             <div class="grid" style="margin-top: 1.5rem;">
                 <div class="card">
                     <div class="card-header">
                         <div class="icon purple">ID</div>
-                        <h4 style="margin: 0;">Identity Registry</h4>
+                        <h4 style="margin: 0;">Identity Module</h4>
                     </div>
-                    <p>NFT-based agent registration with Metaplex integration. Each agent gets a unique NFT (supply=1, decimals=0) as its on-chain identity.</p>
+                    <p>NFT-based agent registration with <strong>Metaplex Core</strong>. Each agent gets a unique Core asset as its on-chain identity.</p>
                 </div>
                 <div class="card">
                     <div class="card-header">
                         <div class="icon green">★</div>
-                        <h4 style="margin: 0;">Reputation Registry</h4>
+                        <h4 style="margin: 0;">Reputation Module</h4>
                     </div>
-                    <p>Feedback/review system with scores (0-100), tags, and unlimited responses. Cached aggregates enable O(1) reputation queries.</p>
+                    <p>Feedback system with global index, scores (0-100), tags, and responses. Cached aggregates enable O(1) queries.</p>
                 </div>
                 <div class="card">
                     <div class="card-header">
                         <div class="icon orange">✓</div>
-                        <h4 style="margin: 0;">Validation Registry</h4>
+                        <h4 style="margin: 0;">Validation Module</h4>
                     </div>
-                    <p>Third-party validation and attestation. Validators can provide scores (0-100) with progressive updates.</p>
+                    <p>Third-party validation and attestation. Validators provide scores (0-100) with progressive updates.</p>
                 </div>
             </div>
 
@@ -431,25 +430,23 @@
 
             <div class="architecture-diagram">
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           SOLANA PROGRAMS (Devnet)                           │
-├────────────────────┬────────────────────────┬───────────────────────────────┤
-│  Identity Registry │   Reputation Registry  │     Validation Registry       │
-│  <span class="highlight">CAHKQ2am...acss</span>   │   <span class="highlight">Ejb8DaxZ...6Ajr</span>      │     <span class="highlight">2y87PVXu...whhw</span>          │
-├────────────────────┼────────────────────────┼───────────────────────────────┤
-│ • register()       │ • give_feedback()      │ • request_validation()        │
-│ • set_metadata()   │ • revoke_feedback()    │ • respond_to_validation()     │
-│ • set_agent_uri()  │ • append_response()    │ • update_validation()         │
-│ • sync_owner()     │                        │ • close_validation()          │
-│ • transfer_agent() │                        │                               │
-├────────────────────┴────────────────────────┴───────────────────────────────┤
-│                         CROSS-PROGRAM VALIDATION                             │
-│  Reputation & Validation registries validate agents exist via CPI to        │
-│  Identity Registry. Prevents fake agent attacks.                             │
+│                     AgentRegistry8004 (Devnet)                               │
+│              <span class="highlight">3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi</span>                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│                            METAPLEX INTEGRATION                              │
-│  • Collection NFT created on initialize()                                    │
-│  • Agent NFTs verified against collection via PDA signature                 │
-│  • Update authority transferred to new owner on transfer                    │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────────────────┐ │
+│  │  Identity Module │ │ Reputation Module│ │    Validation Module         │ │
+│  ├──────────────────┤ ├──────────────────┤ ├──────────────────────────────┤ │
+│  │ • register()     │ │ • give_feedback()│ │ • request_validation()       │ │
+│  │ • set_metadata() │ │ • revoke_feedback│ │ • respond_to_validation()    │ │
+│  │ • set_agent_uri()│ │ • append_response│ │ • update_validation()        │ │
+│  │ • transfer_agent │ │                  │ │ • close_validation()         │ │
+│  │ • add_extension()│ │                  │ │                              │ │
+│  └──────────────────┘ └──────────────────┘ └──────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                           METAPLEX CORE                                      │
+│  • Collection created on initialize() as Core Collection                    │
+│  • Agent NFTs are Core Assets verified against collection                   │
+│  • Update authority managed via Config PDA                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
             </div>
         </section>
@@ -515,10 +512,10 @@
             </div>
         </section>
 
-        <!-- IDENTITY REGISTRY SECTION -->
+        <!-- IDENTITY MODULE SECTION -->
         <section id="identity">
-            <h2>Identity Registry</h2>
-            <p>Manages agent registration with NFT-based identity. Each agent is represented by a unique Metaplex NFT.</p>
+            <h2>Identity Module</h2>
+            <p>Manages agent registration with NFT-based identity. Each agent is represented by a unique <strong>Metaplex Core</strong> asset.</p>
 
             <h3>Key Design: Permissionless Registration</h3>
             <div class="info">
@@ -530,22 +527,20 @@
             <!-- initialize -->
             <div class="card">
                 <h4>initialize()</h4>
-                <p>Initialize the registry and create the Metaplex Collection NFT.</p>
+                <p>Initialize the registry and create the Metaplex Core Collection.</p>
 
                 <p><strong>What it does:</strong></p>
                 <ul>
-                    <li>Creates <code>RegistryConfig</code> PDA with global state</li>
-                    <li>Mints Collection NFT to authority</li>
-                    <li>Creates Metaplex metadata + master edition</li>
-                    <li><strong>Transfers collection update_authority to Collection Authority PDA</strong> (enables permissionless registration)</li>
+                    <li>Creates <code>Config</code> PDA with global state</li>
+                    <li>Creates Metaplex Core Collection</li>
+                    <li><strong>Config PDA becomes collection update_authority</strong> (enables permissionless registration)</li>
                 </ul>
 
                 <p><strong>Accounts:</strong></p>
                 <table>
                     <tr><th>Account</th><th>Type</th><th>Description</th></tr>
                     <tr><td>config</td><td><span class="tag init">init</span> <span class="tag mut">mut</span></td><td>PDA: <code>["config"]</code></td></tr>
-                    <tr><td>collection_mint</td><td><span class="tag init">init</span></td><td>Collection NFT mint</td></tr>
-                    <tr><td>collection_authority_pda</td><td>PDA</td><td><code>["collection_authority"]</code></td></tr>
+                    <tr><td>collection</td><td><span class="tag init">init</span></td><td>Core Collection asset</td></tr>
                     <tr><td>authority</td><td><span class="tag signer">signer</span></td><td>Registry deployer</td></tr>
                 </table>
             </div>
@@ -565,14 +560,13 @@
                 <p><strong>Flow:</strong></p>
                 <ol>
                     <li>Increment <code>config.next_agent_id</code> (sequential u64)</li>
-                    <li>Create Agent NFT (supply=1, decimals=0)</li>
-                    <li>Create Metaplex metadata with <code>collection.verified = false</code></li>
-                    <li><strong>Verify collection via PDA signature</strong> (VerifyCollectionV1)</li>
-                    <li>Initialize AgentAccount PDA</li>
+                    <li>Create Metaplex Core asset with collection plugin</li>
+                    <li><strong>Add to collection via Config PDA signature</strong></li>
+                    <li>Initialize AgentAccount PDA keyed by Core asset</li>
                 </ol>
 
                 <div class="pda-seed">
-                    <strong>Agent PDA:</strong> seeds = ["agent", agent_mint.key()]
+                    <strong>Agent PDA:</strong> seeds = ["agent", asset.key()]
                 </div>
 
                 <p><strong>Events:</strong> <code>Registered</code>, <code>MetadataSet</code> (for each entry)</p>
@@ -581,7 +575,7 @@
             <!-- set_metadata -->
             <div class="card">
                 <h4>set_metadata(key: String, value: Vec&lt;u8&gt;)</h4>
-                <p>Set or update a metadata entry. Only NFT holder can call.</p>
+                <p>Set or update a metadata entry. Only Core asset holder can call.</p>
 
                 <p><strong>Constraints:</strong></p>
                 <ul>
@@ -590,56 +584,44 @@
                     <li>Max 1 entry in base AgentAccount (use extensions for more)</li>
                 </ul>
 
-                <p><strong>Authorization:</strong> Verified via token account ownership check:</p>
-                <pre><code>constraint = token_account.mint == agent_account.agent_mint
-constraint = token_account.amount == 1
-constraint = owner.key() == token_account.owner</code></pre>
+                <p><strong>Authorization:</strong> Verified via Metaplex Core asset owner:</p>
+                <pre><code>// Core asset stores owner directly
+constraint = asset.owner == owner.key()</code></pre>
             </div>
 
             <!-- set_agent_uri -->
             <div class="card">
                 <h4>set_agent_uri(new_uri: String)</h4>
-                <p>Update agent URI and sync to Metaplex metadata.</p>
-                <p>Uses <code>UpdateAsUpdateAuthorityV2CpiBuilder</code> to update Metaplex NFT URI.</p>
-            </div>
-
-            <!-- sync_owner -->
-            <div class="card">
-                <h4>sync_owner()</h4>
-                <p>Sync cached owner after SPL Token transfer + transfer Metaplex update_authority.</p>
-
-                <div class="warning">
-                    Must be called after transferring the agent NFT via standard SPL Token transfer. Updates <code>agent.owner</code> and transfers Metaplex update_authority to new owner.
-                </div>
+                <p>Update agent URI and sync to Metaplex Core asset.</p>
+                <p>Uses <code>UpdateV1CpiBuilder</code> to update Core asset URI. Config PDA signs as collection update authority.</p>
             </div>
 
             <!-- transfer_agent -->
             <div class="card">
                 <h4>transfer_agent()</h4>
-                <p>Convenience function: SPL Token transfer + sync_owner in one instruction.</p>
+                <p>Transfer Core asset to new owner. Uses <code>TransferV1CpiBuilder</code> for Metaplex Core transfer.</p>
             </div>
 
             <h3>Account Structures</h3>
 
             <div class="card">
-                <h4>RegistryConfig (82 bytes)</h4>
-                <pre><code>pub struct RegistryConfig {
+                <h4>Config</h4>
+                <pre><code>pub struct Config {
     pub authority: Pubkey,              // 32 bytes
     pub next_agent_id: u64,             // 8 bytes (sequential counter)
     pub total_agents: u64,              // 8 bytes
-    pub collection_mint: Pubkey,        // 32 bytes
-    pub collection_authority_bump: u8,  // 1 byte
+    pub collection: Pubkey,             // 32 bytes (Core Collection)
     pub bump: u8,                       // 1 byte
 }</code></pre>
                 <div class="pda-seed"><strong>PDA:</strong> seeds = ["config"]</div>
             </div>
 
             <div class="card">
-                <h4>AgentAccount (643 bytes)</h4>
+                <h4>AgentAccount</h4>
                 <pre><code>pub struct AgentAccount {
-    pub agent_id: u64,                  // 8 bytes (NOT derived from mint)
-    pub owner: Pubkey,                  // 32 bytes (cached, sync on transfer)
-    pub agent_mint: Pubkey,             // 32 bytes
+    pub agent_id: u64,                  // 8 bytes
+    pub owner: Pubkey,                  // 32 bytes (cached)
+    pub asset: Pubkey,                  // 32 bytes (Core asset)
     pub agent_uri: String,              // 4 + 200 = 204 bytes
     pub nft_name: String,               // 4 + 32 = 36 bytes ("Agent #X")
     pub nft_symbol: String,             // 4 + 10 = 14 bytes
@@ -651,7 +633,7 @@ constraint = owner.key() == token_account.owner</code></pre>
 // Constants
 MAX_METADATA_ENTRIES: 1   // Use extensions for more
 MAX_URI_LENGTH: 200</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent", agent_mint.key()]</div>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent", asset.key()]</div>
             </div>
 
             <div class="card">
@@ -668,7 +650,7 @@ MAX_URI_LENGTH: 200</code></pre>
             <div class="card">
                 <h4>MetadataExtension (3006 bytes)</h4>
                 <p>For &gt;1 metadata entries, create extension PDAs (10 entries each, unlimited total).</p>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["metadata_ext", agent_mint, extension_index]</div>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["metadata_ext", asset.key(), extension_index]</div>
             </div>
 
             <h3>Error Codes</h3>
@@ -693,9 +675,9 @@ MAX_URI_LENGTH: 200</code></pre>
             </table>
         </section>
 
-        <!-- REPUTATION REGISTRY SECTION -->
+        <!-- REPUTATION MODULE SECTION -->
         <section id="reputation">
-            <h2>Reputation Registry</h2>
+            <h2>Reputation Module</h2>
             <p>Manages feedback, responses, and cached reputation aggregates for agents.</p>
 
             <h3>Key Design: Cached Aggregates</h3>
@@ -707,27 +689,23 @@ MAX_URI_LENGTH: 200</code></pre>
 
             <!-- give_feedback -->
             <div class="card">
-                <h4>give_feedback(agent_id, score, tag1, tag2, file_uri, file_hash, feedback_index)</h4>
+                <h4>give_feedback(agent_id, score, tag1, tag2, file_uri, file_hash)</h4>
                 <p>Create feedback for an agent. Updates cached reputation stats.</p>
 
                 <p><strong>Parameters:</strong></p>
                 <table>
                     <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
-                    <tr><td>agent_id</td><td>u64</td><td>Must exist in Identity Registry</td></tr>
+                    <tr><td>agent_id</td><td>u64</td><td>Must exist (validated internally)</td></tr>
                     <tr><td>score</td><td>u8</td><td>0-100 (validated on-chain)</td></tr>
                     <tr><td>tag1, tag2</td><td>String</td><td>Max 32 bytes each</td></tr>
                     <tr><td>file_uri</td><td>String</td><td>Max 200 bytes</td></tr>
                     <tr><td>file_hash</td><td>[u8; 32]</td><td>SHA-256 hash</td></tr>
-                    <tr><td>feedback_index</td><td>u64</td><td>Must match client_index.last_index</td></tr>
                 </table>
 
-                <p><strong>Cross-Program Validation:</strong></p>
-                <pre><code>// Verify agent exists in Identity Registry
-constraint = identity_registry_program.key() == IDENTITY_REGISTRY_ID
-constraint = agent_account.owner == &IDENTITY_REGISTRY_ID
-
-// Manual deserialization to extract agent_id
-let stored_agent_id = u64::from_le_bytes(agent_data[8..16]);</code></pre>
+                <p><strong>Global Feedback Index:</strong></p>
+                <pre><code>// Index auto-incremented from AgentReputationMetadata
+let feedback_index = agent_reputation.next_feedback_index;
+agent_reputation.next_feedback_index += 1;</code></pre>
 
                 <p><strong>Aggregate Update:</strong></p>
                 <pre><code>agent_reputation.total_feedbacks += 1;
@@ -735,7 +713,7 @@ agent_reputation.total_score_sum += score as u64;
 agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</code></pre>
 
                 <div class="pda-seed">
-                    <strong>Feedback PDA:</strong> seeds = ["feedback", agent_id (LE), client.key(), feedback_index (LE)]
+                    <strong>Feedback PDA:</strong> seeds = ["feedback", agent_id (LE), feedback_index (LE)]
                 </div>
             </div>
 
@@ -755,7 +733,7 @@ agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</c
 
             <!-- append_response -->
             <div class="card">
-                <h4>append_response(agent_id, client_address, feedback_index, response_uri, response_hash)</h4>
+                <h4>append_response(agent_id, feedback_index, response_uri, response_hash)</h4>
                 <p>Append response to existing feedback. <strong>Anyone can respond</strong> (permissionless).</p>
 
                 <p><strong>Use Cases:</strong></p>
@@ -766,7 +744,7 @@ agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</c
                 </ul>
 
                 <div class="pda-seed">
-                    <strong>Response PDA:</strong> seeds = ["response", agent_id (LE), client_address, feedback_index (LE), response_index (LE)]
+                    <strong>Response PDA:</strong> seeds = ["response", agent_id (LE), feedback_index (LE), response_index (LE)]
                 </div>
                 <p><em>Unlimited responses per feedback via ResponseIndexAccount tracking.</em></p>
             </div>
@@ -774,11 +752,11 @@ agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</c
             <h3>Account Structures</h3>
 
             <div class="card">
-                <h4>FeedbackAccount (375 bytes)</h4>
+                <h4>FeedbackAccount</h4>
                 <pre><code>pub struct FeedbackAccount {
     pub agent_id: u64,           // 8 bytes
-    pub client_address: Pubkey,  // 32 bytes
-    pub feedback_index: u64,     // 8 bytes
+    pub client_address: Pubkey,  // 32 bytes (who gave feedback)
+    pub feedback_index: u64,     // 8 bytes (global index)
     pub score: u8,               // 1 byte (0-100)
     pub tag1: String,            // 4 + 32 = 36 bytes
     pub tag2: String,            // 4 + 32 = 36 bytes
@@ -788,31 +766,27 @@ agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</c
     pub created_at: i64,         // 8 bytes
     pub bump: u8,                // 1 byte
 }</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback", agent_id (LE), feedback_index (LE)]</div>
             </div>
 
             <div class="card">
-                <h4>AgentReputationMetadata (42 bytes) - Cached Stats</h4>
+                <h4>AgentReputationMetadata - Cached Stats</h4>
                 <pre><code>pub struct AgentReputationMetadata {
-    pub agent_id: u64,           // 8 bytes
-    pub total_feedbacks: u64,    // 8 bytes (non-revoked count)
-    pub total_score_sum: u64,    // 8 bytes (for precise average)
-    pub average_score: u8,       // 1 byte (0-100, pre-calculated)
-    pub last_updated: i64,       // 8 bytes
-    pub bump: u8,                // 1 byte
+    pub agent_id: u64,              // 8 bytes
+    pub total_feedbacks: u64,       // 8 bytes (non-revoked count)
+    pub total_score_sum: u64,       // 8 bytes (for precise average)
+    pub average_score: u8,          // 1 byte (0-100, pre-calculated)
+    pub next_feedback_index: u64,   // 8 bytes (global counter)
+    pub last_updated: i64,          // 8 bytes
+    pub bump: u8,                   // 1 byte
 }</code></pre>
                 <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_reputation", agent_id (LE)]</div>
             </div>
 
             <div class="card">
-                <h4>ClientIndexAccount (57 bytes)</h4>
-                <p>Tracks next feedback index per client-agent pair. Prevents duplicate indices.</p>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["client_index", agent_id (LE), client.key()]</div>
-            </div>
-
-            <div class="card">
-                <h4>ResponseIndexAccount (65 bytes)</h4>
+                <h4>ResponseIndexAccount</h4>
                 <p>Tracks next response index per feedback. Enables unlimited responses.</p>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response_index", agent_id (LE), client_address, feedback_index (LE)]</div>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response_index", agent_id (LE), feedback_index (LE)]</div>
             </div>
 
             <h3>Error Codes</h3>
@@ -836,9 +810,9 @@ agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</c
             </table>
         </section>
 
-        <!-- VALIDATION REGISTRY SECTION -->
+        <!-- VALIDATION MODULE SECTION -->
         <section id="validation">
-            <h2>Validation Registry</h2>
+            <h2>Validation Module</h2>
             <p>Third-party validation and attestation system. Validators can provide scores with progressive updates.</p>
 
             <h3>Key Design: Cost-Optimized Storage</h3>
@@ -950,66 +924,41 @@ pub fn is_pending(&self) -> bool { self.responded_at == 0 }</code></pre>
 
         <!-- SECURITY SECTION -->
         <section id="security">
-            <h2>Cross-Program Security</h2>
-            <p>Critical security mechanisms preventing fake agent attacks.</p>
+            <h2>Security</h2>
+            <p>Security mechanisms in the unified program architecture.</p>
 
             <div class="card">
-                <h4>Problem: Fake Agent Attacks</h4>
-                <p>Without validation, an attacker could create fake "agent" PDAs and receive feedback/validation for non-existent agents.</p>
-            </div>
-
-            <div class="card">
-                <h4>Solution 1: Program ID Constraint</h4>
-                <pre><code>#[account(
-    constraint = identity_registry_program.key() == IDENTITY_REGISTRY_ID
-        @ Error::InvalidIdentityRegistry
+                <h4>Agent Existence Verification</h4>
+                <p>Reputation and Validation modules verify agent existence internally by checking the AgentAccount PDA exists before processing.</p>
+                <pre><code>// Agent PDA must exist and match agent_id
+#[account(
+    seeds = [b"agent", asset.key().as_ref()],
+    bump = agent_account.bump,
+    constraint = agent_account.agent_id == agent_id
 )]
-pub identity_registry_program: UncheckedAccount&lt;'info&gt;,</code></pre>
-                <p>Hardcoded program ID checked at runtime.</p>
+pub agent_account: Account&lt;'info, AgentAccount&gt;,</code></pre>
             </div>
 
             <div class="card">
-                <h4>Solution 2: Environment-Based IDs</h4>
-                <pre><code>// Set via Cargo features in Anchor.toml
-#[cfg(feature = "devnet")]
-pub const IDENTITY_REGISTRY_ID: Pubkey = pubkey!("CAHKQ2am...");
-
-#[cfg(feature = "localnet")]
-pub const IDENTITY_REGISTRY_ID: Pubkey = pubkey!("AcngQwqu...");</code></pre>
-                <p>Compile-time configuration for each environment.</p>
+                <h4>Ownership Verification (Metaplex Core)</h4>
+                <p>For metadata/URI updates, ownership verified via Core asset directly:</p>
+                <pre><code>// Core asset stores owner in its data
+constraint = asset.owner == owner.key()</code></pre>
+                <p><strong>Why:</strong> Metaplex Core assets store owner directly, simplifying ownership verification.</p>
             </div>
 
             <div class="card">
-                <h4>Solution 3: PDA Ownership Verification</h4>
-                <pre><code>#[account(
-    seeds = [b"agent", agent_mint.key().as_ref()],
-    bump,
-    seeds::program = identity_registry_program.key(),
-    constraint = agent_account.owner == &IDENTITY_REGISTRY_ID
-)]
-pub agent_account: UncheckedAccount&lt;'info&gt;,</code></pre>
-                <p>Verifies PDA is actually owned by Identity Registry.</p>
+                <h4>Feedback Authorization</h4>
+                <p>Only the original feedback author can revoke:</p>
+                <pre><code>constraint = feedback.client_address == client.key()
+    @ ReputationError::Unauthorized</code></pre>
             </div>
 
             <div class="card">
-                <h4>Solution 4: Manual Agent ID Verification</h4>
-                <pre><code>// Manual deserialization (can't use Anchor parsing across programs)
-let agent_data = ctx.accounts.agent_account.try_borrow_data()?;
-let stored_agent_id = u64::from_le_bytes(agent_data[8..16].try_into()?);
-require!(stored_agent_id == agent_id, Error::AgentNotFound);</code></pre>
-                <p>Extracts and validates agent_id from raw account data.</p>
-            </div>
-
-            <h3>Ownership Verification (Identity Registry)</h3>
-            <div class="card">
-                <p>For metadata/URI updates, ownership verified via token account:</p>
-                <pre><code>#[account(
-    constraint = token_account.mint == agent_account.agent_mint,
-    constraint = token_account.amount == 1,  // Must hold exactly 1 NFT
-    constraint = owner.key() == token_account.owner
-)]
-pub token_account: Account&lt;'info, TokenAccount&gt;,</code></pre>
-                <p><strong>Why:</strong> Token account is source of truth for NFT ownership, not cached <code>agent.owner</code> field.</p>
+                <h4>Validation Authorization</h4>
+                <p>Only the designated validator can respond:</p>
+                <pre><code>constraint = validation_request.validator_address == validator.key()
+    @ ValidationError::UnauthorizedValidator</code></pre>
             </div>
         </section>
 
@@ -1059,37 +1008,34 @@ pub token_account: Account&lt;'info, TokenAccount&gt;,</code></pre>
         <section id="pda-reference">
             <h2>PDA Reference</h2>
 
-            <h3>Identity Registry PDAs</h3>
+            <h3>Identity Module PDAs</h3>
             <table>
-                <tr><th>Account</th><th>Seeds</th><th>Size</th></tr>
-                <tr><td>Config</td><td><code>["config"]</code></td><td>82 bytes</td></tr>
-                <tr><td>Collection Authority</td><td><code>["collection_authority"]</code></td><td>-</td></tr>
-                <tr><td>Agent</td><td><code>["agent", agent_mint.key()]</code></td><td>643 bytes</td></tr>
-                <tr><td>Metadata Extension</td><td><code>["metadata_ext", agent_mint, extension_index]</code></td><td>3006 bytes</td></tr>
+                <tr><th>Account</th><th>Seeds</th></tr>
+                <tr><td>Config</td><td><code>["config"]</code></td></tr>
+                <tr><td>Agent</td><td><code>["agent", asset.key()]</code></td></tr>
+                <tr><td>Metadata Extension</td><td><code>["metadata_ext", asset.key(), extension_index (LE)]</code></td></tr>
             </table>
 
-            <h3>Reputation Registry PDAs</h3>
+            <h3>Reputation Module PDAs</h3>
             <table>
-                <tr><th>Account</th><th>Seeds</th><th>Size</th></tr>
-                <tr><td>Feedback</td><td><code>["feedback", agent_id (LE), client.key(), feedback_index (LE)]</code></td><td>375 bytes</td></tr>
-                <tr><td>Client Index</td><td><code>["client_index", agent_id (LE), client.key()]</code></td><td>57 bytes</td></tr>
-                <tr><td>Agent Reputation</td><td><code>["agent_reputation", agent_id (LE)]</code></td><td>42 bytes</td></tr>
-                <tr><td>Response</td><td><code>["response", agent_id (LE), client_address, feedback_index (LE), response_index (LE)]</code></td><td>341 bytes</td></tr>
-                <tr><td>Response Index</td><td><code>["response_index", agent_id (LE), client_address, feedback_index (LE)]</code></td><td>65 bytes</td></tr>
+                <tr><th>Account</th><th>Seeds</th></tr>
+                <tr><td>Agent Reputation</td><td><code>["agent_reputation", agent_id (LE)]</code></td></tr>
+                <tr><td>Feedback</td><td><code>["feedback", agent_id (LE), feedback_index (LE)]</code></td></tr>
+                <tr><td>Response</td><td><code>["response", agent_id (LE), feedback_index (LE), response_index (LE)]</code></td></tr>
+                <tr><td>Response Index</td><td><code>["response_index", agent_id (LE), feedback_index (LE)]</code></td></tr>
             </table>
 
-            <h3>Validation Registry PDAs</h3>
+            <h3>Validation Module PDAs</h3>
             <table>
-                <tr><th>Account</th><th>Seeds</th><th>Size</th></tr>
-                <tr><td>Config</td><td><code>["config"]</code></td><td>81 bytes</td></tr>
-                <tr><td>Validation Request</td><td><code>["validation", agent_id (LE), validator_address, nonce (LE)]</code></td><td>126 bytes</td></tr>
+                <tr><th>Account</th><th>Seeds</th></tr>
+                <tr><td>Validation Request</td><td><code>["validation", agent_id (LE), validator_address, nonce (LE)]</code></td></tr>
             </table>
 
-            <h3>Metaplex PDAs (External)</h3>
+            <h3>Metaplex Core (External)</h3>
             <table>
-                <tr><th>Account</th><th>Seeds (Token Metadata Program)</th></tr>
-                <tr><td>Metadata</td><td><code>["metadata", token_metadata_program, mint.key()]</code></td></tr>
-                <tr><td>Master Edition</td><td><code>["metadata", token_metadata_program, mint.key(), "edition"]</code></td></tr>
+                <tr><th>Account</th><th>Description</th></tr>
+                <tr><td>Collection</td><td>Core Collection asset (stored in config.collection)</td></tr>
+                <tr><td>Asset</td><td>Core Asset for each agent (stored in agent.asset)</td></tr>
             </table>
         </section>
 

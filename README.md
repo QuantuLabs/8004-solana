@@ -1,45 +1,46 @@
 # ERC-8004 on Solana
 
-> Solana implementation of ERC-8004 (Trustless Agents Registry) with comprehensive test coverage and devnet-ready architecture
+> Solana implementation of ERC-8004 (Trustless Agents Registry) with comprehensive test coverage and devnet deployment
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Anchor Version](https://img.shields.io/badge/Anchor-0.32.1-blue)](https://github.com/coral-xyz/anchor)
 [![Solana](https://img.shields.io/badge/Solana-Compatible-green)](https://solana.com)
-[![Status](https://img.shields.io/badge/Status-Programs%20Deployed%20on%20Devnet-success)]()
-[![Progress](https://img.shields.io/badge/Progress-100%25%20Complete-brightgreen)]()
-[![Tests](https://img.shields.io/badge/Tests-43%20Passing-brightgreen)]()
+[![Status](https://img.shields.io/badge/Status-Deployed%20on%20Devnet-success)]()
+[![Tests](https://img.shields.io/badge/Tests-89%20Passing-brightgreen)]()
 [![Spec Conformity](https://img.shields.io/badge/ERC--8004-100%25%20Conformity-success)]()
 
-## Implementation Progress
+## v0.2.0 - Single Program Architecture
 
-### ✅ Phase 1: Identity Registry - COMPLETE (100%)
+**What's New:**
+- Single unified program with Identity, Reputation & Validation modules
+- **Metaplex Core** NFTs (lighter, faster than Token Metadata)
+- Global feedback index for simpler PDA derivation
+- 89 comprehensive tests on devnet
 
-- ✅ NFT-based agent registration via Metaplex
+## Features
+
+### Identity Module
+
+- ✅ NFT-based agent registration via **Metaplex Core**
 - ✅ Cost-optimized metadata storage (1 on-chain + unlimited extensions)
-- ✅ Sequential agent IDs with Collection NFT
-- ✅ Transfer support (SPL Token + sync_owner)
-- ✅ Update authority transfer (new owners can modify)
+- ✅ Sequential agent IDs with Core Collection
+- ✅ Transfer support via Core transfer
 - ✅ Full ERC-8004 spec compliance
-- ✅ Comprehensive test coverage
 
-### ✅ Phase 2: Reputation Registry - COMPLETE (100%)
+### Reputation Module
 
 - ✅ **giveFeedback** with score validation (0-100)
 - ✅ **revokeFeedback** with author-only access control
 - ✅ **appendResponse** with unlimited responses
 - ✅ **Cached aggregates** for O(1) reputation queries
-- ✅ **Permissionless feedback** (open participation model)
-- ✅ All 6 ERC-8004 read functions implemented
-- ✅ Comprehensive security testing
+- ✅ **Global feedback index** for simplified PDA derivation
 
-### ✅ Phase 3: Validation Registry - COMPLETE (100%)
+### Validation Module
 
 - ✅ **requestValidation** for third-party verification
 - ✅ **respondToValidation** with multi-validator support
 - ✅ **Progressive validation** with status tracking
-- ✅ **Cross-registry** integration with Identity Registry
 - ✅ Complete validation lifecycle management
-- ✅ Advanced test coverage (11 validation tests)
 
 ## What is ERC-8004?
 
@@ -59,30 +60,29 @@ This Solana implementation leverages the platform's unique architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Solana Programs                             │
-├──────────────────┬──────────────────────┬────────────────────────┤
-│ Identity Registry│ Reputation Registry  │ Validation Registry    │
-│ ✅ COMPLETE      │ ✅ COMPLETE          │ ✅ COMPLETE            │
-├──────────────────┼──────────────────────┼────────────────────────┤
-│ • Agent NFTs     │ • Feedback (0-100)   │ • Validation Requests  │
-│   (Metaplex)     │ • Score 0-100        │ • Validator Responses  │
-│ • Metadata       │ • Revocations        │ • Multi-validator      │
-│ • Sequential IDs │ • Responses          │ • Progressive Updates  │
-│ • Collection NFT │ • Cached Aggregates  │ • Cross-Registry Check │
-└──────────────────┴──────────────────────┴────────────────────────┘
-         │                    │
-         │                    ▼
-         │           SPL Token + Metaplex
-         │           (NFT minting & metadata)
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    TypeScript SDK (agent0-ts-solana)            │
+│              AgentRegistry8004 (Devnet)                          │
+│         3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi            │
 ├─────────────────────────────────────────────────────────────────┤
-│ • Feedback/Response utilities                                    │
+│  ┌─────────────────┐ ┌──────────────────┐ ┌──────────────────┐  │
+│  │ Identity Module │ │ Reputation Module│ │ Validation Module│  │
+│  ├─────────────────┤ ├──────────────────┤ ├──────────────────┤  │
+│  │ • Agent NFTs    │ │ • Feedback (0-100)│ │ • Validation Req │  │
+│  │   (Core)        │ │ • Revocations    │ │ • Responses      │  │
+│  │ • Metadata      │ │ • Responses      │ │ • Multi-validator│  │
+│  │ • Sequential IDs│ │ • Cached Aggr.   │ │ • Progressive    │  │
+│  └─────────────────┘ └──────────────────┘ └──────────────────┘  │
+├─────────────────────────────────────────────────────────────────┤
+│                      Metaplex Core                               │
+│         (Collection + Agent Assets)                              │
+└─────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                TypeScript SDK (8004-solana-ts)                   │
+├─────────────────────────────────────────────────────────────────┤
 │ • PDA derivation utilities                                      │
 │ • Borsh serialization schemas                                   │
-│ • Program integration wrappers                                  │
+│ • Full SDK wrapper (SolanaSDK class)                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -135,15 +135,13 @@ anchor build
 anchor test
 ```
 
-## Devnet Program IDs
+## Devnet Program ID
 
-All three programs are deployed and operational on Solana Devnet:
+Single unified program deployed on Solana Devnet:
 
 | Program | Address |
 |---------|---------|
-| **Identity Registry** | `CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss` |
-| **Reputation Registry** | `Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr` |
-| **Validation Registry** | `2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw` |
+| **AgentRegistry8004** | `3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi` |
 
 ### Run Specific Test Suites
 
@@ -169,12 +167,14 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ## Test Coverage
 
-**Total: 43 E2E tests passing on Devnet (100% success rate)**
+**Total: 89 tests passing on Devnet (100% success rate)**
 
 | Test Suite | Tests | Coverage | Status |
 |------------|-------|----------|--------|
-| E2E Full Coverage | 28 | All 22 instructions + error cases | ✅ |
-| E2E Complete System | 15 | Multi-agent scenarios + cost analysis | ✅ |
+| E2E Identity | 24 | Registration, metadata, transfers | ✅ |
+| E2E Reputation | 35 | Feedback, responses, aggregates | ✅ |
+| E2E Validation | 18 | Requests, responses, updates | ✅ |
+| SDK Integration | 12 | Full SDK coverage | ✅ |
 
 ## ERC-8004 Compliance Matrix
 
@@ -218,20 +218,19 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ## Roadmap
 
-### ✅ Phases 1-3: Core Implementation - COMPLETE
+### ✅ v0.2.0 - COMPLETE
 
-- [x] Identity Registry (all features + tests)
-- [x] Reputation Registry (feedback + responses)
-- [x] Validation Registry (all features + tests)
-- [x] Security & concurrency validation
-- [x] Performance benchmarks & cost optimization
+- [x] Single unified program with 3 modules
+- [x] Metaplex Core integration
+- [x] Global feedback index
+- [x] 89 tests passing on devnet
+- [x] TypeScript SDK updated
 
-### ✅ Phase 4: Devnet Deployment - COMPLETE
+### 🔜 Next
 
-- [x] Programs deployed to devnet
-- [x] E2E tests passing (43 tests)
-- [x] Agent registration verified on-chain
-- [x] Security audit of transaction flow
+- [ ] Mainnet deployment
+- [ ] Sub-collections extension
+- [ ] Indexer service
 
 ## Contributing
 
@@ -276,8 +275,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status**: ✅ **100% Complete** - All 3 registries deployed on Devnet | Full ERC-8004 conformity | 43 E2E tests passing
+**Status**: ✅ v0.2.0 Deployed on Devnet | 89 tests passing | Full ERC-8004 conformity
 
-**Last Updated**: 2025-12-02
-
-*Building the future of trustless agent registries on Solana - faster, cheaper, and fully compliant*
+**Last Updated**: 2025-12-03
