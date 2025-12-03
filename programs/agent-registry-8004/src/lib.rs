@@ -151,7 +151,6 @@ pub mod agent_registry_8004 {
     pub fn append_response(
         ctx: Context<AppendResponse>,
         agent_id: u64,
-        client_address: Pubkey,
         feedback_index: u64,
         response_uri: String,
         response_hash: [u8; 32],
@@ -159,7 +158,6 @@ pub mod agent_registry_8004 {
         reputation::instructions::append_response(
             ctx,
             agent_id,
-            client_address,
             feedback_index,
             response_uri,
             response_hash,

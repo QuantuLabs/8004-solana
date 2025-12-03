@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
 use super::state::*;
-use crate::identity::state::AgentAccount;
 use crate::error::RegistryError;
+use crate::identity::state::AgentAccount;
 
 /// Accounts for give_feedback instruction
 #[derive(Accounts)]
@@ -28,17 +28,7 @@ pub struct GiveFeedback<'info> {
     )]
     pub agent_account: Account<'info, AgentAccount>,
 
-    /// Client index account (tracks next feedback index for this client-agent pair)
-    #[account(
-        init_if_needed,
-        payer = payer,
-        space = ClientIndexAccount::SIZE,
-        seeds = [b"client_index", agent_id.to_le_bytes().as_ref(), client.key().as_ref()],
-        bump
-    )]
-    pub client_index: Account<'info, ClientIndexAccount>,
-
-    /// Feedback account (one per feedback)
+    /// Feedback account (one per feedback, global index)
     #[account(
         init,
         payer = payer,
@@ -46,14 +36,13 @@ pub struct GiveFeedback<'info> {
         seeds = [
             b"feedback",
             agent_id.to_le_bytes().as_ref(),
-            client.key().as_ref(),
             feedback_index.to_le_bytes().as_ref()
         ],
         bump
     )]
     pub feedback_account: Account<'info, FeedbackAccount>,
 
-    /// Agent reputation metadata (cached stats)
+    /// Agent reputation metadata (cached stats + global feedback counter)
     #[account(
         init_if_needed,
         payer = payer,
@@ -73,16 +62,16 @@ pub struct RevokeFeedback<'info> {
     /// Client revoking their feedback (must be original author)
     pub client: Signer<'info>,
 
-    /// Feedback account to revoke
+    /// Feedback account to revoke (global index)
     #[account(
         mut,
         seeds = [
             b"feedback",
             agent_id.to_le_bytes().as_ref(),
-            client.key().as_ref(),
             feedback_index.to_le_bytes().as_ref()
         ],
-        bump = feedback_account.bump
+        bump = feedback_account.bump,
+        constraint = feedback_account.client_address == client.key() @ RegistryError::Unauthorized
     )]
     pub feedback_account: Account<'info, FeedbackAccount>,
 
@@ -97,7 +86,7 @@ pub struct RevokeFeedback<'info> {
 
 /// Accounts for append_response instruction
 #[derive(Accounts)]
-#[instruction(agent_id: u64, client_address: Pubkey, feedback_index: u64, _response_uri: String, _response_hash: [u8; 32])]
+#[instruction(agent_id: u64, feedback_index: u64, _response_uri: String, _response_hash: [u8; 32])]
 pub struct AppendResponse<'info> {
     /// Responder (can be anyone - agent, aggregator, etc.)
     pub responder: Signer<'info>,
@@ -111,7 +100,6 @@ pub struct AppendResponse<'info> {
         seeds = [
             b"feedback",
             agent_id.to_le_bytes().as_ref(),
-            client_address.as_ref(),
             feedback_index.to_le_bytes().as_ref()
         ],
         bump = feedback_account.bump
@@ -126,7 +114,6 @@ pub struct AppendResponse<'info> {
         seeds = [
             b"response_index",
             agent_id.to_le_bytes().as_ref(),
-            client_address.as_ref(),
             feedback_index.to_le_bytes().as_ref()
         ],
         bump
@@ -141,7 +128,6 @@ pub struct AppendResponse<'info> {
         seeds = [
             b"response",
             agent_id.to_le_bytes().as_ref(),
-            client_address.as_ref(),
             feedback_index.to_le_bytes().as_ref(),
             response_index.next_index.to_le_bytes().as_ref()
         ],

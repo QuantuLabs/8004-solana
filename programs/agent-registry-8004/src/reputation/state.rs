@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
-/// Feedback account - One per feedback (per client-agent pair)
-/// Seeds: [b"feedback", agent_id, client_address, feedback_index]
+/// Feedback account - One per feedback (global index)
+/// Seeds: [b"feedback", agent_id, feedback_index]
 #[account]
 pub struct FeedbackAccount {
     /// Agent ID from Identity Registry
@@ -10,7 +10,7 @@ pub struct FeedbackAccount {
     /// Client who gave the feedback
     pub client_address: Pubkey,
 
-    /// Sequential index for THIS client's feedbacks to THIS agent
+    /// Global sequential feedback index for this agent
     pub feedback_index: u64,
 
     /// Score (0-100, validated on-chain)
@@ -50,16 +50,13 @@ impl FeedbackAccount {
 }
 
 /// Response account - Separate account per response (unlimited responses)
-/// Seeds: [b"response", agent_id, client_address, feedback_index, response_index]
+/// Seeds: [b"response", agent_id, feedback_index, response_index]
 #[account]
 pub struct ResponseAccount {
     /// Agent ID
     pub agent_id: u64,
 
-    /// Original feedback client
-    pub client_address: Pubkey,
-
-    /// Original feedback index
+    /// Original feedback index (global)
     pub feedback_index: u64,
 
     /// Sequential response index for this feedback
@@ -82,43 +79,24 @@ pub struct ResponseAccount {
 }
 
 impl ResponseAccount {
-    /// Maximum size calculation
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 8 + 32 + 4 + 200 + 32 + 8 + 1;
+    /// Maximum size calculation (removed client_address)
+    pub const MAX_SIZE: usize = 8 + 8 + 8 + 8 + 32 + (4 + 200) + 32 + 8 + 1;
 
     /// Maximum URI length
     pub const MAX_URI_LENGTH: usize = 200;
 }
 
-/// Client index account - Tracks next feedback index for client-agent pair
-/// Seeds: [b"client_index", agent_id, client_address]
-#[account]
-pub struct ClientIndexAccount {
-    /// Agent ID
-    pub agent_id: u64,
-
-    /// Client address
-    pub client_address: Pubkey,
-
-    /// Last used index (next feedback will use this value)
-    pub last_index: u64,
-
-    /// PDA bump seed
-    pub bump: u8,
-}
-
-impl ClientIndexAccount {
-    /// Size calculation
-    pub const SIZE: usize = 8 + 8 + 32 + 8 + 1;
-}
-
-/// Agent reputation metadata - Cached aggregated stats
+/// Agent reputation metadata - Cached aggregated stats and global feedback counter
 /// Seeds: [b"agent_reputation", agent_id]
 #[account]
 pub struct AgentReputationMetadata {
     /// Agent ID
     pub agent_id: u64,
 
-    /// Total non-revoked feedbacks
+    /// Next feedback index to use (global counter)
+    pub next_feedback_index: u64,
+
+    /// Total non-revoked feedbacks (for average calculation)
     pub total_feedbacks: u64,
 
     /// Sum of all non-revoked scores (for average calculation)
@@ -135,21 +113,18 @@ pub struct AgentReputationMetadata {
 }
 
 impl AgentReputationMetadata {
-    /// Size calculation
-    pub const SIZE: usize = 8 + 8 + 8 + 8 + 1 + 8 + 1;
+    /// Size calculation (added next_feedback_index)
+    pub const SIZE: usize = 8 + 8 + 8 + 8 + 8 + 1 + 8 + 1;
 }
 
 /// Response index account - Tracks next response index for a feedback
-/// Seeds: [b"response_index", agent_id, client_address, feedback_index]
+/// Seeds: [b"response_index", agent_id, feedback_index]
 #[account]
 pub struct ResponseIndexAccount {
     /// Agent ID
     pub agent_id: u64,
 
-    /// Client address
-    pub client_address: Pubkey,
-
-    /// Feedback index
+    /// Feedback index (global)
     pub feedback_index: u64,
 
     /// Next response index to use
@@ -160,6 +135,6 @@ pub struct ResponseIndexAccount {
 }
 
 impl ResponseIndexAccount {
-    /// Size calculation
-    pub const SIZE: usize = 8 + 8 + 32 + 8 + 8 + 1;
+    /// Size calculation (removed client_address)
+    pub const SIZE: usize = 8 + 8 + 8 + 8 + 1;
 }
