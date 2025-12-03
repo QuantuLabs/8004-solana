@@ -1,0 +1,946 @@
+import * as anchor from "@coral-xyz/anchor";
+import { Program } from "@coral-xyz/anchor";
+import {
+  PublicKey,
+  Keypair,
+  SystemProgram,
+  ComputeBudgetProgram,
+  Transaction,
+} from "@solana/web3.js";
+import { assert } from "chai";
+import {
+  getAssociatedTokenAddressSync,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
+import { IdentityRegistry } from "../target/types/identity_registry";
+import { ReputationRegistry } from "../target/types/reputation_registry";
+
+// Metaplex Token Metadata Program ID
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+
+// Sleep helper to respect RPC rate limits
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+describe("E2E Integration: Identity Registry + Reputation Registry", () => {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+
+  const identityProgram = anchor.workspace.IdentityRegistry as Program<IdentityRegistry>;
+  const reputationProgram = anchor.workspace.ReputationRegistry as Program<ReputationRegistry>;
+
+  // Identity Registry state
+  let configPda: PublicKey;
+  let collectionMint: Keypair;
+  let collectionMetadata: PublicKey;
+  let collectionMasterEdition: PublicKey;
+  let collectionTokenAccount: PublicKey;
+
+  // Test agents
+  let agent1Mint: Keypair;
+  let agent1Pda: PublicKey;
+  let agent1Metadata: PublicKey;
+  let agent1MasterEdition: PublicKey;
+  let agent1TokenAccount: PublicKey;
+  let agent1Id: number = 0;
+
+  // Test clients
+  let client1: Keypair;
+  let client2: Keypair;
+  let client3: Keypair;
+  let sponsor: Keypair; // For sponsored feedback
+
+  // Helper: Derive Metaplex metadata PDA
+  function getMetadataPda(mint: PublicKey): PublicKey {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+      TOKEN_METADATA_PROGRAM_ID
+    )[0];
+  }
+
+  // Helper: Derive Metaplex master edition PDA
+  function getMasterEditionPda(mint: PublicKey): PublicKey {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer(), Buffer.from("edition")],
+      TOKEN_METADATA_PROGRAM_ID
+    )[0];
+  }
+
+  // Helper: Derive agent account PDA
+  function getAgentPda(agentMint: PublicKey): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("agent"), agentMint.toBuffer()],
+      identityProgram.programId
+    );
+  }
+
+  // Helper: Derive agent by ID PDA
+  function getAgentByIdPda(agentId: number): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("agent"), Buffer.from(new anchor.BN(agentId).toArray("le", 8))],
+      identityProgram.programId
+    );
+  }
+
+  // Helper: Derive client index PDA
+  function getClientIndexPda(agentId: number, client: PublicKey): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("client_index"),
+        Buffer.from(new anchor.BN(agentId).toArray("le", 8)),
+        client.toBuffer(),
+      ],
+      reputationProgram.programId
+    );
+  }
+
+  // Helper: Derive feedback PDA
+  function getFeedbackPda(agentId: number, client: PublicKey, feedbackIndex: number): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("feedback"),
+        Buffer.from(new anchor.BN(agentId).toArray("le", 8)),
+        client.toBuffer(),
+        Buffer.from(new anchor.BN(feedbackIndex).toArray("le", 8)),
+      ],
+      reputationProgram.programId
+    );
+  }
+
+  // Helper: Derive agent reputation PDA
+  function getAgentReputationPda(agentId: number): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("agent_reputation"), Buffer.from(new anchor.BN(agentId).toArray("le", 8))],
+      reputationProgram.programId
+    );
+  }
+
+  // Helper: Derive response index PDA
+  function getResponseIndexPda(agentId: number, client: PublicKey, feedbackIndex: number): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("response_index"),
+        Buffer.from(new anchor.BN(agentId).toArray("le", 8)),
+        client.toBuffer(),
+        Buffer.from(new anchor.BN(feedbackIndex).toArray("le", 8)),
+      ],
+      reputationProgram.programId
+    );
+  }
+
+  // Helper: Derive response PDA
+  function getResponsePda(
+    agentId: number,
+    client: PublicKey,
+    feedbackIndex: number,
+    responseIndex: number
+  ): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("response"),
+        Buffer.from(new anchor.BN(agentId).toArray("le", 8)),
+        client.toBuffer(),
+        Buffer.from(new anchor.BN(feedbackIndex).toArray("le", 8)),
+        Buffer.from(new anchor.BN(responseIndex).toArray("le", 8)),
+      ],
+      reputationProgram.programId
+    );
+  }
+
+  // Helper: Fund wallet with transfer from provider (small amounts to avoid rate limits)
+  async function fundWallet(pubkey: PublicKey, amount: number = 0.1) {
+    console.log(`💸 Transferring ${amount} SOL to ${pubkey.toBase58().slice(0, 8)}...`);
+    const tx = new anchor.web3.Transaction().add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: provider.wallet.publicKey,
+        toPubkey: pubkey,
+        lamports: amount * anchor.web3.LAMPORTS_PER_SOL,
+      })
+    );
+    await provider.sendAndConfirm(tx);
+  }
+
+  before(async () => {
+    // Initialize wallets
+    client1 = Keypair.generate();
+    client2 = Keypair.generate();
+    client3 = Keypair.generate();
+    sponsor = Keypair.generate();
+
+    // Fund wallets with small amounts from provider wallet
+    console.log("💰 Funding client wallets from provider...");
+    await fundWallet(client1.publicKey, 0.1);
+    await fundWallet(client2.publicKey, 0.1);
+    await fundWallet(client3.publicKey, 0.1);
+    await fundWallet(sponsor.publicKey, 0.2);
+
+    console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+    await sleep(3000);
+
+    // Derive config PDA
+    [configPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("config")],
+      identityProgram.programId
+    );
+  });
+
+  describe("Setup: Initialize Identity Registry", () => {
+    it("✅ Check/Initialize Identity Registry", async () => {
+      console.log("🔍 Checking if Identity Registry is already initialized...");
+
+      // Check if config PDA already exists on devnet
+      const accountInfo = await provider.connection.getAccountInfo(configPda);
+
+      if (!accountInfo) {
+        throw new Error("❌ Config not found on devnet - registry must be initialized first");
+      }
+
+      // DEVNET ONLY - Parse collection_mint from raw account data
+      // Cannot use .fetch() because devnet config has OLD layout
+      console.log("ℹ️  Identity Registry already initialized on devnet");
+      console.log(`   Config account size: ${accountInfo.data.length} bytes`);
+
+      // Parse collection_mint manually from raw bytes
+      // Layout: 8-byte discriminator + 32-byte authority + 8-byte next_id + 8-byte total + 32-byte collection_mint
+      const COLLECTION_MINT_OFFSET = 8 + 32 + 8 + 8; // = 56 bytes
+      const collectionMintBytes = accountInfo.data.slice(
+        COLLECTION_MINT_OFFSET,
+        COLLECTION_MINT_OFFSET + 32
+      );
+      const collectionMintPubkey = new PublicKey(collectionMintBytes);
+
+      // Create mock keypair and derive PDAs
+      collectionMint = { publicKey: collectionMintPubkey } as Keypair;
+      collectionMetadata = getMetadataPda(collectionMintPubkey);
+      collectionMasterEdition = getMasterEditionPda(collectionMintPubkey);
+      collectionTokenAccount = getAssociatedTokenAddressSync(
+        collectionMintPubkey,
+        provider.wallet.publicKey
+      );
+
+      console.log(`✅ Using existing collection mint: ${collectionMintPubkey.toBase58()}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+  });
+
+  describe("Setup: Register Agent via Identity Registry", () => {
+    it("✅ Registers agent #0 with metadata", async () => {
+      agent1Mint = Keypair.generate();
+      [agent1Pda] = getAgentPda(agent1Mint.publicKey);
+      agent1Metadata = getMetadataPda(agent1Mint.publicKey);
+      agent1MasterEdition = getMasterEditionPda(agent1Mint.publicKey);
+      agent1TokenAccount = getAssociatedTokenAddressSync(
+        agent1Mint.publicKey,
+        provider.wallet.publicKey
+      );
+
+      // Derive collection_authority_pda
+      const [collectionAuthorityPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("collection_authority")],
+        identityProgram.programId
+      );
+
+      const tokenUri = "ipfs://QmAgentMetadata";
+      const metadata = [
+        { metadataKey: "name", metadataValue: Buffer.from("Alice AI") },
+        { metadataKey: "type", metadataValue: Buffer.from("customer_support") },
+      ];
+
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 });
+
+      const registerIx = await identityProgram.methods
+        .registerWithMetadata(tokenUri, metadata)
+        .accounts({
+          owner: provider.wallet.publicKey,
+          config: configPda,
+          collectionAuthorityPda: collectionAuthorityPda,  // NEW - Required for collection verification
+          agentAccount: agent1Pda,
+          agentMint: agent1Mint.publicKey,
+          agentMetadata: agent1Metadata,
+          agentMasterEdition: agent1MasterEdition,
+          agentTokenAccount: agent1TokenAccount,
+          collectionMint: collectionMint.publicKey,
+          collectionMetadata: collectionMetadata,
+          collectionMasterEdition: collectionMasterEdition,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+          sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,  // NEW - Required by Metaplex
+        })
+        .instruction();
+
+      const tx = new Transaction().add(computeBudgetIx, registerIx);
+      await provider.sendAndConfirm(tx, [agent1Mint]);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
+      const agent = await identityProgram.account.agentAccount.fetch(agent1Pda);
+      assert.equal(agent.agentId.toNumber(), 0);
+      assert.equal(agent.owner.toBase58(), provider.wallet.publicKey.toBase58());
+      assert.equal(agent.tokenUri, tokenUri);
+
+      agent1Id = agent.agentId.toNumber();
+      console.log(`      Agent registered: ID=${agent1Id}, Mint=${agent1Mint.publicKey.toBase58()}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+  });
+
+  describe("E2E Flow: Give Feedback", () => {
+    it("✅ Client1 gives first feedback (score 85)", async () => {
+      const score = 85;
+      const tag1 = "quality";
+      const tag2 = "responsive";
+      const fileUri = "ipfs://QmFeedback1";
+      const fileHash = Buffer.alloc(32);
+      const feedbackIndex = 0;
+
+      const [clientIndexPda] = getClientIndexPda(agent1Id, client1.publicKey);
+      const [feedbackPda] = getFeedbackPda(agent1Id, client1.publicKey, feedbackIndex);
+      const [reputationPda] = getAgentReputationPda(agent1Id);
+      const [agentAccountPda] = getAgentByIdPda(agent1Id);
+
+      await reputationProgram.methods
+        .giveFeedback(
+          new anchor.BN(agent1Id),
+          score,
+          tag1,
+          tag2,
+          fileUri,
+          Array.from(fileHash),
+          new anchor.BN(feedbackIndex)
+        )
+        .accounts({
+          client: client1.publicKey,
+          payer: client1.publicKey,
+          agentAccount: agentAccountPda,
+          clientIndex: clientIndexPda,
+          feedbackAccount: feedbackPda,
+          agentReputation: reputationPda,
+          identityRegistryProgram: identityProgram.programId,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([client1])
+        .rpc();
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
+      // Verify feedback
+      const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+      assert.equal(feedback.score, 85);
+      assert.equal(feedback.isRevoked, false);
+
+      // Verify reputation
+      const reputation = await reputationProgram.account.agentReputationMetadata.fetch(reputationPda);
+      assert.equal(reputation.totalFeedbacks.toNumber(), 1);
+      assert.equal(reputation.averageScore, 85);
+
+      console.log(`      Feedback given: score=${score}, avg=${reputation.averageScore}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ Client2 gives feedback with sponsorship (score 90)", async () => {
+      const score = 90;
+      const tag1 = "";
+      const tag2 = "";
+      const fileUri = "ipfs://QmFeedback2";
+      const fileHash = Buffer.alloc(32);
+      const feedbackIndex = 0;
+
+      const [clientIndexPda] = getClientIndexPda(agent1Id, client2.publicKey);
+      const [feedbackPda] = getFeedbackPda(agent1Id, client2.publicKey, feedbackIndex);
+      const [reputationPda] = getAgentReputationPda(agent1Id);
+      const [agentAccountPda] = getAgentByIdPda(agent1Id);
+
+      const sponsorBalanceBefore = await provider.connection.getBalance(sponsor.publicKey);
+
+      await reputationProgram.methods
+        .giveFeedback(
+          new anchor.BN(agent1Id),
+          score,
+          tag1,
+          tag2,
+          fileUri,
+          Array.from(fileHash),
+          new anchor.BN(feedbackIndex)
+        )
+        .accounts({
+          client: client2.publicKey,
+          payer: sponsor.publicKey, // Sponsor pays
+          agentAccount: agentAccountPda,
+          clientIndex: clientIndexPda,
+          feedbackAccount: feedbackPda,
+          agentReputation: reputationPda,
+          identityRegistryProgram: identityProgram.programId,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([client2, sponsor])
+        .rpc();
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
+      const sponsorBalanceAfter = await provider.connection.getBalance(sponsor.publicKey);
+      assert.isBelow(sponsorBalanceAfter, sponsorBalanceBefore);
+
+      const reputation = await reputationProgram.account.agentReputationMetadata.fetch(reputationPda);
+      assert.equal(reputation.totalFeedbacks.toNumber(), 2);
+      // Average: (85 + 90) / 2 = 87.5 -> 87
+      assert.equal(reputation.averageScore, 87);
+
+      console.log(`      Sponsored feedback: score=${score}, sponsor paid rent`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ Client3 gives low score (score 60)", async () => {
+      const score = 60;
+      const tag1 = "";
+      const tag2 = "";
+      const fileUri = "ipfs://QmFeedback3";
+      const fileHash = Buffer.alloc(32);
+      const feedbackIndex = 0;
+
+      const [clientIndexPda] = getClientIndexPda(agent1Id, client3.publicKey);
+      const [feedbackPda] = getFeedbackPda(agent1Id, client3.publicKey, feedbackIndex);
+      const [reputationPda] = getAgentReputationPda(agent1Id);
+      const [agentAccountPda] = getAgentByIdPda(agent1Id);
+
+      await reputationProgram.methods
+        .giveFeedback(
+          new anchor.BN(agent1Id),
+          score,
+          tag1,
+          tag2,
+          fileUri,
+          Array.from(fileHash),
+          new anchor.BN(feedbackIndex)
+        )
+        .accounts({
+          client: client3.publicKey,
+          payer: client3.publicKey,
+          agentAccount: agentAccountPda,
+          clientIndex: clientIndexPda,
+          feedbackAccount: feedbackPda,
+          agentReputation: reputationPda,
+          identityRegistryProgram: identityProgram.programId,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([client3])
+        .rpc();
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
+      const reputation = await reputationProgram.account.agentReputationMetadata.fetch(reputationPda);
+      assert.equal(reputation.totalFeedbacks.toNumber(), 3);
+      // Average: (85 + 90 + 60) / 3 = 78.33 -> 78
+      assert.equal(reputation.averageScore, 78);
+
+      console.log(`      Low score feedback: avg dropped to ${reputation.averageScore}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+  });
+
+  describe("E2E Flow: Revoke Feedback", () => {
+    it("✅ Client3 revokes their low score feedback", async () => {
+      const feedbackIndex = 0;
+      const [feedbackPda] = getFeedbackPda(agent1Id, client3.publicKey, feedbackIndex);
+      const [reputationPda] = getAgentReputationPda(agent1Id);
+
+      await reputationProgram.methods
+        .revokeFeedback(new anchor.BN(agent1Id), new anchor.BN(feedbackIndex))
+        .accounts({
+          client: client3.publicKey,
+          feedbackAccount: feedbackPda,
+          agentReputation: reputationPda,
+        })
+        .signers([client3])
+        .rpc();
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
+      // Verify revocation
+      const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+      assert.equal(feedback.isRevoked, true);
+
+      // Verify reputation updated (excludes revoked)
+      const reputation = await reputationProgram.account.agentReputationMetadata.fetch(reputationPda);
+      assert.equal(reputation.totalFeedbacks.toNumber(), 2); // Excluded revoked
+      // Average: (85 + 90) / 2 = 87.5 -> 87
+      assert.equal(reputation.averageScore, 87);
+
+      console.log(`      Feedback revoked: avg increased to ${reputation.averageScore}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("❌ Client1 cannot revoke Client2's feedback", async () => {
+      const feedbackIndex = 0;
+      const [feedbackPda] = getFeedbackPda(agent1Id, client2.publicKey, feedbackIndex);
+      const [reputationPda] = getAgentReputationPda(agent1Id);
+
+      try {
+        await reputationProgram.methods
+          .revokeFeedback(new anchor.BN(agent1Id), new anchor.BN(feedbackIndex))
+          .accounts({
+            client: client1.publicKey, // Wrong client
+            feedbackAccount: feedbackPda,
+            agentReputation: reputationPda,
+          })
+          .signers([client1])
+          .rpc();
+
+        assert.fail("Should have failed with Unauthorized");
+      } catch (error: any) {
+        assert.include(error.toString(), "Unauthorized");
+        console.log(`      ✓ Correctly rejected unauthorized revocation`);
+      }
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+  });
+
+  describe("E2E Flow: Append Response", () => {
+    it("✅ Agent owner responds to Client1's feedback", async () => {
+      const client = client1.publicKey;
+      const feedbackIndex = 0;
+      const responseUri = "ipfs://QmResponse1";
+      const responseHash = Buffer.alloc(32);
+
+      const [feedbackPda] = getFeedbackPda(agent1Id, client, feedbackIndex);
+      const [responseIndexPda] = getResponseIndexPda(agent1Id, client, feedbackIndex);
+      const [responsePda] = getResponsePda(agent1Id, client, feedbackIndex, 0);
+
+      await reputationProgram.methods
+        .appendResponse(
+          new anchor.BN(agent1Id),
+          client,
+          new anchor.BN(feedbackIndex),
+          responseUri,
+          Array.from(responseHash)
+        )
+        .accounts({
+          responder: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          feedbackAccount: feedbackPda,
+          responseIndex: responseIndexPda,
+          responseAccount: responsePda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
+      // Verify response
+      const response = await reputationProgram.account.responseAccount.fetch(responsePda);
+      assert.equal(response.responseUri, responseUri);
+      assert.equal(response.responder.toBase58(), provider.wallet.publicKey.toBase58());
+
+      // Verify response index
+      const responseIndex = await reputationProgram.account.responseIndexAccount.fetch(responseIndexPda);
+      assert.equal(responseIndex.nextIndex.toNumber(), 1);
+
+      console.log(`      Agent responded to feedback`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ Third party appends response (spam flag)", async () => {
+      const client = client2.publicKey;
+      const feedbackIndex = 0;
+      const responseUri = "ipfs://QmSpamFlag";
+      const responseHash = Buffer.alloc(32);
+
+      const [feedbackPda] = getFeedbackPda(agent1Id, client, feedbackIndex);
+      const [responseIndexPda] = getResponseIndexPda(agent1Id, client, feedbackIndex);
+      const [responsePda] = getResponsePda(agent1Id, client, feedbackIndex, 0);
+
+      await reputationProgram.methods
+        .appendResponse(
+          new anchor.BN(agent1Id),
+          client,
+          new anchor.BN(feedbackIndex),
+          responseUri,
+          Array.from(responseHash)
+        )
+        .accounts({
+          responder: client3.publicKey, // Third party
+          payer: client3.publicKey,
+          feedbackAccount: feedbackPda,
+          responseIndex: responseIndexPda,
+          responseAccount: responsePda,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([client3])
+        .rpc();
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
+      const response = await reputationProgram.account.responseAccount.fetch(responsePda);
+      assert.equal(response.responder.toBase58(), client3.publicKey.toBase58());
+
+      console.log(`      Third party flagged feedback as spam`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ Multiple responses to same feedback", async () => {
+      const client = client1.publicKey;
+      const feedbackIndex = 0;
+      const responseUri = "ipfs://QmResponse2";
+      const responseHash = Buffer.alloc(32);
+
+      const [feedbackPda] = getFeedbackPda(agent1Id, client, feedbackIndex);
+      const [responseIndexPda] = getResponseIndexPda(agent1Id, client, feedbackIndex);
+      const [responsePda] = getResponsePda(agent1Id, client, feedbackIndex, 1); // Second response
+
+      await reputationProgram.methods
+        .appendResponse(
+          new anchor.BN(agent1Id),
+          client,
+          new anchor.BN(feedbackIndex),
+          responseUri,
+          Array.from(responseHash)
+        )
+        .accounts({
+          responder: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          feedbackAccount: feedbackPda,
+          responseIndex: responseIndexPda,
+          responseAccount: responsePda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+
+      const responseIndex = await reputationProgram.account.responseIndexAccount.fetch(responseIndexPda);
+      assert.equal(responseIndex.nextIndex.toNumber(), 2);
+
+      console.log(`      Multiple responses: count=${responseIndex.nextIndex.toNumber()}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+  });
+
+  describe("E2E Summary: Final State", () => {
+    it("✅ Verifies final reputation state", async () => {
+      const [reputationPda] = getAgentReputationPda(agent1Id);
+      const reputation = await reputationProgram.account.agentReputationMetadata.fetch(reputationPda);
+
+      console.log(`\n      📊 Final Reputation for Agent #${agent1Id}:`);
+      console.log(`         Total feedbacks (non-revoked): ${reputation.totalFeedbacks.toNumber()}`);
+      console.log(`         Average score: ${reputation.averageScore}/100`);
+      console.log(`         Total score sum: ${reputation.totalScoreSum.toNumber()}`);
+
+      assert.equal(reputation.totalFeedbacks.toNumber(), 2);
+      assert.equal(reputation.averageScore, 87);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ Lists all feedback accounts created", async () => {
+      console.log(`\n      📋 Feedback Records:`);
+
+      // Client1 feedback
+      const [feedback1Pda] = getFeedbackPda(agent1Id, client1.publicKey, 0);
+      const feedback1 = await reputationProgram.account.feedbackAccount.fetch(feedback1Pda);
+      console.log(`         Client1: score=${feedback1.score}, revoked=${feedback1.isRevoked}`);
+
+      // Client2 feedback
+      const [feedback2Pda] = getFeedbackPda(agent1Id, client2.publicKey, 0);
+      const feedback2 = await reputationProgram.account.feedbackAccount.fetch(feedback2Pda);
+      console.log(`         Client2: score=${feedback2.score}, revoked=${feedback2.isRevoked}`);
+
+      // Client3 feedback (revoked)
+      const [feedback3Pda] = getFeedbackPda(agent1Id, client3.publicKey, 0);
+      const feedback3 = await reputationProgram.account.feedbackAccount.fetch(feedback3Pda);
+      console.log(`         Client3: score=${feedback3.score}, revoked=${feedback3.isRevoked}`);
+
+      assert.equal(feedback1.isRevoked, false);
+      assert.equal(feedback2.isRevoked, false);
+      assert.equal(feedback3.isRevoked, true); // Revoked
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ Lists all response counts", async () => {
+      console.log(`\n      💬 Response Counts:`);
+
+      // Client1 feedback has 2 responses
+      const [response1IndexPda] = getResponseIndexPda(agent1Id, client1.publicKey, 0);
+      const response1Index = await reputationProgram.account.responseIndexAccount.fetch(response1IndexPda);
+      console.log(`         Client1 feedback: ${response1Index.nextIndex.toNumber()} responses`);
+
+      // Client2 feedback has 1 response
+      const [response2IndexPda] = getResponseIndexPda(agent1Id, client2.publicKey, 0);
+      const response2Index = await reputationProgram.account.responseIndexAccount.fetch(response2IndexPda);
+      console.log(`         Client2 feedback: ${response2Index.nextIndex.toNumber()} response`);
+
+      assert.equal(response1Index.nextIndex.toNumber(), 2);
+      assert.equal(response2Index.nextIndex.toNumber(), 1);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    // ==================================================================================
+    // Part 3: Read Functions Tests (ERC-8004 Compliance)
+    // ==================================================================================
+    it("✅ readFeedback: Fetch single feedback with all fields", async () => {
+      const [feedbackPda] = getFeedbackPda(agent1Id, client1.publicKey, 0);
+      const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+
+      assert.equal(feedback.agentId.toNumber(), agent1Id);
+      assert.equal(feedback.clientAddress.toBase58(), client1.publicKey.toBase58());
+      assert.equal(feedback.feedbackIndex.toNumber(), 0);
+      assert.equal(feedback.score, 85);
+      assert.equal(feedback.isRevoked, false);
+      assert.ok(feedback.createdAt.toNumber() > 0);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ readFeedback: Returns null for non-existent feedback", async () => {
+      const [feedbackPda] = getFeedbackPda(agent1Id, client1.publicKey, 999);
+
+      try {
+        await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+        assert.fail("Should throw error for non-existent account");
+      } catch (err) {
+        assert.ok(err.message.includes("Account does not exist"));
+      }
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ readAllFeedback: Fetch all feedbacks for a client", async () => {
+      const [clientIndexPda] = getClientIndexPda(agent1Id, client1.publicKey);
+      const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+      const lastIndex = clientIndex.lastIndex.toNumber();
+
+      assert.equal(lastIndex, 0); // Client1 has 1 feedback (index 0)
+
+      const feedbacks = [];
+      for (let i = 0; i <= lastIndex; i++) {
+        const [feedbackPda] = getFeedbackPda(agent1Id, client1.publicKey, i);
+        const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+        feedbacks.push(feedback);
+      }
+
+      assert.equal(feedbacks.length, 1);
+      assert.equal(feedbacks[0].score, 85);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ readAllFeedback: Filter out revoked feedbacks", async () => {
+      const [clientIndexPda] = getClientIndexPda(agent1Id, client3.publicKey);
+      const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+      const lastIndex = clientIndex.lastIndex.toNumber();
+
+      const feedbacks = [];
+      for (let i = 0; i <= lastIndex; i++) {
+        const [feedbackPda] = getFeedbackPda(agent1Id, client3.publicKey, i);
+        const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+
+        // Filter: includeRevoked = false
+        if (!feedback.isRevoked) {
+          feedbacks.push(feedback);
+        }
+      }
+
+      assert.equal(feedbacks.length, 0); // client3's feedback was revoked
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ getLastIndex: Returns correct last feedback index", async () => {
+      const [clientIndexPda] = getClientIndexPda(agent1Id, client1.publicKey);
+      const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+
+      assert.equal(clientIndex.agentId.toNumber(), agent1Id);
+      assert.equal(clientIndex.clientAddress.toBase58(), client1.publicKey.toBase58());
+      assert.equal(clientIndex.lastIndex.toNumber(), 0);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ getLastIndex: Returns 0 for client with no feedbacks", async () => {
+      const newClient = Keypair.generate();
+      const [clientIndexPda] = getClientIndexPda(agent1Id, newClient.publicKey);
+
+      try {
+        await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+        assert.fail("Should not exist");
+      } catch (err) {
+        // Account doesn't exist = lastIndex is implicitly 0
+        assert.ok(err.message.includes("Account does not exist"));
+      }
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ getClients: List all clients who gave feedback", async () => {
+      const accounts = await reputationProgram.account.clientIndexAccount.all([
+        {
+          memcmp: {
+            offset: 8,
+            bytes: anchor.utils.bytes.bs58.encode(Buffer.from(new anchor.BN(agent1Id).toArray("le", 8))),
+          },
+        },
+      ]);
+
+      // Should have client1, client2, client3
+      assert.ok(accounts.length >= 3);
+
+      const clientAddresses = accounts.map(acc => acc.account.clientAddress.toBase58());
+      assert.ok(clientAddresses.includes(client1.publicKey.toBase58()));
+      assert.ok(clientAddresses.includes(client2.publicKey.toBase58()));
+      assert.ok(clientAddresses.includes(client3.publicKey.toBase58()));
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ getResponseCount: Returns correct response count", async () => {
+      const [responseIndexPda] = getResponseIndexPda(agent1Id, client1.publicKey, 0);
+      const responseIndex = await reputationProgram.account.responseIndexAccount.fetch(responseIndexPda);
+
+      assert.equal(responseIndex.agentId.toNumber(), agent1Id);
+      assert.equal(responseIndex.clientAddress.toBase58(), client1.publicKey.toBase58());
+      assert.equal(responseIndex.feedbackIndex.toNumber(), 0);
+      assert.equal(responseIndex.nextIndex.toNumber(), 2); // 2 responses added
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ getResponseCount: Returns 0 for feedback with no responses", async () => {
+      const [responseIndexPda] = getResponseIndexPda(agent1Id, client3.publicKey, 0);
+
+      try {
+        await reputationProgram.account.responseIndexAccount.fetch(responseIndexPda);
+        assert.fail("Should not exist (client3 has no responses)");
+      } catch (err) {
+        // Account doesn't exist = 0 responses
+        assert.ok(err.message.includes("Account does not exist"));
+      }
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ getSummary: Aggregate stats without filters", async () => {
+      const [reputationPda] = getAgentReputationPda(agent1Id);
+      const metadata = await reputationProgram.account.agentReputationMetadata.fetch(reputationPda);
+
+      // Active feedbacks: client1 (85), client2 (90)
+      // client3 (60) is revoked
+      assert.equal(metadata.totalFeedbacks.toNumber(), 2);
+      assert.ok(metadata.averageScore > 0);
+      console.log(`      Agent #${agent1Id} summary: ${metadata.totalFeedbacks} feedbacks, avg ${metadata.averageScore}`);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ getSummary: Client-side filtering by minScore", async () => {
+      const allClients = [client1, client2, client3];
+      const minScore = 85;
+
+      let count = 0;
+      let totalScore = 0;
+
+      for (const client of allClients) {
+        try {
+          const [clientIndexPda] = getClientIndexPda(agent1Id, client.publicKey);
+          const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+          const lastIndex = clientIndex.lastIndex.toNumber();
+
+          for (let i = 0; i <= lastIndex; i++) {
+            const [feedbackPda] = getFeedbackPda(agent1Id, client.publicKey, i);
+            const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+
+            if (!feedback.isRevoked && feedback.score >= minScore) {
+              count++;
+              totalScore += feedback.score;
+            }
+          }
+        } catch (err) {
+          // Client has no feedbacks, skip
+        }
+      }
+
+      // client1: 85, client2: 90 (both >= 85)
+      assert.equal(count, 2);
+      assert.equal(totalScore, 175); // 85 + 90
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+
+    it("✅ getSummary: Client-side filtering by clientAddresses", async () => {
+      const targetClients = [client1.publicKey];
+
+      let count = 0;
+      let totalScore = 0;
+
+      for (const clientAddress of targetClients) {
+        try {
+          const [clientIndexPda] = getClientIndexPda(agent1Id, clientAddress);
+          const clientIndex = await reputationProgram.account.clientIndexAccount.fetch(clientIndexPda);
+          const lastIndex = clientIndex.lastIndex.toNumber();
+
+          for (let i = 0; i <= lastIndex; i++) {
+            const [feedbackPda] = getFeedbackPda(agent1Id, clientAddress, i);
+            const feedback = await reputationProgram.account.feedbackAccount.fetch(feedbackPda);
+
+            if (!feedback.isRevoked) {
+              count++;
+              totalScore += feedback.score;
+            }
+          }
+        } catch (err) {
+          // Skip
+        }
+      }
+
+      assert.equal(count, 1); // client1 has 1 feedback
+      assert.equal(totalScore, 85);
+
+      console.log("⏸️  Waiting 3 seconds to respect RPC rate limits...");
+      await sleep(3000);
+    });
+  });
+});
