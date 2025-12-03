@@ -27,7 +27,8 @@ test-ledger/
 tests/sdk/
 
 # Documentation (implementation notes - not for public repo)
-docs/
+docs/*
+!docs/index.html
 
 # Reference repositories (cloned for analysis only)
 agent0-ts/
