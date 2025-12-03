@@ -6,14 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-identity_registry = "AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR"
-reputation_registry = "9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa"
-validation_registry = "2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x"
+agent_registry_8004 = "3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi"
 
 [programs.devnet]
-identity_registry = "CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss"
-reputation_registry = "Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr"
-validation_registry = "2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw"
+agent_registry_8004 = "3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi"
 
 [registry]
 url = "https://api.apr.dev"
@@ -23,12 +19,11 @@ cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/e2e-complete-system.ts"
-test-feedbackauth = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/reputation-feedbackauth.ts"
-test-full = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/e2e-full-coverage.ts"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
 
 [test.validator]
 url = "https://api.devnet.solana.com"
 
+# Clone Metaplex Core program for local testing
 [[test.validator.clone]]
-address = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+address = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"

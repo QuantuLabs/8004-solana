@@ -11,17 +11,15 @@ pub struct FeedbackAccount {
     pub client_address: Pubkey,
 
     /// Sequential index for THIS client's feedbacks to THIS agent
-    /// Client A: indices 0, 1, 2, 3...
-    /// Client B: indices 0, 1, 2, 3... (independent)
     pub feedback_index: u64,
 
     /// Score (0-100, validated on-chain)
     pub score: u8,
 
-    /// Tag1 - String tag for categorization (ERC-8004 spec, max 32 bytes)
+    /// Tag1 - String tag for categorization (max 32 bytes)
     pub tag1: String,
 
-    /// Tag2 - String tag for categorization (ERC-8004 spec, max 32 bytes)
+    /// Tag2 - String tag for categorization (max 32 bytes)
     pub tag2: String,
 
     /// File URI (IPFS/Arweave link, max 200 bytes)
@@ -42,15 +40,12 @@ pub struct FeedbackAccount {
 
 impl FeedbackAccount {
     /// Maximum size calculation
-    /// 8 (discriminator) + 8 (agent_id) + 32 (client_address) + 8 (feedback_index)
-    /// + 1 (score) + 4+32 (tag1 String) + 4+32 (tag2 String) + 4+200 (file_uri String)
-    /// + 32 (file_hash) + 1 (is_revoked) + 8 (created_at) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 1 + (4+32) + (4+32) + (4+200) + 32 + 1 + 8 + 1;
+    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 1 + (4 + 32) + (4 + 32) + (4 + 200) + 32 + 1 + 8 + 1;
 
-    /// Maximum URI length (ERC-8004 spec)
+    /// Maximum URI length
     pub const MAX_URI_LENGTH: usize = 200;
 
-    /// Maximum tag length (ERC-8004 spec)
+    /// Maximum tag length
     pub const MAX_TAG_LENGTH: usize = 32;
 }
 
@@ -88,9 +83,6 @@ pub struct ResponseAccount {
 
 impl ResponseAccount {
     /// Maximum size calculation
-    /// 8 (discriminator) + 8 (agent_id) + 32 (client_address) + 8 (feedback_index)
-    /// + 8 (response_index) + 32 (responder) + 4 + 200 (response_uri)
-    /// + 32 (response_hash) + 8 (created_at) + 1 (bump)
     pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 8 + 32 + 4 + 200 + 32 + 8 + 1;
 
     /// Maximum URI length
@@ -116,7 +108,6 @@ pub struct ClientIndexAccount {
 
 impl ClientIndexAccount {
     /// Size calculation
-    /// 8 (discriminator) + 8 (agent_id) + 32 (client_address) + 8 (last_index) + 1 (bump)
     pub const SIZE: usize = 8 + 8 + 32 + 8 + 1;
 }
 
@@ -145,8 +136,6 @@ pub struct AgentReputationMetadata {
 
 impl AgentReputationMetadata {
     /// Size calculation
-    /// 8 (discriminator) + 8 (agent_id) + 8 (total_feedbacks) + 8 (total_score_sum)
-    /// + 1 (average_score) + 8 (last_updated) + 1 (bump)
     pub const SIZE: usize = 8 + 8 + 8 + 8 + 1 + 8 + 1;
 }
 
@@ -172,7 +161,5 @@ pub struct ResponseIndexAccount {
 
 impl ResponseIndexAccount {
     /// Size calculation
-    /// 8 (discriminator) + 8 (agent_id) + 32 (client_address) + 8 (feedback_index)
-    /// + 8 (next_index) + 1 (bump)
     pub const SIZE: usize = 8 + 8 + 32 + 8 + 8 + 1;
 }

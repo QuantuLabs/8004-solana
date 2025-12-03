@@ -1,24 +1,22 @@
 [package]
-name = "reputation-registry"
+name = "agent-registry-8004"
 version = "0.1.0"
-description = "Created with Anchor"
+description = "8004 AI Agent Identity & Reputation Registry (Consolidated)"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "reputation_registry"
+name = "agent_registry_8004"
 
 [features]
 default = []
-devnet = []
-mainnet = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
-
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
 anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
-
+anchor-spl = "0.31.1"
+mpl-core = "0.11.1"

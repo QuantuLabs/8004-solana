@@ -5,6 +5,9 @@ target/
 dist/
 programs/**/*.so
 
+# Archive (backup before consolidation)
+programs/_archive/
+
 # IDL
 idl/
 

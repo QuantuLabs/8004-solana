@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 
-/// Event emitted when validation is requested (ERC-8004 spec: ValidationRequest)
-/// Indexed fields: agent_id, validator_address (for off-chain filtering)
+/// Event emitted when validation is requested
 #[event]
 pub struct ValidationRequested {
     pub agent_id: u64,
@@ -13,8 +12,7 @@ pub struct ValidationRequested {
     pub created_at: i64,
 }
 
-/// Event emitted when validator responds (ERC-8004 spec: ValidationResponse)
-/// Indexed fields: agent_id, validator_address (for off-chain filtering)
+/// Event emitted when validator responds
 #[event]
 pub struct ValidationResponded {
     pub agent_id: u64,

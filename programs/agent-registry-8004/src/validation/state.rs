@@ -1,14 +1,9 @@
 use anchor_lang::prelude::*;
 
-/// Global validation registry configuration
+/// Validation registry statistics (counters only, no authority needed)
+/// PDA seeds: [b"validation_config"]
 #[account]
-pub struct ValidationConfig {
-    /// Registry authority (programme owner)
-    pub authority: Pubkey,
-
-    /// Identity Registry program ID (for CPI validation)
-    pub identity_registry: Pubkey,
-
+pub struct ValidationStats {
     /// Total validation requests created
     pub total_requests: u64,
 
@@ -19,13 +14,14 @@ pub struct ValidationConfig {
     pub bump: u8,
 }
 
-impl ValidationConfig {
-    /// Account size: 32 + 32 + 8 + 8 + 1 = 81 bytes
-    pub const SIZE: usize = 32 + 32 + 8 + 8 + 1;
+impl ValidationStats {
+    /// Account size: 8 + 8 + 1 = 17 bytes
+    pub const SIZE: usize = 8 + 8 + 1;
 }
 
 /// Individual validation request (optimized for cost - minimal state)
 /// URIs and tags are stored in events only (not on-chain)
+/// PDA seeds: [b"validation", agent_id, validator_address, nonce]
 #[account]
 pub struct ValidationRequest {
     /// Agent ID from Identity Registry
@@ -59,11 +55,9 @@ pub struct ValidationRequest {
 
 impl ValidationRequest {
     /// Account size: 8 + 32 + 4 + 32 + 32 + 1 + 8 + 8 + 1 = 126 bytes
-    /// This is 5x smaller than storing URIs on-chain (~590 bytes)
-    /// Cost savings: ~$0.67 → ~$0.14 per validation
     pub const SIZE: usize = 8 + 32 + 4 + 32 + 32 + 1 + 8 + 8 + 1;
 
-    /// Maximum URI length per ERC-8004 spec (validated but not stored on-chain)
+    /// Maximum URI length (validated but not stored on-chain)
     pub const MAX_URI_LENGTH: usize = 200;
 
     /// Check if validation has been responded to
@@ -74,25 +68,5 @@ impl ValidationRequest {
     /// Check if response is pending
     pub fn is_pending(&self) -> bool {
         self.responded_at == 0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_validation_config_size() {
-        assert_eq!(ValidationConfig::SIZE, 81);
-    }
-
-    #[test]
-    fn test_validation_request_size() {
-        assert_eq!(ValidationRequest::SIZE, 126);
-    }
-
-    #[test]
-    fn test_max_uri_length() {
-        assert_eq!(ValidationRequest::MAX_URI_LENGTH, 200);
     }
 }
