@@ -252,14 +252,20 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
     // Update AgentAccount URI
     agent.agent_uri = new_uri.clone();
 
-    // Update Core asset URI
+    // Config PDA seeds for signing (collection update_authority is config PDA)
+    let config_bump = ctx.accounts.config.bump;
+    let config_seeds = &[b"config".as_ref(), &[config_bump]];
+    let signer_seeds = &[&config_seeds[..]];
+
+    // Update Core asset URI (config PDA signs as collection update_authority)
     UpdateV1CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
         .asset(&ctx.accounts.asset.to_account_info())
+        .collection(Some(&ctx.accounts.collection.to_account_info()))
         .payer(&ctx.accounts.owner.to_account_info())
-        .authority(Some(&ctx.accounts.owner.to_account_info()))
+        .authority(Some(&ctx.accounts.config.to_account_info()))
         .system_program(&ctx.accounts.system_program.to_account_info())
         .new_uri(new_uri.clone())
-        .invoke()?;
+        .invoke_signed(signer_seeds)?;
 
     // Emit event
     emit!(UriUpdated {

@@ -109,6 +109,12 @@ pub struct SetMetadata<'info> {
 #[derive(Accounts)]
 pub struct SetAgentUri<'info> {
     #[account(
+        seeds = [b"config"],
+        bump = config.bump
+    )]
+    pub config: Account<'info, RegistryConfig>,
+
+    #[account(
         mut,
         seeds = [b"agent", agent_account.asset.as_ref()],
         bump = agent_account.bump,
@@ -122,6 +128,13 @@ pub struct SetAgentUri<'info> {
         constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
     )]
     pub asset: UncheckedAccount<'info>,
+
+    /// Collection account (required by Core for assets in collection)
+    /// CHECK: Verified via config constraint
+    #[account(
+        constraint = collection.key() == config.collection @ RegistryError::InvalidCollection
+    )]
+    pub collection: UncheckedAccount<'info>,
 
     #[account(mut)]
     pub owner: Signer<'info>,
