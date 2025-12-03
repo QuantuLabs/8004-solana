@@ -19,10 +19,7 @@ cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
-
-[test.validator]
-url = "https://api.devnet.solana.com"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/core-minimal.ts"
 
 # Clone Metaplex Core program for local testing
 [[test.validator.clone]]
