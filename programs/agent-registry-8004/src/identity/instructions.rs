@@ -13,6 +13,7 @@ use crate::error::RegistryError;
 ///
 /// Creates the global RegistryConfig account and the Metaplex Core Collection.
 /// All agents will be created as part of this collection.
+/// The config PDA is set as collection update_authority for permissionless registration.
 pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
     let config = &mut ctx.accounts.config;
 
@@ -22,19 +23,23 @@ pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
     config.collection = ctx.accounts.collection.key();
     config.bump = ctx.bumps.config;
 
-    // Create Metaplex Core Collection
+    // Create Metaplex Core Collection with config PDA as update_authority
+    // This allows permissionless registration via invoke_signed
     CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
         .collection(&ctx.accounts.collection.to_account_info())
         .payer(&ctx.accounts.authority.to_account_info())
-        .update_authority(Some(&ctx.accounts.authority.to_account_info()))
+        .update_authority(Some(&config.to_account_info()))
         .system_program(&ctx.accounts.system_program.to_account_info())
         .name("8004 Agent Registry".to_string())
         .uri(String::new())
-        .invoke()?;
+        .invoke_signed(&[&[b"config", &[ctx.bumps.config]]])?;
 
     msg!(
         "Identity Registry initialized with Core collection: {}",
         config.collection
+    );
+    msg!(
+        "Collection update_authority set to config PDA for permissionless registration"
     );
 
     Ok(())
@@ -89,8 +94,38 @@ pub fn register_internal(
         );
     }
 
+    // Extract values before mutable borrow
+    let config_bump = ctx.accounts.config.bump;
+    let agent_id = ctx.accounts.config.next_agent_id;
+    let collection_key = ctx.accounts.config.collection;
+
+    // Create agent name early
+    let agent_name = format!("Agent #{}", agent_id);
+    let metadata_uri = if agent_uri.is_empty() {
+        String::new()
+    } else {
+        agent_uri.clone()
+    };
+
+    // Config PDA seeds for signing
+    let config_seeds = &[b"config".as_ref(), &[config_bump]];
+    let signer_seeds = &[&config_seeds[..]];
+
+    // Create Metaplex Core asset in collection
+    // Config PDA is the collection's update_authority, so it signs via invoke_signed
+    CreateV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
+        .asset(&ctx.accounts.asset.to_account_info())
+        .collection(Some(&ctx.accounts.collection.to_account_info()))
+        .payer(&ctx.accounts.owner.to_account_info())
+        .owner(Some(&ctx.accounts.owner.to_account_info()))
+        .authority(Some(&ctx.accounts.config.to_account_info()))
+        .system_program(&ctx.accounts.system_program.to_account_info())
+        .name(agent_name.clone())
+        .uri(metadata_uri)
+        .invoke_signed(signer_seeds)?;
+
+    // Now update config (after CPI is done)
     let config = &mut ctx.accounts.config;
-    let agent_id = config.next_agent_id;
 
     // Increment counters with overflow protection
     config.next_agent_id = config
@@ -102,26 +137,6 @@ pub fn register_internal(
         .total_agents
         .checked_add(1)
         .ok_or(RegistryError::Overflow)?;
-
-    // Create agent name
-    let agent_name = format!("Agent #{}", agent_id);
-    let metadata_uri = if agent_uri.is_empty() {
-        String::new()
-    } else {
-        agent_uri.clone()
-    };
-
-    // Create Metaplex Core asset in collection
-    CreateV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
-        .asset(&ctx.accounts.asset.to_account_info())
-        .collection(Some(&ctx.accounts.collection.to_account_info()))
-        .payer(&ctx.accounts.owner.to_account_info())
-        .owner(Some(&ctx.accounts.owner.to_account_info()))
-        .authority(Some(&ctx.accounts.collection.to_account_info()))
-        .system_program(&ctx.accounts.system_program.to_account_info())
-        .name(agent_name.clone())
-        .uri(metadata_uri)
-        .invoke()?;
 
     // Initialize agent account
     let agent = &mut ctx.accounts.agent_account;
@@ -157,7 +172,7 @@ pub fn register_internal(
         "Agent {} registered with Core asset {} in collection {}",
         agent_id,
         agent.asset,
-        config.collection
+        collection_key
     );
 
     Ok(())
