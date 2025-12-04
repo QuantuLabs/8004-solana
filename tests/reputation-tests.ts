@@ -16,6 +16,7 @@ import {
   getAgentPda,
   getAgentReputationPda,
   getFeedbackPda,
+  getFeedbackTagsPda,
   getResponseIndexPda,
   getResponsePda,
   randomHash,
@@ -303,8 +304,8 @@ describe("Reputation Module Tests", () => {
       console.log("Feedback with empty tags tx:", tx);
 
       const feedback = await program.account.feedbackAccount.fetch(feedbackPda);
-      expect(feedback.tag1).to.equal("");
-      expect(feedback.tag2).to.equal("");
+      // Tags removed from FeedbackAccount - stored in FeedbackTagsPda if needed
+      expect(feedback.score).to.equal(60);
     });
 
     it("giveFeedback() fails with tag > 32 bytes", async () => {
@@ -398,6 +399,196 @@ describe("Reputation Module Tests", () => {
 
       const feedback = await program.account.feedbackAccount.fetch(feedbackPda);
       expect(feedback.clientAddress.toBase58()).to.equal(provider.wallet.publicKey.toBase58());
+    });
+  });
+
+  // ============================================================================
+  // FEEDBACK TAGS PDA TESTS
+  // ============================================================================
+  describe("FeedbackTagsPda Operations", () => {
+    let tagsAgentAsset: Keypair;
+    let tagsAgentPda: PublicKey;
+    let tagsAgentId: anchor.BN;
+    let tagsReputationPda: PublicKey;
+
+    before(async () => {
+      // Register a separate agent for tags tests
+      const config = await program.account.registryConfig.fetch(configPda);
+      tagsAgentId = config.nextAgentId;
+      tagsAgentAsset = Keypair.generate();
+      [tagsAgentPda] = getAgentPda(tagsAgentAsset.publicKey, program.programId);
+      [tagsReputationPda] = getAgentReputationPda(tagsAgentId, program.programId);
+
+      await program.methods
+        .register("https://example.com/agent/tags-test")
+        .accounts({
+          config: configPda,
+          agentAccount: tagsAgentPda,
+          asset: tagsAgentAsset.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([tagsAgentAsset])
+        .rpc();
+
+      // Create feedback without tags
+      const feedbackIndex = new anchor.BN(0);
+      const [feedbackPda] = getFeedbackPda(tagsAgentId, feedbackIndex, program.programId);
+
+      await program.methods
+        .giveFeedback(
+          tagsAgentId,
+          88,
+          "", // Empty tags in giveFeedback
+          "",
+          "https://example.com/feedback/no-tags",
+          Array.from(randomHash()),
+          feedbackIndex
+        )
+        .accounts({
+          client: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          asset: tagsAgentAsset.publicKey,
+          agentAccount: tagsAgentPda,
+          feedbackAccount: feedbackPda,
+          agentReputation: tagsReputationPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+    });
+
+    it("setFeedbackTags() creates optional tags PDA", async () => {
+      const feedbackIndex = new anchor.BN(0);
+      const [feedbackPda] = getFeedbackPda(tagsAgentId, feedbackIndex, program.programId);
+      const [feedbackTagsPda] = getFeedbackTagsPda(tagsAgentId, feedbackIndex, program.programId);
+
+      const tx = await program.methods
+        .setFeedbackTags(
+          tagsAgentId,
+          feedbackIndex,
+          "excellent",
+          "fast"
+        )
+        .accounts({
+          client: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          feedbackAccount: feedbackPda,
+          feedbackTags: feedbackTagsPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      console.log("SetFeedbackTags tx:", tx);
+
+      const tagsPda = await program.account.feedbackTagsPda.fetch(feedbackTagsPda);
+      expect(tagsPda.tag1).to.equal("excellent");
+      expect(tagsPda.tag2).to.equal("fast");
+      expect(tagsPda.agentId.toNumber()).to.equal(tagsAgentId.toNumber());
+      expect(tagsPda.feedbackIndex.toNumber()).to.equal(0);
+    });
+
+    it("setFeedbackTags() fails if non-author", async () => {
+      // Create a new feedback with a different author
+      const feedbackIndex = new anchor.BN(1);
+      const [feedbackPda] = getFeedbackPda(tagsAgentId, feedbackIndex, program.programId);
+      const [feedbackTagsPda] = getFeedbackTagsPda(tagsAgentId, feedbackIndex, program.programId);
+
+      // First create the feedback
+      await program.methods
+        .giveFeedback(
+          tagsAgentId,
+          75,
+          "",
+          "",
+          "https://example.com/feedback/for-tags",
+          Array.from(randomHash()),
+          feedbackIndex
+        )
+        .accounts({
+          client: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          asset: tagsAgentAsset.publicKey,
+          agentAccount: tagsAgentPda,
+          feedbackAccount: feedbackPda,
+          agentReputation: tagsReputationPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      // Try to set tags with a different wallet
+      const otherWallet = Keypair.generate();
+
+      await expectAnchorError(
+        program.methods
+          .setFeedbackTags(
+            tagsAgentId,
+            feedbackIndex,
+            "tag1",
+            "tag2"
+          )
+          .accounts({
+            client: otherWallet.publicKey,
+            payer: provider.wallet.publicKey,
+            feedbackAccount: feedbackPda,
+            feedbackTags: feedbackTagsPda,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([otherWallet])
+          .rpc(),
+        "Unauthorized"
+      );
+    });
+
+    it("setFeedbackTags() fails with empty tags", async () => {
+      // Create a new feedback for this test
+      const reputation = await program.account.agentReputationMetadata.fetch(tagsReputationPda);
+      const feedbackIndex = reputation.nextFeedbackIndex;
+      const [feedbackPda] = getFeedbackPda(tagsAgentId, feedbackIndex, program.programId);
+      const [feedbackTagsPda] = getFeedbackTagsPda(tagsAgentId, feedbackIndex, program.programId);
+
+      // Create feedback first
+      await program.methods
+        .giveFeedback(
+          tagsAgentId,
+          80,
+          "",
+          "",
+          "https://example.com/feedback/empty-tags-test",
+          Array.from(randomHash()),
+          feedbackIndex
+        )
+        .accounts({
+          client: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          asset: tagsAgentAsset.publicKey,
+          agentAccount: tagsAgentPda,
+          feedbackAccount: feedbackPda,
+          agentReputation: tagsReputationPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      // Try to set empty tags
+      await expectAnchorError(
+        program.methods
+          .setFeedbackTags(
+            tagsAgentId,
+            feedbackIndex,
+            "", // Empty tag1
+            ""  // Empty tag2
+          )
+          .accounts({
+            client: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
+            feedbackAccount: feedbackPda,
+            feedbackTags: feedbackTagsPda,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc(),
+        "EmptyTags"
+      );
     });
   });
 

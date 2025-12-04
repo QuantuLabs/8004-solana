@@ -15,11 +15,13 @@
 - **Metadata PDAs** - Individual PDAs per metadata key (replaces Vec)
 - **Immutable Metadata** - Lock metadata permanently for certifications
 - **Delete Metadata** - Recover rent by deleting mutable entries
-- **Hash-Only Storage** - URIs in events, hashes on-chain (-54% FeedbackAccount)
+- **Hash-Only Storage** - URIs in events, hashes on-chain (-66% ResponseAccount)
+- **Optional Tags PDA** - FeedbackTagsPda for -42% cost when tags not used
 - **Global Feedback Index** - Simplified PDA derivation
 
 **Breaking Changes:**
 - `file_uri` and `response_uri` removed from accounts (events only)
+- `tag1` and `tag2` moved to optional `FeedbackTagsPda`
 - Metadata now via `set_metadata_pda` / `delete_metadata_pda`
 - Account sizes changed (incompatible with v0.1.0)
 
@@ -39,8 +41,8 @@
 - ✅ **giveFeedback** with score validation (0-100)
 - ✅ **revokeFeedback** with author-only access control
 - ✅ **appendResponse** with unlimited responses
-- ✅ **Hash-only storage** (URIs in events, -54% account size)
-- ✅ **Tags on-chain** for `getProgramAccounts` filtering
+- ✅ **setFeedbackTags** creates optional tags PDA (-42% cost without tags)
+- ✅ **Hash-only storage** (URIs in events, -66% ResponseAccount)
 - ✅ **Cached aggregates** for O(1) reputation queries
 - ✅ **Global feedback index** for simplified PDA derivation
 
@@ -239,11 +241,19 @@ anchor test --skip-build tests/e2e-integration.ts
 
 | Account | v0.1.0 | v0.2.0 | Savings |
 |---------|--------|--------|---------|
-| FeedbackAccount | 375 bytes | 171 bytes | **-54%** |
+| FeedbackAccount | 375 bytes | 99 bytes | **-74%** |
 | ResponseAccount | 309 bytes | 105 bytes | **-66%** |
 | AgentAccount | 661 bytes | ~365 bytes | **-45%** |
 
-*URIs stored in events only. Tags kept on-chain for filtering.*
+*URIs stored in events only. Tags moved to optional FeedbackTagsPda.*
+
+### Optional Tags (FeedbackTagsPda)
+
+Tags are now stored in a **separate optional PDA** created only when needed:
+- **Without tags**: FeedbackAccount = 99 bytes (**-42% vs inline tags**)
+- **With tags**: FeedbackAccount (99) + FeedbackTagsPda (97) = 196 bytes
+
+Use `setFeedbackTags` after `giveFeedback` to add tags on-chain for `getProgramAccounts` filtering. Tags are always included in the `NewFeedback` event for indexers.
 
 **Note**: Rent is recoverable when closing accounts or deleting metadata.
 
@@ -254,7 +264,8 @@ anchor test --skip-build tests/e2e-integration.ts
 - [x] **Metadata PDAs** - Individual accounts per key (replaces Vec)
 - [x] **Immutable metadata** - Lock entries permanently
 - [x] **Delete metadata** - Recover rent on mutable entries
-- [x] **Hash-only storage** - URIs in events (-54% FeedbackAccount)
+- [x] **Hash-only storage** - URIs in events (-66% ResponseAccount)
+- [x] **Optional Tags PDA** - FeedbackTagsPda for -42% feedback cost
 - [x] **Global feedback index** - Simplified PDA derivation
 - [x] Metaplex Core integration
 - [x] TypeScript SDK updated

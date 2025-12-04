@@ -7,8 +7,9 @@ use crate::error::RegistryError;
 
 /// Give feedback to an agent (8004 spec: giveFeedback)
 ///
-/// Creates a new feedback entry for the specified agent with score 0-100,
-/// tags, and file metadata. Uses global sequential feedback index.
+/// Creates a new feedback entry for the specified agent with score 0-100
+/// and file metadata. Uses global sequential feedback index.
+/// Tags are stored in event only, use set_feedback_tags for on-chain tags.
 pub fn give_feedback(
     ctx: Context<GiveFeedback>,
     agent_id: u64,
@@ -22,13 +23,13 @@ pub fn give_feedback(
     // Validate score (0-100)
     require!(score <= 100, RegistryError::InvalidScore);
 
-    // Validate tag lengths
+    // Validate tag lengths (for event, tags stored via set_feedback_tags if needed)
     require!(
-        tag1.len() <= FeedbackAccount::MAX_TAG_LENGTH,
+        tag1.len() <= FeedbackTagsPda::MAX_TAG_LENGTH,
         RegistryError::TagTooLong
     );
     require!(
-        tag2.len() <= FeedbackAccount::MAX_TAG_LENGTH,
+        tag2.len() <= FeedbackTagsPda::MAX_TAG_LENGTH,
         RegistryError::TagTooLong
     );
 
@@ -63,7 +64,6 @@ pub fn give_feedback(
         metadata.average_score = score;
         metadata.bump = ctx.bumps.agent_reputation;
     } else {
-
         // Update stats
         metadata.total_feedbacks = metadata
             .total_feedbacks
@@ -82,20 +82,19 @@ pub fn give_feedback(
 
     metadata.last_updated = Clock::get()?.unix_timestamp;
 
-    // Initialize feedback account (v0.2.0 - no file_uri, stored in event only)
+    // Initialize feedback account (no tags, stored in FeedbackTagsPda if needed)
     let feedback = &mut ctx.accounts.feedback_account;
     feedback.agent_id = agent_id;
     feedback.client_address = ctx.accounts.client.key();
     feedback.feedback_index = feedback_index;
     feedback.score = score;
-    feedback.tag1 = tag1.clone();
-    feedback.tag2 = tag2.clone();
+    // Tags removed from FeedbackAccount, use set_feedback_tags for on-chain tags
     feedback.file_hash = file_hash;
     feedback.is_revoked = false;
     feedback.created_at = Clock::get()?.unix_timestamp;
     feedback.bump = ctx.bumps.feedback_account;
 
-    // Emit event
+    // Emit event (tags always in event for indexers)
     emit!(NewFeedback {
         agent_id,
         client_address: ctx.accounts.client.key(),
@@ -113,6 +112,53 @@ pub fn give_feedback(
         agent_id,
         ctx.accounts.client.key(),
         score
+    );
+
+    Ok(())
+}
+
+/// Set feedback tags (creates FeedbackTagsPda)
+///
+/// Creates an optional tags PDA for an existing feedback.
+/// Only the original feedback author can set tags.
+/// Tags can only be set once (init, not init_if_needed).
+pub fn set_feedback_tags(
+    ctx: Context<SetFeedbackTags>,
+    agent_id: u64,
+    feedback_index: u64,
+    tag1: String,
+    tag2: String,
+) -> Result<()> {
+    // Validate tag lengths
+    require!(
+        tag1.len() <= FeedbackTagsPda::MAX_TAG_LENGTH,
+        RegistryError::TagTooLong
+    );
+    require!(
+        tag2.len() <= FeedbackTagsPda::MAX_TAG_LENGTH,
+        RegistryError::TagTooLong
+    );
+
+    // At least one tag should be provided
+    require!(
+        !tag1.is_empty() || !tag2.is_empty(),
+        RegistryError::EmptyTags
+    );
+
+    // Initialize tags PDA
+    let tags = &mut ctx.accounts.feedback_tags;
+    tags.agent_id = agent_id;
+    tags.feedback_index = feedback_index;
+    tags.tag1 = tag1.clone();
+    tags.tag2 = tag2.clone();
+    tags.bump = ctx.bumps.feedback_tags;
+
+    msg!(
+        "Tags set for feedback #{}: agent_id={}, tag1='{}', tag2='{}'",
+        feedback_index,
+        agent_id,
+        tag1,
+        tag2
     );
 
     Ok(())

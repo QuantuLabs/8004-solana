@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 /// Feedback account - One per feedback (global index)
 /// Seeds: [b"feedback", agent_id, feedback_index]
-/// v0.2.0: Removed file_uri (stored in event only), kept tags for on-chain filtering
+/// Tags moved to optional FeedbackTagsPda for cost optimization
 #[account]
 pub struct FeedbackAccount {
     /// Agent ID from Identity Registry
@@ -17,16 +17,8 @@ pub struct FeedbackAccount {
     /// Score (0-100, validated on-chain)
     pub score: u8,
 
-    /// Tag1 - String tag for categorization (max 32 bytes)
-    /// Kept on-chain for filtering via getProgramAccounts
-    pub tag1: String,
-
-    /// Tag2 - String tag for categorization (max 32 bytes)
-    /// Kept on-chain for filtering via getProgramAccounts
-    pub tag2: String,
-
     /// File hash (SHA-256, 32 bytes)
-    /// file_uri is stored in FeedbackGiven event only (v0.2.0 optimization)
+    /// file_uri is stored in NewFeedback event only (v0.2.0 optimization)
     pub file_hash: [u8; 32],
 
     /// Revocation status (preserves audit trail)
@@ -40,10 +32,38 @@ pub struct FeedbackAccount {
 }
 
 impl FeedbackAccount {
-    /// Maximum size calculation (v0.2.0 - removed file_uri)
+    /// Maximum size calculation (tags moved to FeedbackTagsPda)
     /// 8 (discriminator) + 8 (agent_id) + 32 (client) + 8 (index) + 1 (score) +
-    /// (4+32) (tag1) + (4+32) (tag2) + 32 (hash) + 1 (revoked) + 8 (timestamp) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 1 + (4 + 32) + (4 + 32) + 32 + 1 + 8 + 1;
+    /// 32 (hash) + 1 (revoked) + 8 (timestamp) + 1 (bump)
+    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 1 + 32 + 1 + 8 + 1; // 99 bytes
+}
+
+/// Optional tags PDA for feedback - Created only when tags are provided
+/// Seeds: [b"feedback_tags", agent_id, feedback_index]
+/// Separated from FeedbackAccount to save -42% when tags not used
+#[account]
+pub struct FeedbackTagsPda {
+    /// Agent ID (for validation)
+    pub agent_id: u64,
+
+    /// Feedback index (for validation)
+    pub feedback_index: u64,
+
+    /// Tag1 - String tag for categorization (max 32 bytes)
+    pub tag1: String,
+
+    /// Tag2 - String tag for categorization (max 32 bytes)
+    pub tag2: String,
+
+    /// PDA bump seed
+    pub bump: u8,
+}
+
+impl FeedbackTagsPda {
+    /// Maximum size calculation
+    /// 8 (discriminator) + 8 (agent_id) + 8 (feedback_index) +
+    /// (4+32) (tag1) + (4+32) (tag2) + 1 (bump)
+    pub const MAX_SIZE: usize = 8 + 8 + 8 + (4 + 32) + (4 + 32) + 1; // 97 bytes
 
     /// Maximum tag length
     pub const MAX_TAG_LENGTH: usize = 32;

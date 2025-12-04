@@ -378,25 +378,35 @@
         <section id="changelog">
             <h2>v0.2.0 Changelog</h2>
 
+            <h3>Architecture</h3>
+            <ul>
+                <li><strong>Program Consolidation</strong> — 3 programs (identity, reputation, validation) → 1 unified program</li>
+                <li><strong>Metaplex Core Migration</strong> — From Token Metadata to Core (6x cheaper NFT operations)</li>
+                <li><strong>Global Feedback Index</strong> — Simplified PDA derivation (client removed from seeds)</li>
+            </ul>
+
             <h3>New Features</h3>
             <ul>
                 <li><strong>Metadata PDAs</strong> — Individual PDA per key (replaces Vec), unlimited entries</li>
                 <li><strong>Immutable Metadata</strong> — Lock metadata permanently for certifications</li>
                 <li><strong>Delete Metadata</strong> — Recover rent by deleting mutable entries</li>
-                <li><strong>Hash-Only Storage</strong> — URIs in events, hashes on-chain (-54% FeedbackAccount)</li>
-                <li><strong>Global Feedback Index</strong> — Simplified PDA derivation (client removed from seeds)</li>
+                <li><strong>Hash-Only Storage</strong> — URIs in events, hashes on-chain</li>
+                <li><strong>Optional Tags PDA</strong> — FeedbackTagsPda for -42% cost when tags not used</li>
             </ul>
 
             <h3>Account Size Optimizations</h3>
             <ul>
-                <li><strong>FeedbackAccount:</strong> 375 → 171 bytes (<strong>-54%</strong>)</li>
+                <li><strong>FeedbackAccount:</strong> 375 → 99 bytes (<strong>-74%</strong>) — tags moved to optional PDA</li>
                 <li><strong>ResponseAccount:</strong> 309 → 105 bytes (<strong>-66%</strong>)</li>
                 <li><strong>AgentAccount:</strong> 661 → ~365 bytes (<strong>-45%</strong>)</li>
             </ul>
 
             <h3>Breaking Changes</h3>
             <ul>
+                <li>3 programs → 1 unified <code>agent_registry_8004</code></li>
+                <li>SPL Token NFTs → Metaplex Core assets</li>
                 <li><code>file_uri</code> / <code>response_uri</code> removed from accounts (events only)</li>
+                <li><code>tag1</code> / <code>tag2</code> moved to optional <code>FeedbackTagsPda</code></li>
                 <li><code>set_metadata</code> → <code>set_metadata_pda(key_hash, key, value, immutable)</code></li>
                 <li><code>Vec&lt;MetadataEntry&gt;</code> removed from AgentAccount</li>
                 <li>MetadataExtension removed (use PDAs instead)</li>
@@ -805,24 +815,40 @@ agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</c
             <h3>Account Structures</h3>
 
             <div class="card">
-                <h4>FeedbackAccount (171 bytes) - Optimized in v0.2.0</h4>
+                <h4>FeedbackAccount (99 bytes) - Optimized in v0.2.0</h4>
                 <pre><code>pub struct FeedbackAccount {
     pub agent_id: u64,           // 8 bytes
     pub client_address: Pubkey,  // 32 bytes (who gave feedback)
     pub feedback_index: u64,     // 8 bytes (global index)
     pub score: u8,               // 1 byte (0-100)
-    pub tag1: String,            // 4 + 32 = 36 bytes (kept for filtering)
-    pub tag2: String,            // 4 + 32 = 36 bytes (kept for filtering)
-    // file_uri removed - stored in NewFeedback event only (v0.2.0)
+    // tag1/tag2 moved to FeedbackTagsPda (optional)
+    // file_uri removed - stored in NewFeedback event only
     pub file_hash: [u8; 32],     // 32 bytes
     pub is_revoked: bool,        // 1 byte
     pub created_at: i64,         // 8 bytes
     pub bump: u8,                // 1 byte
 }
-// -54% size reduction vs v0.1.0 (was 375 bytes)</code></pre>
+// -74% size reduction vs v0.1.0 (was 375 bytes)</code></pre>
                 <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback", agent_id (LE), feedback_index (LE)]</div>
                 <div class="info" style="margin-top: 0.5rem;">
-                    Tags kept on-chain for <code>getProgramAccounts</code> filtering. URIs in events.
+                    Tags in optional FeedbackTagsPda for <code>getProgramAccounts</code> filtering. URIs in events.
+                </div>
+            </div>
+
+            <div class="card">
+                <h4>FeedbackTagsPda (97 bytes) - Optional</h4>
+                <pre><code>pub struct FeedbackTagsPda {
+    pub agent_id: u64,           // 8 bytes
+    pub feedback_index: u64,     // 8 bytes
+    pub tag1: String,            // 4 + 32 = 36 bytes
+    pub tag2: String,            // 4 + 32 = 36 bytes
+    pub bump: u8,                // 1 byte
+}
+// Created only when tags are set via setFeedbackTags</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback_tags", agent_id (LE), feedback_index (LE)]</div>
+                <div class="info" style="margin-top: 0.5rem;">
+                    Use <code>setFeedbackTags</code> after <code>giveFeedback</code> to add tags on-chain.
+                    Tags always included in NewFeedback event for indexers.
                 </div>
             </div>
 
@@ -1069,11 +1095,11 @@ constraint = asset.owner == owner.key()</code></pre>
             <h3>v0.2.0 Account Size Optimizations</h3>
             <table>
                 <tr><th>Account</th><th>v0.1.0</th><th>v0.2.0</th><th>Savings</th></tr>
-                <tr><td>FeedbackAccount</td><td>375 bytes</td><td>171 bytes</td><td class="highlight"><strong>-54%</strong></td></tr>
+                <tr><td>FeedbackAccount</td><td>375 bytes</td><td>99 bytes</td><td class="highlight"><strong>-74%</strong></td></tr>
                 <tr><td>ResponseAccount</td><td>309 bytes</td><td>105 bytes</td><td class="highlight"><strong>-66%</strong></td></tr>
                 <tr><td>AgentAccount</td><td>661 bytes</td><td>~365 bytes</td><td class="highlight"><strong>-45%</strong></td></tr>
             </table>
-            <p><small>URIs now stored in events only. Tags kept on-chain for filtering.</small></p>
+            <p><small>URIs in events only. Tags moved to optional FeedbackTagsPda (97 bytes).</small></p>
 
             <h3>Cost Optimizations in v0.2.0</h3>
 
@@ -1090,14 +1116,15 @@ constraint = asset.owner == owner.key()</code></pre>
             </div>
 
             <div class="card">
-                <h4>2. Hash-Only Storage (-54% to -66%)</h4>
+                <h4>2. Hash-Only Storage + Optional Tags (-74% to -66%)</h4>
                 <p><strong>file_uri / response_uri:</strong> Removed from accounts, stored in events only</p>
+                <p><strong>tag1 / tag2:</strong> Moved to optional FeedbackTagsPda (97 bytes)</p>
                 <p><strong>Savings:</strong></p>
                 <ul>
-                    <li>FeedbackAccount: 375 → 171 bytes (-54%)</li>
+                    <li>FeedbackAccount: 375 → 99 bytes (-74%)</li>
                     <li>ResponseAccount: 309 → 105 bytes (-66%)</li>
                 </ul>
-                <p>Tags kept on-chain for <code>getProgramAccounts</code> filtering.</p>
+                <p>Use <code>setFeedbackTags</code> after <code>giveFeedback</code> to add tags on-chain for <code>getProgramAccounts</code> filtering.</p>
             </div>
 
             <div class="card">

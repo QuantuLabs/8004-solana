@@ -139,6 +139,18 @@ pub mod agent_registry_8004 {
         )
     }
 
+    /// Set feedback tags (creates optional FeedbackTagsPda)
+    /// Only the original feedback author can set tags.
+    pub fn set_feedback_tags(
+        ctx: Context<SetFeedbackTags>,
+        agent_id: u64,
+        feedback_index: u64,
+        tag1: String,
+        tag2: String,
+    ) -> Result<()> {
+        reputation::instructions::set_feedback_tags(ctx, agent_id, feedback_index, tag1, tag2)
+    }
+
     // ============================================================================
     // Validation Instructions
     // ============================================================================

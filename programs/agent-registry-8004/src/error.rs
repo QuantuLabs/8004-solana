@@ -47,6 +47,8 @@ pub enum RegistryError {
     InvalidFeedbackIndex = 6055,
     #[msg("Tag exceeds 32 bytes")]
     TagTooLong = 6056,
+    #[msg("At least one tag must be provided")]
+    EmptyTags = 6057,
 
     // ========== Validation Errors (6100-6149) ==========
     #[msg("Request URI exceeds 200 bytes")]

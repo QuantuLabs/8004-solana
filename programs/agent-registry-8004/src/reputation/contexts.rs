@@ -137,3 +137,44 @@ pub struct AppendResponse<'info> {
 
     pub system_program: Program<'info, System>,
 }
+
+/// Accounts for set_feedback_tags instruction
+/// Creates a FeedbackTagsPda for an existing feedback
+#[derive(Accounts)]
+#[instruction(agent_id: u64, feedback_index: u64, _tag1: String, _tag2: String)]
+pub struct SetFeedbackTags<'info> {
+    /// Feedback author (must be original client)
+    pub client: Signer<'info>,
+
+    /// Payer for tags PDA creation
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    /// Feedback account (must exist and belong to client)
+    #[account(
+        seeds = [
+            b"feedback",
+            agent_id.to_le_bytes().as_ref(),
+            feedback_index.to_le_bytes().as_ref()
+        ],
+        bump = feedback_account.bump,
+        constraint = feedback_account.client_address == client.key() @ RegistryError::Unauthorized
+    )]
+    pub feedback_account: Account<'info, FeedbackAccount>,
+
+    /// Tags PDA (created once, cannot be modified)
+    #[account(
+        init,
+        payer = payer,
+        space = FeedbackTagsPda::MAX_SIZE,
+        seeds = [
+            b"feedback_tags",
+            agent_id.to_le_bytes().as_ref(),
+            feedback_index.to_le_bytes().as_ref()
+        ],
+        bump
+    )]
+    pub feedback_tags: Account<'info, FeedbackTagsPda>,
+
+    pub system_program: Program<'info, System>,
+}

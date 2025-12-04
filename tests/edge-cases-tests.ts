@@ -248,8 +248,10 @@ describe("Edge Cases Tests", () => {
 
       console.log("Tag 32 bytes tx:", tx);
 
+      // Tags are no longer stored in FeedbackAccount (moved to optional FeedbackTagsPda)
+      // Just verify the feedback was created
       const feedback = await program.account.feedbackAccount.fetch(feedbackPda);
-      expect(feedback.tag1.length).to.equal(MAX_TAG_LENGTH);
+      expect(feedback.score).to.equal(75);
     });
 
     it("Tag 33 bytes (rejected)", async () => {
@@ -602,9 +604,10 @@ describe("Edge Cases Tests", () => {
 
       console.log("Empty tags feedback tx:", tx);
 
+      // Tags are no longer stored in FeedbackAccount (moved to optional FeedbackTagsPda)
+      // Just verify the feedback was created
       const feedback = await program.account.feedbackAccount.fetch(feedbackPda);
-      expect(feedback.tag1).to.equal("");
-      expect(feedback.tag2).to.equal("");
+      expect(feedback.score).to.equal(85);
     });
 
     it("Empty URI in validation request (accepted)", async () => {

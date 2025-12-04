@@ -91,6 +91,25 @@ export function getFeedbackPda(
 }
 
 /**
+ * Derive feedback tags PDA: ["feedback_tags", agent_id (u64 LE), feedback_index (u64 LE)]
+ * Optional PDA created only when tags are set via setFeedbackTags
+ */
+export function getFeedbackTagsPda(
+  agentId: anchor.BN,
+  feedbackIndex: anchor.BN,
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("feedback_tags"),
+      agentId.toArrayLike(Buffer, "le", 8),
+      feedbackIndex.toArrayLike(Buffer, "le", 8),
+    ],
+    programId
+  );
+}
+
+/**
  * Derive response index PDA: ["response_index", agent_id, feedback_index]
  */
 export function getResponseIndexPda(
