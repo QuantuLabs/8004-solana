@@ -217,24 +217,24 @@ anchor test --skip-build tests/e2e-integration.ts
 
 | Operation | Cost (SOL) | Lamports | Notes |
 |-----------|------------|----------|-------|
-| Register Agent | **0.00651** | 6,507,280 | Core asset + AgentAccount |
+| Register Agent | **0.00650** | 6,500,320 | Core asset + AgentAccount |
 | Set Metadata (1st) | **0.00319** | 3,192,680 | +MetadataEntryPda |
 | Set Metadata (update) | 0.000005 | 5,000 | TX fee only |
-| Give Feedback (1st) | 0.00332 | 3,324,920 | +AgentReputation init |
-| Give Feedback (2nd+) | 0.00209 | 2,086,040 | FeedbackAccount only |
+| Give Feedback (1st) | 0.00282 | 2,823,800 | +AgentReputation init |
+| Give Feedback (2nd+) | 0.00158 | 1,584,920 | FeedbackAccount only |
 | Append Response (1st) | 0.00275 | 2,747,240 | +ResponseIndex init |
 | Append Response (2nd+) | 0.00163 | 1,626,680 | ResponseAccount only |
 | Revoke Feedback | 0.000005 | 5,000 | TX fee only |
 | Request Validation | 0.00183 | 1,828,520 | ValidationRequest |
 | Respond Validation | 0.000005 | 5,000 | TX fee only |
-| **Full Lifecycle** | **0.0245** | 24,521,040 | Complete test cycle |
+| **Full Lifecycle** | **0.0235** | 23,511,840 | Complete test cycle |
 
 ### First vs Subsequent Savings
 
 | Operation | 1st Call | 2nd+ Calls | Savings |
 |-----------|----------|------------|---------|
 | Set Metadata | 0.00319 | 0.000005 | **-99%** |
-| Give Feedback | 0.00332 | 0.00209 | **-37%** |
+| Give Feedback | 0.00282 | 0.00158 | **-44%** |
 | Append Response | 0.00275 | 0.00163 | **-41%** |
 
 ### v0.2.0 Account Size Optimizations
