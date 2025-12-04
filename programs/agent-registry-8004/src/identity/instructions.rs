@@ -47,52 +47,25 @@ pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
 
 /// Register a new agent with empty URI
 pub fn register_empty(ctx: Context<Register>) -> Result<()> {
-    register_internal(ctx, String::new(), vec![])
+    register_internal(ctx, String::new())
 }
 
 /// Register a new agent with URI
 pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
-    register_internal(ctx, agent_uri, vec![])
+    register_internal(ctx, agent_uri)
 }
 
-/// Register a new agent with URI and initial metadata
-pub fn register_with_metadata(
-    ctx: Context<Register>,
-    agent_uri: String,
-    metadata: Vec<MetadataEntry>,
-) -> Result<()> {
-    register_internal(ctx, agent_uri, metadata)
-}
-
-/// Internal registration logic
+/// Internal registration logic (v0.2.0 - no inline metadata)
 #[doc(hidden)]
-pub fn register_internal(
+fn register_internal(
     ctx: Context<Register>,
     agent_uri: String,
-    metadata: Vec<MetadataEntry>,
 ) -> Result<()> {
     // Validate token URI length
     require!(
         agent_uri.len() <= AgentAccount::MAX_URI_LENGTH,
         RegistryError::UriTooLong
     );
-
-    // Validate metadata
-    require!(
-        metadata.len() <= AgentAccount::MAX_METADATA_ENTRIES,
-        RegistryError::MetadataLimitReached
-    );
-
-    for entry in &metadata {
-        require!(
-            entry.metadata_key.len() <= MetadataEntry::MAX_KEY_LENGTH,
-            RegistryError::KeyTooLong
-        );
-        require!(
-            entry.metadata_value.len() <= MetadataEntry::MAX_VALUE_LENGTH,
-            RegistryError::ValueTooLong
-        );
-    }
 
     // Extract values before mutable borrow
     let config_bump = ctx.accounts.config.bump;
@@ -138,7 +111,7 @@ pub fn register_internal(
         .checked_add(1)
         .ok_or(RegistryError::Overflow)?;
 
-    // Initialize agent account
+    // Initialize agent account (v0.2.0 - no inline metadata)
     let agent = &mut ctx.accounts.agent_account;
     agent.agent_id = agent_id;
     agent.owner = ctx.accounts.owner.key();
@@ -146,7 +119,6 @@ pub fn register_internal(
     agent.agent_uri = agent_uri.clone();
     agent.nft_name = agent_name;
     agent.nft_symbol = String::new();
-    agent.metadata = metadata.clone();
     agent.created_at = Clock::get()?.unix_timestamp;
     agent.bump = ctx.bumps.agent_account;
 
@@ -158,16 +130,6 @@ pub fn register_internal(
         asset: ctx.accounts.asset.key(),
     });
 
-    // Emit metadata events if any
-    for entry in &metadata {
-        emit!(MetadataSet {
-            agent_id,
-            indexed_key: entry.metadata_key.clone(),
-            key: entry.metadata_key.clone(),
-            value: entry.metadata_value.clone(),
-        });
-    }
-
     msg!(
         "Agent {} registered with Core asset {} in collection {}",
         agent_id,
@@ -178,61 +140,98 @@ pub fn register_internal(
     Ok(())
 }
 
-/// Get agent metadata value by key
-pub fn get_metadata(ctx: Context<GetMetadata>, key: String) -> Result<Vec<u8>> {
-    let agent = &ctx.accounts.agent_account;
-
-    if let Some(entry) = agent.metadata.iter().find(|e| e.metadata_key == key) {
-        Ok(entry.metadata_value.clone())
-    } else {
-        Ok(Vec::new())
-    }
-}
-
-/// Set agent metadata
-pub fn set_metadata(ctx: Context<SetMetadata>, key: String, value: Vec<u8>) -> Result<()> {
+/// Set metadata as individual PDA (v0.2.0)
+///
+/// Creates a new MetadataEntryPda if it doesn't exist.
+/// Updates existing entry if not immutable.
+/// key_hash is first 8 bytes of SHA256(key) for PDA derivation.
+pub fn set_metadata_pda(
+    ctx: Context<SetMetadataPda>,
+    _key_hash: [u8; 8],
+    key: String,
+    value: Vec<u8>,
+    immutable: bool,
+) -> Result<()> {
     // Verify ownership via Core asset
     verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
 
     // Validate key length
     require!(
-        key.len() <= MetadataEntry::MAX_KEY_LENGTH,
+        key.len() <= MetadataEntryPda::MAX_KEY_LENGTH,
         RegistryError::KeyTooLong
     );
 
     // Validate value length
     require!(
-        value.len() <= MetadataEntry::MAX_VALUE_LENGTH,
+        value.len() <= MetadataEntryPda::MAX_VALUE_LENGTH,
         RegistryError::ValueTooLong
     );
 
-    let agent = &mut ctx.accounts.agent_account;
+    let entry = &mut ctx.accounts.metadata_entry;
+    let agent_id = ctx.accounts.agent_account.agent_id;
 
-    // Find existing entry or add new one
-    if let Some(entry) = agent.find_metadata_mut(&key) {
-        entry.metadata_value = value.clone();
-    } else {
-        require!(
-            agent.metadata.len() < AgentAccount::MAX_METADATA_ENTRIES,
-            RegistryError::MetadataLimitReached
-        );
+    // Check if entry already exists and is immutable
+    if entry.created_at > 0 && entry.immutable {
+        return Err(RegistryError::MetadataImmutable.into());
+    }
 
-        agent.metadata.push(MetadataEntry {
-            metadata_key: key.clone(),
-            metadata_value: value.clone(),
-        });
+    // Set or update entry
+    let is_new = entry.created_at == 0;
+    entry.agent_id = agent_id;
+    entry.metadata_key = key.clone();
+    entry.metadata_value = value.clone();
+    entry.immutable = immutable;
+    if is_new {
+        entry.created_at = Clock::get()?.unix_timestamp;
+        entry.bump = ctx.bumps.metadata_entry;
     }
 
     // Emit event
     emit!(MetadataSet {
-        agent_id: agent.agent_id,
+        agent_id,
         indexed_key: key.clone(),
         key: key.clone(),
         value,
+        immutable,
     });
 
-    msg!("Metadata '{}' set for agent {}", key, agent.agent_id);
+    msg!(
+        "Metadata '{}' set for agent {} (immutable: {})",
+        key,
+        agent_id,
+        immutable
+    );
 
+    Ok(())
+}
+
+/// Delete metadata PDA and recover rent (v0.2.0)
+///
+/// Only works if metadata is not immutable.
+/// Rent is returned to the owner.
+pub fn delete_metadata_pda(
+    ctx: Context<DeleteMetadataPda>,
+    _key_hash: [u8; 8],
+) -> Result<()> {
+    // Verify ownership via Core asset
+    verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
+
+    let entry = &ctx.accounts.metadata_entry;
+    let agent_id = ctx.accounts.agent_account.agent_id;
+    let key = entry.metadata_key.clone();
+
+    // Check if immutable
+    require!(!entry.immutable, RegistryError::MetadataImmutable);
+
+    // Emit event before closing
+    emit!(MetadataDeleted {
+        agent_id,
+        key: key.clone(),
+    });
+
+    msg!("Metadata '{}' deleted for agent {}, rent recovered", key, agent_id);
+
+    // Account is closed automatically via close = owner constraint
     Ok(())
 }
 
@@ -315,89 +314,6 @@ pub fn sync_owner(ctx: Context<SyncOwner>) -> Result<()> {
 /// Get agent owner
 pub fn owner_of(ctx: Context<OwnerOf>) -> Result<Pubkey> {
     Ok(ctx.accounts.agent_account.owner)
-}
-
-/// Create metadata extension
-pub fn create_metadata_extension(
-    ctx: Context<CreateMetadataExtension>,
-    extension_index: u8,
-) -> Result<()> {
-    // Verify ownership
-    verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
-
-    let extension = &mut ctx.accounts.metadata_extension;
-    extension.asset = ctx.accounts.asset.key();
-    extension.extension_index = extension_index;
-    extension.metadata = Vec::new();
-    extension.bump = ctx.bumps.metadata_extension;
-
-    msg!(
-        "Created metadata extension {} for Core asset {}",
-        extension_index,
-        extension.asset
-    );
-
-    Ok(())
-}
-
-/// Set metadata in extension
-pub fn set_metadata_extended(
-    ctx: Context<SetMetadataExtended>,
-    _extension_index: u8,
-    key: String,
-    value: Vec<u8>,
-) -> Result<()> {
-    // Verify ownership
-    verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
-
-    // Validate key and value lengths
-    require!(
-        key.len() <= MetadataEntry::MAX_KEY_LENGTH,
-        RegistryError::KeyTooLong
-    );
-    require!(
-        value.len() <= MetadataEntry::MAX_VALUE_LENGTH,
-        RegistryError::ValueTooLong
-    );
-
-    let extension = &mut ctx.accounts.metadata_extension;
-
-    if let Some(entry) = extension.find_metadata_mut(&key) {
-        entry.metadata_value = value.clone();
-    } else {
-        require!(
-            extension.metadata.len() < MetadataExtension::MAX_METADATA_ENTRIES,
-            RegistryError::MetadataLimitReached
-        );
-        extension.metadata.push(MetadataEntry {
-            metadata_key: key.clone(),
-            metadata_value: value.clone(),
-        });
-    }
-
-    // Emit event
-    emit!(MetadataSet {
-        agent_id: ctx.accounts.agent_account.agent_id,
-        indexed_key: key.clone(),
-        key,
-        value,
-    });
-
-    Ok(())
-}
-
-/// Get metadata from extension
-pub fn get_metadata_extended(
-    ctx: Context<GetMetadataExtended>,
-    _extension_index: u8,
-    key: String,
-) -> Result<Vec<u8>> {
-    let extension = &ctx.accounts.metadata_extension;
-    if let Some(entry) = extension.find_metadata(&key) {
-        Ok(entry.metadata_value.clone())
-    } else {
-        Ok(Vec::new())
-    }
 }
 
 /// Transfer agent with automatic owner sync

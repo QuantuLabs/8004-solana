@@ -29,6 +29,8 @@ pub enum RegistryError {
     InvalidAsset = 6011,
     #[msg("Transfer to self not allowed")]
     TransferToSelf = 6012,
+    #[msg("Metadata is immutable and cannot be modified or deleted")]
+    MetadataImmutable = 6013,
 
     // ========== Reputation Errors (6050-6099) ==========
     #[msg("Score must be 0-100")]

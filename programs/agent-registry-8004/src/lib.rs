@@ -27,7 +27,7 @@ pub mod agent_registry_8004 {
     use super::*;
 
     // ============================================================================
-    // Identity Instructions (Metaplex Core)
+    // Identity Instructions (Metaplex Core) - v0.2.0
     // ============================================================================
 
     /// Initialize the registry and create Core collection
@@ -45,23 +45,25 @@ pub mod agent_registry_8004 {
         identity::instructions::register(ctx, agent_uri)
     }
 
-    /// Register a new agent with URI and initial metadata
-    pub fn register_with_metadata(
-        ctx: Context<Register>,
-        agent_uri: String,
-        metadata: Vec<MetadataEntry>,
+    /// Set agent metadata as individual PDA (v0.2.0)
+    /// key_hash is first 8 bytes of SHA256(key) for PDA derivation
+    pub fn set_metadata_pda(
+        ctx: Context<SetMetadataPda>,
+        key_hash: [u8; 8],
+        key: String,
+        value: Vec<u8>,
+        immutable: bool,
     ) -> Result<()> {
-        identity::instructions::register_with_metadata(ctx, agent_uri, metadata)
+        identity::instructions::set_metadata_pda(ctx, key_hash, key, value, immutable)
     }
 
-    /// Get agent metadata value by key
-    pub fn get_metadata(ctx: Context<GetMetadata>, key: String) -> Result<Vec<u8>> {
-        identity::instructions::get_metadata(ctx, key)
-    }
-
-    /// Set agent metadata
-    pub fn set_metadata(ctx: Context<SetMetadata>, key: String, value: Vec<u8>) -> Result<()> {
-        identity::instructions::set_metadata(ctx, key, value)
+    /// Delete agent metadata PDA and recover rent (v0.2.0)
+    /// Only works if metadata is not immutable
+    pub fn delete_metadata_pda(
+        ctx: Context<DeleteMetadataPda>,
+        key_hash: [u8; 8],
+    ) -> Result<()> {
+        identity::instructions::delete_metadata_pda(ctx, key_hash)
     }
 
     /// Set agent URI
@@ -77,33 +79,6 @@ pub mod agent_registry_8004 {
     /// Get agent owner
     pub fn owner_of(ctx: Context<OwnerOf>) -> Result<Pubkey> {
         identity::instructions::owner_of(ctx)
-    }
-
-    /// Create metadata extension
-    pub fn create_metadata_extension(
-        ctx: Context<CreateMetadataExtension>,
-        extension_index: u8,
-    ) -> Result<()> {
-        identity::instructions::create_metadata_extension(ctx, extension_index)
-    }
-
-    /// Set metadata in extension
-    pub fn set_metadata_extended(
-        ctx: Context<SetMetadataExtended>,
-        extension_index: u8,
-        key: String,
-        value: Vec<u8>,
-    ) -> Result<()> {
-        identity::instructions::set_metadata_extended(ctx, extension_index, key, value)
-    }
-
-    /// Get metadata from extension
-    pub fn get_metadata_extended(
-        ctx: Context<GetMetadataExtended>,
-        extension_index: u8,
-        key: String,
-    ) -> Result<Vec<u8>> {
-        identity::instructions::get_metadata_extended(ctx, extension_index, key)
     }
 
     /// Transfer agent with automatic owner sync

@@ -10,12 +10,21 @@ pub struct Registered {
 }
 
 /// Event emitted when agent metadata is set (8004 spec: MetadataSet)
+/// v0.2.0: Added immutable field
 #[event]
 pub struct MetadataSet {
     pub agent_id: u64,
     pub indexed_key: String, // Duplicate for indexing (like Ethereum)
     pub key: String,
     pub value: Vec<u8>,
+    pub immutable: bool, // v0.2.0: If true, cannot be modified/deleted
+}
+
+/// Event emitted when agent metadata is deleted (v0.2.0)
+#[event]
+pub struct MetadataDeleted {
+    pub agent_id: u64,
+    pub key: String,
 }
 
 /// Event emitted when agent URI is updated (8004 spec: UriUpdated)

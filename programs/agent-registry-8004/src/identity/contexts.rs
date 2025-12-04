@@ -74,21 +74,21 @@ pub struct Register<'info> {
     pub mpl_core_program: UncheckedAccount<'info>,
 }
 
-/// Get metadata from agent account
+/// Set metadata as individual PDA (v0.2.0)
+/// Creates new PDA if not exists, updates if exists and not immutable
 #[derive(Accounts)]
-pub struct GetMetadata<'info> {
+#[instruction(key_hash: [u8; 8], key: String, value: Vec<u8>, immutable: bool)]
+pub struct SetMetadataPda<'info> {
     #[account(
-        seeds = [b"agent", agent_account.asset.as_ref()],
-        bump = agent_account.bump
+        init_if_needed,
+        payer = owner,
+        space = 8 + MetadataEntryPda::MAX_SIZE,
+        seeds = [b"agent_meta", agent_account.agent_id.to_le_bytes().as_ref(), key_hash.as_ref()],
+        bump
     )]
-    pub agent_account: Account<'info, AgentAccount>,
-}
+    pub metadata_entry: Account<'info, MetadataEntryPda>,
 
-/// Set metadata on agent account (owner only)
-#[derive(Accounts)]
-pub struct SetMetadata<'info> {
     #[account(
-        mut,
         seeds = [b"agent", agent_account.asset.as_ref()],
         bump = agent_account.bump,
     )]
@@ -102,6 +102,41 @@ pub struct SetMetadata<'info> {
     pub asset: UncheckedAccount<'info>,
 
     /// Owner must be the asset owner (verified in instruction)
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+/// Delete metadata PDA and recover rent (v0.2.0)
+/// Only works if metadata is not immutable
+#[derive(Accounts)]
+#[instruction(key_hash: [u8; 8])]
+pub struct DeleteMetadataPda<'info> {
+    #[account(
+        mut,
+        close = owner,
+        seeds = [b"agent_meta", agent_account.agent_id.to_le_bytes().as_ref(), key_hash.as_ref()],
+        bump = metadata_entry.bump
+    )]
+    pub metadata_entry: Account<'info, MetadataEntryPda>,
+
+    #[account(
+        seeds = [b"agent", agent_account.asset.as_ref()],
+        bump = agent_account.bump,
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    /// Core asset - verifies ownership
+    /// CHECK: Ownership verified via mpl_core::accounts
+    #[account(
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
+    )]
+    pub asset: UncheckedAccount<'info>,
+
+    /// Owner must be the asset owner (verified in instruction)
+    /// Receives rent back when PDA is closed
+    #[account(mut)]
     pub owner: Signer<'info>,
 }
 
@@ -173,76 +208,6 @@ pub struct OwnerOf<'info> {
         bump = agent_account.bump
     )]
     pub agent_account: Account<'info, AgentAccount>,
-}
-
-/// Create metadata extension for additional entries
-#[derive(Accounts)]
-#[instruction(extension_index: u8)]
-pub struct CreateMetadataExtension<'info> {
-    #[account(
-        init,
-        payer = owner,
-        space = 8 + MetadataExtension::MAX_SIZE,
-        seeds = [b"metadata_ext", asset.key().as_ref(), &[extension_index]],
-        bump
-    )]
-    pub metadata_extension: Account<'info, MetadataExtension>,
-
-    /// Core asset
-    /// CHECK: Verified via agent_account constraint
-    pub asset: UncheckedAccount<'info>,
-
-    #[account(
-        seeds = [b"agent", asset.key().as_ref()],
-        bump = agent_account.bump,
-    )]
-    pub agent_account: Account<'info, AgentAccount>,
-
-    /// Owner must be the asset owner (verified in instruction)
-    #[account(mut)]
-    pub owner: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-}
-
-/// Set metadata in extension
-#[derive(Accounts)]
-#[instruction(extension_index: u8)]
-pub struct SetMetadataExtended<'info> {
-    #[account(
-        mut,
-        seeds = [b"metadata_ext", asset.key().as_ref(), &[extension_index]],
-        bump = metadata_extension.bump
-    )]
-    pub metadata_extension: Account<'info, MetadataExtension>,
-
-    /// Core asset
-    /// CHECK: Verified via agent_account constraint
-    pub asset: UncheckedAccount<'info>,
-
-    #[account(
-        seeds = [b"agent", asset.key().as_ref()],
-        bump = agent_account.bump,
-    )]
-    pub agent_account: Account<'info, AgentAccount>,
-
-    /// Owner must be the asset owner (verified in instruction)
-    pub owner: Signer<'info>,
-}
-
-/// Get metadata from extension
-#[derive(Accounts)]
-#[instruction(extension_index: u8)]
-pub struct GetMetadataExtended<'info> {
-    #[account(
-        seeds = [b"metadata_ext", asset.key().as_ref(), &[extension_index]],
-        bump = metadata_extension.bump
-    )]
-    pub metadata_extension: Account<'info, MetadataExtension>,
-
-    /// Core asset (for PDA derivation)
-    /// CHECK: Used for PDA seeds only
-    pub asset: UncheckedAccount<'info>,
 }
 
 /// Transfer agent with automatic owner sync

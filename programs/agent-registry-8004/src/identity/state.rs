@@ -26,6 +26,7 @@ impl RegistryConfig {
 }
 
 /// Agent account (represents an AI agent identity)
+/// Metadata is now stored in separate MetadataEntryPda accounts (v0.2.0)
 #[account]
 pub struct AgentAccount {
     /// Sequential agent ID
@@ -46,9 +47,6 @@ pub struct AgentAccount {
     /// NFT symbol (max 10 bytes)
     pub nft_symbol: String,
 
-    /// Key-value metadata (max 1 entry in base, use extension for more)
-    pub metadata: Vec<MetadataEntry>,
-
     /// Creation timestamp
     pub created_at: i64,
 
@@ -57,73 +55,47 @@ pub struct AgentAccount {
 }
 
 impl AgentAccount {
-    /// Maximum size for AgentAccount
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 32 + 4 + 200 + 4 + 32 + 4 + 10 + 4 + (1 * MetadataEntry::MAX_SIZE) + 8 + 1;
-
-    /// Maximum number of metadata entries in base account
-    pub const MAX_METADATA_ENTRIES: usize = 1;
+    /// Maximum size for AgentAccount (v0.2.0 - no inline metadata)
+    /// 8 (discriminator) + 8 (agent_id) + 32 (owner) + 32 (asset) +
+    /// 4+200 (agent_uri) + 4+32 (nft_name) + 4+10 (nft_symbol) + 8 (created_at) + 1 (bump)
+    pub const MAX_SIZE: usize = 8 + 8 + 32 + 32 + (4 + 200) + (4 + 32) + (4 + 10) + 8 + 1;
 
     /// Maximum URI length in bytes
     pub const MAX_URI_LENGTH: usize = 200;
-
-    /// Find metadata entry by key
-    pub fn find_metadata(&self, key: &str) -> Option<&MetadataEntry> {
-        self.metadata.iter().find(|entry| entry.metadata_key == key)
-    }
-
-    /// Find mutable metadata entry by key
-    pub fn find_metadata_mut(&mut self, key: &str) -> Option<&mut MetadataEntry> {
-        self.metadata.iter_mut().find(|entry| entry.metadata_key == key)
-    }
 }
 
-/// Metadata extension for additional entries beyond base account
+/// Individual metadata entry stored as separate PDA (v0.2.0)
+/// Seeds: [b"agent_meta", agent_id.to_le_bytes(), key_hash[0..8]]
+///
+/// This replaces Vec<MetadataEntry> in AgentAccount for:
+/// - Unlimited metadata entries per agent
+/// - Ability to delete entries and recover rent
+/// - Optional immutability for certification/audit use cases
 #[account]
-pub struct MetadataExtension {
-    /// Agent asset reference
-    pub asset: Pubkey,
+pub struct MetadataEntryPda {
+    /// Agent ID this metadata belongs to
+    pub agent_id: u64,
 
-    /// Extension index (0, 1, 2, ...)
-    pub extension_index: u8,
+    /// Metadata key (max 32 bytes)
+    pub metadata_key: String,
 
-    /// Additional metadata entries (max 10 per extension)
-    pub metadata: Vec<MetadataEntry>,
+    /// Metadata value (max 256 bytes, arbitrary binary data)
+    pub metadata_value: Vec<u8>,
+
+    /// If true, this metadata cannot be modified or deleted
+    pub immutable: bool,
+
+    /// Creation timestamp
+    pub created_at: i64,
 
     /// PDA bump seed
     pub bump: u8,
 }
 
-impl MetadataExtension {
-    /// Maximum size for MetadataExtension
-    pub const MAX_SIZE: usize = 8 + 32 + 1 + 4 + (10 * MetadataEntry::MAX_SIZE) + 1;
-
-    /// Maximum number of metadata entries per extension
-    pub const MAX_METADATA_ENTRIES: usize = 10;
-
-    /// Find metadata entry by key
-    pub fn find_metadata(&self, key: &str) -> Option<&MetadataEntry> {
-        self.metadata.iter().find(|entry| entry.metadata_key == key)
-    }
-
-    /// Find mutable metadata entry by key
-    pub fn find_metadata_mut(&mut self, key: &str) -> Option<&mut MetadataEntry> {
-        self.metadata.iter_mut().find(|entry| entry.metadata_key == key)
-    }
-}
-
-/// Metadata entry (key-value pair)
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct MetadataEntry {
-    /// Metadata key (max 32 bytes)
-    pub metadata_key: String,
-
-    /// Metadata value (max 256 bytes)
-    pub metadata_value: Vec<u8>,
-}
-
-impl MetadataEntry {
-    /// Maximum size per metadata entry
-    pub const MAX_SIZE: usize = 4 + 32 + 4 + 256;
+impl MetadataEntryPda {
+    /// Maximum size for MetadataEntryPda
+    /// 8 (discriminator) + 8 (agent_id) + 4+32 (key) + 4+256 (value) + 1 (immutable) + 8 (created_at) + 1 (bump)
+    pub const MAX_SIZE: usize = 8 + 8 + (4 + 32) + (4 + 256) + 1 + 8 + 1;
 
     /// Maximum key length in bytes
     pub const MAX_KEY_LENGTH: usize = 32;
