@@ -149,21 +149,32 @@ export function getValidationRequestPda(
 }
 
 /**
- * Derive metadata extension PDA: ["metadata_ext", asset, extension_index (u8)]
+ * Derive metadata entry PDA: ["agent_meta", agent_id (u64 LE), key_hash (8 bytes)]
+ * v0.2.0: Individual PDA per metadata key
  */
-export function getMetadataExtensionPda(
-  asset: PublicKey,
-  extensionIndex: number,
+export function getMetadataEntryPda(
+  agentId: anchor.BN,
+  keyHash: Uint8Array,
   programId: PublicKey
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [
-      Buffer.from("metadata_ext"),
-      asset.toBuffer(),
-      Buffer.from([extensionIndex]),
+      Buffer.from("agent_meta"),
+      agentId.toArrayLike(Buffer, "le", 8),
+      Buffer.from(keyHash.slice(0, 8)),
     ],
     programId
   );
+}
+
+/**
+ * Compute key hash for metadata PDA derivation
+ * Returns first 8 bytes of SHA256(key)
+ */
+export function computeKeyHash(key: string): Uint8Array {
+  const crypto = require("crypto");
+  const hash = crypto.createHash("sha256").update(key).digest();
+  return new Uint8Array(hash.slice(0, 8));
 }
 
 // ============================================================================

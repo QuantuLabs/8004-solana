@@ -16,6 +16,8 @@ import {
   getFeedbackPda,
   getValidationStatsPda,
   getValidationRequestPda,
+  getMetadataEntryPda,
+  computeKeyHash,
   randomHash,
   uniqueNonce,
   expectAnchorError,
@@ -73,16 +75,31 @@ describe("Security Tests", () => {
   // ACCESS CONTROL TESTS
   // ============================================================================
   describe("Access Control", () => {
-    it("Non-owner cannot setMetadata", async () => {
+    it("Non-owner cannot setMetadataPda", async () => {
       const attacker = Keypair.generate();
+      // Fund attacker from provider wallet
+      const transferTx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: provider.wallet.publicKey,
+          toPubkey: attacker.publicKey,
+          lamports: 10000000,
+        })
+      );
+      await provider.sendAndConfirm(transferTx);
+
+      const key = "malicious_key";
+      const keyHash = computeKeyHash(key);
+      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
 
       await expectAnchorError(
         program.methods
-          .setMetadata("malicious_key", Buffer.from("malicious_value"))
+          .setMetadataPda(Array.from(keyHash), key, Buffer.from("malicious_value"), false)
           .accounts({
-            asset: agentAsset.publicKey,
+            metadataEntry: metadataPda,
             agentAccount: agentPda,
+            asset: agentAsset.publicKey,
             owner: attacker.publicKey,
+            systemProgram: SystemProgram.programId,
           })
           .signers([attacker])
           .rpc(),
@@ -493,14 +510,20 @@ describe("Security Tests", () => {
         .signers([otherAsset])
         .rpc();
 
-      // Try to set metadata using wrong asset (use first agent's PDA with second agent's asset)
+      // Try to set metadata using wrong asset (use first agent's metadata PDA with second agent's asset)
+      const key = "wrong";
+      const keyHash = computeKeyHash(key);
+      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+
       await expectAnchorError(
         program.methods
-          .setMetadata("wrong", Buffer.from("asset"))
+          .setMetadataPda(Array.from(keyHash), key, Buffer.from("asset"), false)
           .accounts({
-            asset: otherAsset.publicKey, // Wrong asset for agentPda
+            metadataEntry: metadataPda,
             agentAccount: agentPda,
+            asset: otherAsset.publicKey, // Wrong asset for agentPda
             owner: provider.wallet.publicKey,
+            systemProgram: SystemProgram.programId,
           })
           .rpc(),
         "InvalidAsset"

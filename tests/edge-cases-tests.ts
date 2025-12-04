@@ -20,6 +20,8 @@ import {
   getFeedbackPda,
   getValidationStatsPda,
   getValidationRequestPda,
+  getMetadataEntryPda,
+  computeKeyHash,
   randomHash,
   uriOfLength,
   stringOfLength,
@@ -121,36 +123,42 @@ describe("Edge Cases Tests", () => {
 
     it("Metadata key exactly 32 bytes (accepted)", async () => {
       const exactKey = stringOfLength(MAX_METADATA_KEY_LENGTH); // 32 bytes
+      const keyHash = computeKeyHash(exactKey);
       const value = Buffer.from("test");
+      const [metadataPda] = getMetadataEntryPda(edgeAgentId, keyHash, program.programId);
 
       const tx = await program.methods
-        .setMetadata(exactKey, value)
+        .setMetadataPda(Array.from(keyHash), exactKey, value, false)
         .accounts({
-          asset: edgeAsset.publicKey,
+          metadataEntry: metadataPda,
           agentAccount: edgeAgentPda,
+          asset: edgeAsset.publicKey,
           owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       console.log("Key 32 bytes tx:", tx);
 
-      const agent = await program.account.agentAccount.fetch(edgeAgentPda);
-      const entry = agent.metadata.find((m) => m.metadataKey === exactKey);
-      expect(entry).to.exist;
-      expect(entry!.metadataKey.length).to.equal(MAX_METADATA_KEY_LENGTH);
+      const metadata = await program.account.metadataEntryPda.fetch(metadataPda);
+      expect(metadata.metadataKey.length).to.equal(MAX_METADATA_KEY_LENGTH);
     });
 
     it("Metadata key 33 bytes (rejected)", async () => {
       const longKey = stringOfLength(MAX_METADATA_KEY_LENGTH + 1); // 33 bytes
+      const keyHash = computeKeyHash(longKey);
       const value = Buffer.from("test");
+      const [metadataPda] = getMetadataEntryPda(edgeAgentId, keyHash, program.programId);
 
       await expectAnchorError(
         program.methods
-          .setMetadata(longKey, value)
+          .setMetadataPda(Array.from(keyHash), longKey, value, false)
           .accounts({
-            asset: edgeAsset.publicKey,
+            metadataEntry: metadataPda,
             agentAccount: edgeAgentPda,
+            asset: edgeAsset.publicKey,
             owner: provider.wallet.publicKey,
+            systemProgram: SystemProgram.programId,
           })
           .rpc(),
         "KeyTooLong"
@@ -158,42 +166,44 @@ describe("Edge Cases Tests", () => {
     });
 
     it("Metadata value exactly 256 bytes (accepted)", async () => {
-      // Use the existing key to update value (since MAX_METADATA_ENTRIES=1)
-      const agent = await program.account.agentAccount.fetch(edgeAgentPda);
-      const existingKey = agent.metadata[0]?.metadataKey || "test";
+      const testKey = "exact_value_test";
+      const keyHash = computeKeyHash(testKey);
       const exactValue = Buffer.alloc(MAX_METADATA_VALUE_LENGTH); // 256 bytes
       exactValue.fill(0x42);
+      const [metadataPda] = getMetadataEntryPda(edgeAgentId, keyHash, program.programId);
 
       const tx = await program.methods
-        .setMetadata(existingKey, exactValue)
+        .setMetadataPda(Array.from(keyHash), testKey, exactValue, false)
         .accounts({
-          asset: edgeAsset.publicKey,
+          metadataEntry: metadataPda,
           agentAccount: edgeAgentPda,
+          asset: edgeAsset.publicKey,
           owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       console.log("Value 256 bytes tx:", tx);
 
-      const updatedAgent = await program.account.agentAccount.fetch(edgeAgentPda);
-      const entry = updatedAgent.metadata.find((m) => m.metadataKey === existingKey);
-      expect(entry).to.exist;
-      expect(entry!.metadataValue.length).to.equal(MAX_METADATA_VALUE_LENGTH);
+      const metadata = await program.account.metadataEntryPda.fetch(metadataPda);
+      expect(metadata.metadataValue.length).to.equal(MAX_METADATA_VALUE_LENGTH);
     });
 
     it("Metadata value 257 bytes (rejected)", async () => {
-      // Use existing key to avoid MetadataLimitReached error
-      const agent = await program.account.agentAccount.fetch(edgeAgentPda);
-      const existingKey = agent.metadata[0]?.metadataKey || "test";
+      const testKey = "long_value_test";
+      const keyHash = computeKeyHash(testKey);
       const longValue = Buffer.alloc(MAX_METADATA_VALUE_LENGTH + 1); // 257 bytes
+      const [metadataPda] = getMetadataEntryPda(edgeAgentId, keyHash, program.programId);
 
       await expectAnchorError(
         program.methods
-          .setMetadata(existingKey, longValue)
+          .setMetadataPda(Array.from(keyHash), testKey, longValue, false)
           .accounts({
-            asset: edgeAsset.publicKey,
+            metadataEntry: metadataPda,
             agentAccount: edgeAgentPda,
+            asset: edgeAsset.publicKey,
             owner: provider.wallet.publicKey,
+            systemProgram: SystemProgram.programId,
           })
           .rpc(),
         "ValueTooLong"
@@ -560,7 +570,9 @@ describe("Edge Cases Tests", () => {
       console.log("Empty URI feedback tx:", tx);
 
       const feedback = await program.account.feedbackAccount.fetch(feedbackPda);
-      expect(feedback.fileUri).to.equal("");
+      // v0.2.0: fileUri removed from account, stored in events only
+      // Verify feedback was created with correct score
+      expect(feedback.score).to.equal(80);
     });
 
     it("Empty tags in feedback (accepted)", async () => {

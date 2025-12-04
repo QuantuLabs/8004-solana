@@ -240,7 +240,9 @@ describe("Reputation Module Tests", () => {
       console.log("Feedback with empty URI tx:", tx);
 
       const feedback = await program.account.feedbackAccount.fetch(feedbackPda);
-      expect(feedback.fileUri).to.equal("");
+      // v0.2.0: fileUri removed from account, stored in events only
+      // Verify the feedback was created with correct score
+      expect(feedback.score).to.equal(75);
     });
 
     it("giveFeedback() fails with URI > 200 bytes", async () => {
@@ -269,7 +271,7 @@ describe("Reputation Module Tests", () => {
             systemProgram: SystemProgram.programId,
           })
           .rpc(),
-        "ResponseUriTooLong"
+        "UriTooLong"
       );
     });
 
@@ -759,7 +761,9 @@ describe("Reputation Module Tests", () => {
       console.log("Response with empty URI tx:", tx);
 
       const response = await program.account.responseAccount.fetch(responsePda);
-      expect(response.responseUri).to.equal("");
+      // v0.2.0: responseUri removed from account, stored in events only
+      // Verify the response was created with correct responder
+      expect(response.responder.toBase58()).to.equal(provider.wallet.publicKey.toBase58());
     });
   });
 
