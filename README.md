@@ -9,29 +9,38 @@
 [![Tests](https://img.shields.io/badge/Tests-89%20Passing-brightgreen)]()
 [![Spec Conformity](https://img.shields.io/badge/ERC--8004-100%25%20Conformity-success)]()
 
-## v0.2.0 - Single Program Architecture
+## v0.2.0 - Optimized Storage & Metadata PDAs
 
-**What's New:**
-- Single unified program with Identity, Reputation & Validation modules
-- **Metaplex Core** NFTs (lighter, faster than Token Metadata)
-- Global feedback index for simpler PDA derivation
-- 89 comprehensive tests on devnet
+**What's New in v0.2.0:**
+- **Metadata PDAs** - Individual PDAs per metadata key (replaces Vec)
+- **Immutable Metadata** - Lock metadata permanently for certifications
+- **Delete Metadata** - Recover rent by deleting mutable entries
+- **Hash-Only Storage** - URIs in events, hashes on-chain (-54% FeedbackAccount)
+- **Global Feedback Index** - Simplified PDA derivation
+
+**Breaking Changes:**
+- `file_uri` and `response_uri` removed from accounts (events only)
+- Metadata now via `set_metadata_pda` / `delete_metadata_pda`
+- Account sizes changed (incompatible with v0.1.0)
 
 ## Features
 
 ### Identity Module
 
 - ✅ NFT-based agent registration via **Metaplex Core**
-- ✅ Cost-optimized metadata storage (1 on-chain + unlimited extensions)
+- ✅ **PDA-based metadata** (individual accounts per key)
+- ✅ **Immutable metadata option** for certifications
+- ✅ **Delete metadata** with rent recovery
 - ✅ Sequential agent IDs with Core Collection
 - ✅ Transfer support via Core transfer
-- ✅ Full ERC-8004 spec compliance
 
 ### Reputation Module
 
 - ✅ **giveFeedback** with score validation (0-100)
 - ✅ **revokeFeedback** with author-only access control
 - ✅ **appendResponse** with unlimited responses
+- ✅ **Hash-only storage** (URIs in events, -54% account size)
+- ✅ **Tags on-chain** for `getProgramAccounts` filtering
 - ✅ **Cached aggregates** for O(1) reputation queries
 - ✅ **Global feedback index** for simplified PDA derivation
 
@@ -202,46 +211,41 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ## Performance & Costs
 
-### Operation Costs (SDK E2E Measured on Devnet)
+### Operation Costs (v0.2.0 Estimated)
 
-| Operation | Total Cost | Lamports | Notes |
-|-----------|------------|----------|-------|
-| Register Agent | **0.00859 SOL** | 8,588,320 | Core asset + AgentAccount |
-| Set Metadata | 0.000005 SOL | 5,000 | TX fee only |
-| Give Feedback (1st) | 0.00474 SOL | 4,744,760 | Feedback + AgentReputation init |
-| Give Feedback (2nd+) | 0.00351 SOL | 3,505,880 | FeedbackAccount only |
-| Append Response (1st) | 0.00417 SOL | 4,167,080 | Response + ResponseIndex init |
-| Append Response (2nd+) | 0.00305 SOL | 3,046,520 | ResponseAccount only |
-| Revoke Feedback | 0.000005 SOL | 5,000 | TX fee only |
-| Request Validation | 0.00183 SOL | 1,828,520 | ValidationRequest |
-| Respond to Validation | 0.000005 SOL | 5,000 | TX fee only |
+| Operation | v0.2.0 Cost | Notes |
+|-----------|-------------|-------|
+| Register Agent | ~0.0055 SOL | Core asset + lighter AgentAccount |
+| Set Metadata PDA | ~0.0031 SOL | New MetadataEntryPda (~330 bytes) |
+| Delete Metadata | ~0 SOL | Rent recovered via close |
+| Give Feedback (1st) | ~0.00280 SOL | Feedback + AgentReputation init |
+| Give Feedback (2nd+) | ~0.00180 SOL | FeedbackAccount only (171 bytes) |
+| Append Response (1st) | ~0.00185 SOL | Response + ResponseIndex init |
+| Append Response (2nd+) | ~0.00115 SOL | ResponseAccount only (105 bytes) |
+| Request Validation | ~0.00183 SOL | ValidationRequest |
 
-### First vs Subsequent Cost Savings
+### v0.2.0 Account Size Optimizations
 
-| Operation | 1st Call | 2nd+ Calls | Savings |
-|-----------|----------|------------|---------|
-| Give Feedback | 0.00474 SOL | 0.00351 SOL | **-26%** |
-| Append Response | 0.00417 SOL | 0.00305 SOL | **-27%** |
+| Account | v0.1.0 | v0.2.0 | Savings |
+|---------|--------|--------|---------|
+| FeedbackAccount | 375 bytes | 171 bytes | **-54%** |
+| ResponseAccount | 309 bytes | 105 bytes | **-66%** |
+| AgentAccount | 661 bytes | ~365 bytes | **-45%** |
 
-*First operation creates init_if_needed accounts (AgentReputation, ResponseIndex). Subsequent calls skip initialization.*
+*URIs now stored in events only. Tags kept on-chain for filtering.*
 
-### v0.2.0 Cost Savings (Metaplex Core)
-
-| Operation | v0.1.0 | v0.2.0 | Savings |
-|-----------|--------|--------|---------|
-| Register Agent | ~0.025 SOL | 0.00859 SOL | **-66%** |
-| Full Lifecycle | ~0.031 SOL | 0.0259 SOL | **-16%** |
-
-**Note**: Rent is recoverable when closing accounts.
+**Note**: Rent is recoverable when closing accounts or deleting metadata.
 
 ## Roadmap
 
 ### ✅ v0.2.0 - COMPLETE
 
-- [x] Single unified program with 3 modules
+- [x] **Metadata PDAs** - Individual accounts per key (replaces Vec)
+- [x] **Immutable metadata** - Lock entries permanently
+- [x] **Delete metadata** - Recover rent on mutable entries
+- [x] **Hash-only storage** - URIs in events (-54% FeedbackAccount)
+- [x] **Global feedback index** - Simplified PDA derivation
 - [x] Metaplex Core integration
-- [x] Global feedback index
-- [x] 89 tests passing on devnet
 - [x] TypeScript SDK updated
 
 ### 🔜 Next
@@ -293,6 +297,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status**: ✅ v0.2.0 Deployed on Devnet | 89 tests passing | Full ERC-8004 conformity
+**Status**: ✅ v0.2.0 Deployed on Devnet | Full ERC-8004 conformity
 
-**Last Updated**: 2025-12-03
+**Last Updated**: 2025-12-04

@@ -363,17 +363,82 @@
 
         <nav>
             <ul>
+                <li><a href="#changelog">Changelog</a></li>
                 <li><a href="#overview">Overview</a></li>
                 <li><a href="#architecture">Architecture</a></li>
-                <li><a href="#tools">Tools</a></li>
                 <li><a href="#identity">Identity</a></li>
                 <li><a href="#reputation">Reputation</a></li>
                 <li><a href="#validation">Validation</a></li>
-                <li><a href="#security">Security</a></li>
                 <li><a href="#costs">Costs</a></li>
                 <li><a href="#pda-reference">PDA Reference</a></li>
             </ul>
         </nav>
+
+        <!-- CHANGELOG SECTION -->
+        <section id="changelog">
+            <h2>v0.2.0 Changelog</h2>
+
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon purple">M</div>
+                        <h4 style="margin: 0;">Metadata PDAs</h4>
+                    </div>
+                    <p><strong>Individual PDA per key</strong> (replaces Vec&lt;MetadataEntry&gt;)</p>
+                    <ul>
+                        <li>Unlimited metadata entries</li>
+                        <li><code>set_metadata_pda(key_hash, key, value, immutable)</code></li>
+                        <li><code>delete_metadata_pda(key_hash)</code> → rent recovery</li>
+                    </ul>
+                    <div class="pda-seed" style="margin-top: 0.5rem;">
+                        seeds = ["agent_meta", agent_id, key_hash[0..8]]
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon orange">🔒</div>
+                        <h4 style="margin: 0;">Immutable Metadata</h4>
+                    </div>
+                    <p>Lock metadata permanently for certifications.</p>
+                    <pre><code>set_metadata_pda(..., immutable: true)
+// Cannot modify or delete after</code></pre>
+                    <p style="margin-top: 0.5rem;"><strong>Use cases:</strong> Certification hashes, audit trails, permanent credentials</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon green">📦</div>
+                        <h4 style="margin: 0;">Hash-Only Storage</h4>
+                    </div>
+                    <p><strong>URIs stored in events only</strong>, hashes on-chain.</p>
+                    <table style="margin: 0.5rem 0;">
+                        <tr><th>Account</th><th>Before</th><th>After</th><th>Savings</th></tr>
+                        <tr><td>FeedbackAccount</td><td>375 bytes</td><td>171 bytes</td><td><strong>-54%</strong></td></tr>
+                        <tr><td>ResponseAccount</td><td>309 bytes</td><td>105 bytes</td><td><strong>-66%</strong></td></tr>
+                    </table>
+                    <p><small>Tags kept on-chain for <code>getProgramAccounts</code> filtering.</small></p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon blue">⚠️</div>
+                        <h4 style="margin: 0;">Breaking Changes</h4>
+                    </div>
+                    <ul>
+                        <li><code>file_uri</code> / <code>response_uri</code> removed from accounts (events only)</li>
+                        <li><code>set_metadata</code> → <code>set_metadata_pda</code></li>
+                        <li><code>Vec&lt;MetadataEntry&gt;</code> removed from AgentAccount</li>
+                        <li>MetadataExtension removed (use PDAs)</li>
+                        <li>Account sizes incompatible with v0.1.0</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="warning" style="margin-top: 1.5rem;">
+                <strong>Migration:</strong> v0.2.0 requires new program deployment. Existing agents on v0.1.0 are not compatible.
+            </div>
+        </section>
 
         <!-- OVERVIEW SECTION -->
         <section id="overview">
@@ -406,20 +471,20 @@
 
             <div class="flex-row" style="margin-top: 2rem;">
                 <div class="stat-card">
-                    <div class="value">~0.025</div>
+                    <div class="value">~0.0055</div>
                     <div class="label">SOL per Agent Registration</div>
                 </div>
                 <div class="stat-card">
-                    <div class="value">~0.002</div>
+                    <div class="value">~0.0018</div>
                     <div class="label">SOL per Feedback</div>
                 </div>
                 <div class="stat-card">
-                    <div class="value">O(1)</div>
-                    <div class="label">Reputation Queries</div>
+                    <div class="value">-54%</div>
+                    <div class="label">FeedbackAccount Size</div>
                 </div>
                 <div class="stat-card">
                     <div class="value">∞</div>
-                    <div class="label">Responses per Feedback</div>
+                    <div class="label">Metadata per Agent</div>
                 </div>
             </div>
         </section>
@@ -433,15 +498,15 @@
 │                     AgentRegistry8004 (Devnet)                               │
 │              <span class="highlight">3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi</span>                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────────────────┐ │
-│  │  Identity Module │ │ Reputation Module│ │    Validation Module         │ │
-│  ├──────────────────┤ ├──────────────────┤ ├──────────────────────────────┤ │
-│  │ • register()     │ │ • give_feedback()│ │ • request_validation()       │ │
-│  │ • set_metadata() │ │ • revoke_feedback│ │ • respond_to_validation()    │ │
-│  │ • set_agent_uri()│ │ • append_response│ │ • update_validation()        │ │
-│  │ • transfer_agent │ │                  │ │ • close_validation()         │ │
-│  │ • add_extension()│ │                  │ │                              │ │
-│  └──────────────────┘ └──────────────────┘ └──────────────────────────────┘ │
+│  ┌────────────────────┐ ┌──────────────────┐ ┌────────────────────────────┐ │
+│  │   Identity Module  │ │ Reputation Module│ │    Validation Module       │ │
+│  ├────────────────────┤ ├──────────────────┤ ├────────────────────────────┤ │
+│  │ • register()       │ │ • give_feedback()│ │ • request_validation()     │ │
+│  │ • set_metadata_pda │ │ • revoke_feedback│ │ • respond_to_validation()  │ │
+│  │ • delete_meta_pda  │ │ • append_response│ │ • update_validation()      │ │
+│  │ • set_agent_uri()  │ │                  │ │ • close_validation()       │ │
+│  │ • transfer_agent() │ │                  │ │                            │ │
+│  └────────────────────┘ └──────────────────┘ └────────────────────────────┘ │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                           METAPLEX CORE                                      │
 │  • Collection created on initialize() as Core Collection                    │
@@ -547,14 +612,13 @@
 
             <!-- register -->
             <div class="card">
-                <h4>register(agent_uri: String) / register_with_metadata(...)</h4>
-                <p>Register a new agent with optional URI and metadata.</p>
+                <h4>register(agent_uri: String) / register_empty()</h4>
+                <p>Register a new agent with optional URI.</p>
 
                 <p><strong>Parameters:</strong></p>
                 <table>
                     <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
-                    <tr><td>agent_uri</td><td>String</td><td>Max 200 bytes</td></tr>
-                    <tr><td>metadata</td><td>Vec&lt;MetadataEntry&gt;</td><td>Max 1 entry in base account</td></tr>
+                    <tr><td>agent_uri</td><td>String</td><td>Max 200 bytes (or empty for register_empty)</td></tr>
                 </table>
 
                 <p><strong>Flow:</strong></p>
@@ -569,24 +633,46 @@
                     <strong>Agent PDA:</strong> seeds = ["agent", asset.key()]
                 </div>
 
-                <p><strong>Events:</strong> <code>Registered</code>, <code>MetadataSet</code> (for each entry)</p>
+                <p><strong>Events:</strong> <code>Registered</code></p>
             </div>
 
-            <!-- set_metadata -->
+            <!-- set_metadata_pda -->
             <div class="card">
-                <h4>set_metadata(key: String, value: Vec&lt;u8&gt;)</h4>
-                <p>Set or update a metadata entry. Only Core asset holder can call.</p>
+                <h4>set_metadata_pda(key_hash, key, value, immutable)</h4>
+                <p>Create or update a metadata entry as individual PDA. Only Core asset holder can call.</p>
 
-                <p><strong>Constraints:</strong></p>
-                <ul>
-                    <li>Key: max 32 bytes</li>
-                    <li>Value: max 256 bytes</li>
-                    <li>Max 1 entry in base AgentAccount (use extensions for more)</li>
-                </ul>
+                <p><strong>Parameters:</strong></p>
+                <table>
+                    <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+                    <tr><td>key_hash</td><td>[u8; 8]</td><td>First 8 bytes of SHA256(key)</td></tr>
+                    <tr><td>key</td><td>String</td><td>Max 32 bytes</td></tr>
+                    <tr><td>value</td><td>Vec&lt;u8&gt;</td><td>Max 256 bytes</td></tr>
+                    <tr><td>immutable</td><td>bool</td><td>If true, cannot modify/delete later</td></tr>
+                </table>
 
-                <p><strong>Authorization:</strong> Verified via Metaplex Core asset owner:</p>
-                <pre><code>// Core asset stores owner directly
-constraint = asset.owner == owner.key()</code></pre>
+                <div class="pda-seed">
+                    <strong>Metadata PDA:</strong> seeds = ["agent_meta", agent_id, key_hash[0..8]]
+                </div>
+
+                <div class="warning">
+                    Once <code>immutable: true</code>, the entry is permanently locked.
+                </div>
+            </div>
+
+            <!-- delete_metadata_pda -->
+            <div class="card">
+                <h4>delete_metadata_pda(key_hash)</h4>
+                <p>Delete a metadata PDA and recover rent. Only works if not immutable.</p>
+
+                <p><strong>Parameters:</strong></p>
+                <table>
+                    <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+                    <tr><td>key_hash</td><td>[u8; 8]</td><td>First 8 bytes of SHA256(key)</td></tr>
+                </table>
+
+                <p><strong>Returns:</strong> ~0.0031 SOL rent to owner</p>
+
+                <p><strong>Events:</strong> <code>MetadataDeleted</code></p>
             </div>
 
             <!-- set_agent_uri -->
@@ -617,7 +703,7 @@ constraint = asset.owner == owner.key()</code></pre>
             </div>
 
             <div class="card">
-                <h4>AgentAccount</h4>
+                <h4>AgentAccount (~365 bytes)</h4>
                 <pre><code>pub struct AgentAccount {
     pub agent_id: u64,                  // 8 bytes
     pub owner: Pubkey,                  // 32 bytes (cached)
@@ -625,32 +711,30 @@ constraint = asset.owner == owner.key()</code></pre>
     pub agent_uri: String,              // 4 + 200 = 204 bytes
     pub nft_name: String,               // 4 + 32 = 36 bytes ("Agent #X")
     pub nft_symbol: String,             // 4 + 10 = 14 bytes
-    pub metadata: Vec&lt;MetadataEntry&gt;,   // 4 + (1 * 296) = 300 bytes
+    // Metadata moved to individual PDAs (v0.2.0)
     pub created_at: i64,                // 8 bytes
     pub bump: u8,                       // 1 byte
 }
 
 // Constants
-MAX_METADATA_ENTRIES: 1   // Use extensions for more
 MAX_URI_LENGTH: 200</code></pre>
                 <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent", asset.key()]</div>
             </div>
 
             <div class="card">
-                <h4>MetadataEntry (296 bytes)</h4>
-                <pre><code>pub struct MetadataEntry {
+                <h4>MetadataEntryPda (~330 bytes) - NEW in v0.2.0</h4>
+                <pre><code>pub struct MetadataEntryPda {
+    pub agent_id: u64,              // 8 bytes
     pub metadata_key: String,       // 4 + 32 = 36 bytes
     pub metadata_value: Vec&lt;u8&gt;,    // 4 + 256 = 260 bytes
+    pub immutable: bool,            // 1 byte (if true, locked forever)
+    pub created_at: i64,            // 8 bytes
+    pub bump: u8,                   // 1 byte
 }
 
-// Note: Uses metadata_key/metadata_value (not key/value)
-// to avoid Rust reserved keywords</code></pre>
-            </div>
-
-            <div class="card">
-                <h4>MetadataExtension (3006 bytes)</h4>
-                <p>For &gt;1 metadata entries, create extension PDAs (10 entries each, unlimited total).</p>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["metadata_ext", asset.key(), extension_index]</div>
+// Unlimited metadata per agent via individual PDAs
+// Delete to recover rent (~0.0031 SOL)</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_meta", agent_id (LE), key_hash[0..8]]</div>
             </div>
 
             <h3>Error Codes</h3>
@@ -659,7 +743,7 @@ MAX_URI_LENGTH: 200</code></pre>
                 <tr><td>UriTooLong</td><td>"URI&gt;200"</td><td>agent_uri exceeds 200 bytes</td></tr>
                 <tr><td>KeyTooLong</td><td>"Key&gt;32"</td><td>metadata key exceeds 32 bytes</td></tr>
                 <tr><td>ValueTooLong</td><td>"Val&gt;256"</td><td>metadata value exceeds 256 bytes</td></tr>
-                <tr><td>MetadataLimitReached</td><td>"Max1"</td><td>Exceeds 1 entry in base account</td></tr>
+                <tr><td>MetadataImmutable</td><td>"Immutable"</td><td>Cannot modify/delete immutable metadata</td></tr>
                 <tr><td>Unauthorized</td><td>"!owner"</td><td>Caller is not agent owner</td></tr>
                 <tr><td>Overflow</td><td>"Overflow"</td><td>Agent ID counter overflowed</td></tr>
                 <tr><td>InvalidTokenAccount</td><td>"!NFT"</td><td>Token account doesn't hold the NFT</td></tr>
@@ -669,7 +753,8 @@ MAX_URI_LENGTH: 200</code></pre>
             <table>
                 <tr><th>Event</th><th>Fields</th><th>Emitted</th></tr>
                 <tr><td>Registered</td><td>agent_id, agent_uri, owner, agent_mint</td><td>register()</td></tr>
-                <tr><td>MetadataSet</td><td>agent_id, indexed_key, key, value</td><td>register(), set_metadata()</td></tr>
+                <tr><td>MetadataSet</td><td>agent_id, indexed_key, key, value, <strong>immutable</strong></td><td>set_metadata_pda()</td></tr>
+                <tr><td>MetadataDeleted</td><td>agent_id, key</td><td>delete_metadata_pda()</td></tr>
                 <tr><td>UriUpdated</td><td>agent_id, new_uri, updated_by</td><td>set_agent_uri()</td></tr>
                 <tr><td>AgentOwnerSynced</td><td>agent_id, old_owner, new_owner, agent_mint</td><td>sync_owner(), transfer_agent()</td></tr>
             </table>
@@ -752,21 +837,25 @@ agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</c
             <h3>Account Structures</h3>
 
             <div class="card">
-                <h4>FeedbackAccount</h4>
+                <h4>FeedbackAccount (171 bytes) - Optimized in v0.2.0</h4>
                 <pre><code>pub struct FeedbackAccount {
     pub agent_id: u64,           // 8 bytes
     pub client_address: Pubkey,  // 32 bytes (who gave feedback)
     pub feedback_index: u64,     // 8 bytes (global index)
     pub score: u8,               // 1 byte (0-100)
-    pub tag1: String,            // 4 + 32 = 36 bytes
-    pub tag2: String,            // 4 + 32 = 36 bytes
-    pub file_uri: String,        // 4 + 200 = 204 bytes
+    pub tag1: String,            // 4 + 32 = 36 bytes (kept for filtering)
+    pub tag2: String,            // 4 + 32 = 36 bytes (kept for filtering)
+    // file_uri removed - stored in NewFeedback event only (v0.2.0)
     pub file_hash: [u8; 32],     // 32 bytes
     pub is_revoked: bool,        // 1 byte
     pub created_at: i64,         // 8 bytes
     pub bump: u8,                // 1 byte
-}</code></pre>
+}
+// -54% size reduction vs v0.1.0 (was 375 bytes)</code></pre>
                 <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback", agent_id (LE), feedback_index (LE)]</div>
+                <div class="info" style="margin-top: 0.5rem;">
+                    Tags kept on-chain for <code>getProgramAccounts</code> filtering. URIs in events.
+                </div>
             </div>
 
             <div class="card">
@@ -781,6 +870,22 @@ agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</c
     pub bump: u8,                   // 1 byte
 }</code></pre>
                 <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_reputation", agent_id (LE)]</div>
+            </div>
+
+            <div class="card">
+                <h4>ResponseAccount (105 bytes) - Optimized in v0.2.0</h4>
+                <pre><code>pub struct ResponseAccount {
+    pub agent_id: u64,           // 8 bytes
+    pub feedback_index: u64,     // 8 bytes
+    pub response_index: u64,     // 8 bytes
+    pub responder: Pubkey,       // 32 bytes
+    // response_uri removed - stored in ResponseAppended event only (v0.2.0)
+    pub response_hash: [u8; 32], // 32 bytes
+    pub created_at: i64,         // 8 bytes
+    pub bump: u8,                // 1 byte
+}
+// -66% size reduction vs v0.1.0 (was 309 bytes)</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response", agent_id (LE), feedback_index (LE), response_index (LE)]</div>
             </div>
 
             <div class="card">
@@ -801,13 +906,16 @@ agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</c
                 <tr><td>InvalidIdentityRegistry</td><td>"!IdReg"</td><td>Wrong Identity Registry program</td></tr>
             </table>
 
-            <h3>Events</h3>
+            <h3>Events (Store URIs in v0.2.0)</h3>
             <table>
                 <tr><th>Event</th><th>Fields</th></tr>
-                <tr><td>NewFeedback</td><td>agent_id, client_address, feedback_index, score, tag1, tag2, file_uri, file_hash</td></tr>
+                <tr><td>NewFeedback</td><td>agent_id, client_address, feedback_index, score, tag1, tag2, <strong>file_uri</strong>, file_hash</td></tr>
                 <tr><td>FeedbackRevoked</td><td>agent_id, client_address, feedback_index</td></tr>
-                <tr><td>ResponseAppended</td><td>agent_id, client_address, feedback_index, response_index, responder, response_uri</td></tr>
+                <tr><td>ResponseAppended</td><td>agent_id, client_address, feedback_index, response_index, responder, <strong>response_uri</strong>, response_hash</td></tr>
             </table>
+            <div class="info" style="margin-top: 0.5rem;">
+                <strong>v0.2.0:</strong> URIs stored in events only (not on-chain). Parse transaction logs to retrieve URIs.
+            </div>
         </section>
 
         <!-- VALIDATION MODULE SECTION -->
@@ -964,68 +1072,62 @@ constraint = asset.owner == owner.key()</code></pre>
 
         <!-- COSTS SECTION -->
         <section id="costs">
-            <h2>Cost Analysis</h2>
+            <h2>Cost Analysis (v0.2.0)</h2>
 
-            <h3>Operation Costs (SDK E2E Measured on Devnet)</h3>
+            <h3>Operation Costs (Estimated)</h3>
             <table>
-                <tr><th>Operation</th><th>Total Cost</th><th>Lamports</th><th>Notes</th></tr>
-                <tr><td>Register Agent</td><td><strong>0.00859 SOL</strong></td><td>8,588,320</td><td>Core asset + AgentAccount</td></tr>
-                <tr><td>Set Metadata</td><td>0.000005 SOL</td><td>5,000</td><td>TX fee only</td></tr>
-                <tr><td>Give Feedback (1st)</td><td>0.00474 SOL</td><td>4,744,760</td><td>Feedback + AgentReputation init</td></tr>
-                <tr><td>Give Feedback (2nd+)</td><td>0.00351 SOL</td><td>3,505,880</td><td>FeedbackAccount only</td></tr>
-                <tr><td>Append Response (1st)</td><td>0.00417 SOL</td><td>4,167,080</td><td>Response + ResponseIndex init</td></tr>
-                <tr><td>Append Response (2nd+)</td><td>0.00305 SOL</td><td>3,046,520</td><td>ResponseAccount only</td></tr>
-                <tr><td>Revoke Feedback</td><td>0.000005 SOL</td><td>5,000</td><td>TX fee only</td></tr>
-                <tr><td>Request Validation</td><td>0.00183 SOL</td><td>1,828,520</td><td>ValidationRequest</td></tr>
-                <tr><td>Respond to Validation</td><td>0.000005 SOL</td><td>5,000</td><td>TX fee only</td></tr>
+                <tr><th>Operation</th><th>v0.2.0 Cost</th><th>Notes</th></tr>
+                <tr><td>Register Agent</td><td><strong>~0.0055 SOL</strong></td><td>Core asset + lighter AgentAccount</td></tr>
+                <tr><td>Set Metadata PDA</td><td>~0.0031 SOL</td><td>New MetadataEntryPda (~330 bytes)</td></tr>
+                <tr><td>Delete Metadata</td><td>~0 SOL</td><td>Rent recovered via close</td></tr>
+                <tr><td>Give Feedback (1st)</td><td>~0.00280 SOL</td><td>Feedback + AgentReputation init</td></tr>
+                <tr><td>Give Feedback (2nd+)</td><td>~0.00180 SOL</td><td>FeedbackAccount only (171 bytes)</td></tr>
+                <tr><td>Append Response (1st)</td><td>~0.00185 SOL</td><td>Response + ResponseIndex init</td></tr>
+                <tr><td>Append Response (2nd+)</td><td>~0.00115 SOL</td><td>ResponseAccount only (105 bytes)</td></tr>
+                <tr><td>Request Validation</td><td>~0.00183 SOL</td><td>ValidationRequest</td></tr>
             </table>
 
-            <h3>First vs Subsequent Cost Savings (init_if_needed)</h3>
+            <h3>v0.2.0 Account Size Optimizations</h3>
             <table>
-                <tr><th>Operation</th><th>1st Call</th><th>2nd+ Calls</th><th>Savings</th></tr>
-                <tr><td>Give Feedback</td><td>0.00474 SOL</td><td>0.00351 SOL</td><td><strong>-26%</strong></td></tr>
-                <tr><td>Append Response</td><td>0.00417 SOL</td><td>0.00305 SOL</td><td><strong>-27%</strong></td></tr>
+                <tr><th>Account</th><th>v0.1.0</th><th>v0.2.0</th><th>Savings</th></tr>
+                <tr><td>FeedbackAccount</td><td>375 bytes</td><td>171 bytes</td><td class="highlight"><strong>-54%</strong></td></tr>
+                <tr><td>ResponseAccount</td><td>309 bytes</td><td>105 bytes</td><td class="highlight"><strong>-66%</strong></td></tr>
+                <tr><td>AgentAccount</td><td>661 bytes</td><td>~365 bytes</td><td class="highlight"><strong>-45%</strong></td></tr>
             </table>
-            <p><small>First operation creates init_if_needed accounts (AgentReputation, ResponseIndex). Subsequent calls skip initialization.</small></p>
-
-            <h3>v0.2.0 vs v0.1.0 Cost Comparison</h3>
-            <table>
-                <tr><th>Operation</th><th>v0.1.0 (Token Metadata)</th><th>v0.2.0 (Metaplex Core)</th><th>Change</th></tr>
-                <tr><td>Register Agent</td><td>~0.025 SOL</td><td><strong>0.00859 SOL</strong></td><td class="highlight"><strong>-66%</strong></td></tr>
-                <tr><td>Set Metadata</td><td>~0.000010 SOL</td><td>0.000005 SOL</td><td>-50%</td></tr>
-                <tr><td>Full Lifecycle*</td><td>~0.031 SOL</td><td>0.0259 SOL</td><td><strong>-16%</strong></td></tr>
-            </table>
-            <p><small>* Register + Metadata + Feedback (x2) + Response (x2) + Revoke + Validation</small></p>
+            <p><small>URIs now stored in events only. Tags kept on-chain for filtering.</small></p>
 
             <h3>Cost Optimizations in v0.2.0</h3>
 
             <div class="card">
-                <h4>1. Metaplex Core vs Token Metadata (-66% on register)</h4>
-                <p><strong>Token Metadata:</strong> Mint + Metadata + MasterEdition + ATA = ~0.025 SOL</p>
-                <p><strong>Metaplex Core:</strong> Single Core Asset = 0.00859 SOL</p>
-                <p><strong>Savings:</strong> ~66% per agent registration</p>
+                <h4>1. PDA-based Metadata (Unlimited + Deletable)</h4>
+                <p><strong>Before:</strong> Vec&lt;MetadataEntry&gt; in AgentAccount (max 1, extensions for more)</p>
+                <p><strong>After:</strong> Individual MetadataEntryPda per key (~330 bytes each)</p>
+                <p><strong>Benefits:</strong></p>
+                <ul>
+                    <li>Unlimited metadata entries per agent</li>
+                    <li>Delete to recover rent (~0.0031 SOL)</li>
+                    <li>Optional immutable flag for certifications</li>
+                </ul>
             </div>
 
             <div class="card">
-                <h4>2. AgentAccount Size Reduction (-80%)</h4>
-                <p><strong>Before:</strong> 3,257 bytes (10 metadata entries)</p>
-                <p><strong>After:</strong> 643 bytes (1 metadata entry + extensions)</p>
-                <p><strong>Savings:</strong> ~77% on rent per agent</p>
+                <h4>2. Hash-Only Storage (-54% to -66%)</h4>
+                <p><strong>file_uri / response_uri:</strong> Removed from accounts, stored in events only</p>
+                <p><strong>Savings:</strong></p>
+                <ul>
+                    <li>FeedbackAccount: 375 → 171 bytes (-54%)</li>
+                    <li>ResponseAccount: 309 → 105 bytes (-66%)</li>
+                </ul>
+                <p>Tags kept on-chain for <code>getProgramAccounts</code> filtering.</p>
             </div>
 
             <div class="card">
-                <h4>3. ValidationRequest URI Storage (-75%)</h4>
-                <p><strong>On-chain:</strong> 126 bytes (hashes only)</p>
-                <p><strong>If URIs stored:</strong> ~590 bytes</p>
-                <p>URIs stored in events for off-chain indexing.</p>
-            </div>
-
-            <div class="card">
-                <h4>4. Rent Recovery</h4>
+                <h4>3. Rent Recovery</h4>
                 <p>Accounts can be closed to recover rent:</p>
                 <ul>
-                    <li><code>close_validation()</code> - Returns rent to agent owner or authority</li>
-                    <li>Effectively "free" storage for temporary validations</li>
+                    <li><code>delete_metadata_pda()</code> - Returns ~0.0031 SOL per entry</li>
+                    <li><code>close_validation()</code> - Returns rent to agent owner</li>
+                    <li>Effectively "free" storage for temporary data</li>
                 </ul>
             </div>
         </section>
@@ -1039,7 +1141,7 @@ constraint = asset.owner == owner.key()</code></pre>
                 <tr><th>Account</th><th>Seeds</th></tr>
                 <tr><td>Config</td><td><code>["config"]</code></td></tr>
                 <tr><td>Agent</td><td><code>["agent", asset.key()]</code></td></tr>
-                <tr><td>Metadata Extension</td><td><code>["metadata_ext", asset.key(), extension_index (LE)]</code></td></tr>
+                <tr><td>Metadata Entry (v0.2.0)</td><td><code>["agent_meta", agent_id (LE), key_hash[0..8]]</code></td></tr>
             </table>
 
             <h3>Reputation Module PDAs</h3>
