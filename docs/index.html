@@ -378,62 +378,30 @@
         <section id="changelog">
             <h2>v0.2.0 Changelog</h2>
 
-            <div class="grid">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="icon purple">M</div>
-                        <h4 style="margin: 0;">Metadata PDAs</h4>
-                    </div>
-                    <p><strong>Individual PDA per key</strong> (replaces Vec&lt;MetadataEntry&gt;)</p>
-                    <ul>
-                        <li>Unlimited metadata entries</li>
-                        <li><code>set_metadata_pda(key_hash, key, value, immutable)</code></li>
-                        <li><code>delete_metadata_pda(key_hash)</code> → rent recovery</li>
-                    </ul>
-                    <div class="pda-seed" style="margin-top: 0.5rem;">
-                        seeds = ["agent_meta", agent_id, key_hash[0..8]]
-                    </div>
-                </div>
+            <h3>New Features</h3>
+            <ul>
+                <li><strong>Metadata PDAs</strong> — Individual PDA per key (replaces Vec), unlimited entries</li>
+                <li><strong>Immutable Metadata</strong> — Lock metadata permanently for certifications</li>
+                <li><strong>Delete Metadata</strong> — Recover rent by deleting mutable entries</li>
+                <li><strong>Hash-Only Storage</strong> — URIs in events, hashes on-chain (-54% FeedbackAccount)</li>
+                <li><strong>Global Feedback Index</strong> — Simplified PDA derivation (client removed from seeds)</li>
+            </ul>
 
-                <div class="card">
-                    <div class="card-header">
-                        <div class="icon orange">🔒</div>
-                        <h4 style="margin: 0;">Immutable Metadata</h4>
-                    </div>
-                    <p>Lock metadata permanently for certifications.</p>
-                    <pre><code>set_metadata_pda(..., immutable: true)
-// Cannot modify or delete after</code></pre>
-                    <p style="margin-top: 0.5rem;"><strong>Use cases:</strong> Certification hashes, audit trails, permanent credentials</p>
-                </div>
+            <h3>Account Size Optimizations</h3>
+            <ul>
+                <li><strong>FeedbackAccount:</strong> 375 → 171 bytes (<strong>-54%</strong>)</li>
+                <li><strong>ResponseAccount:</strong> 309 → 105 bytes (<strong>-66%</strong>)</li>
+                <li><strong>AgentAccount:</strong> 661 → ~365 bytes (<strong>-45%</strong>)</li>
+            </ul>
 
-                <div class="card">
-                    <div class="card-header">
-                        <div class="icon green">📦</div>
-                        <h4 style="margin: 0;">Hash-Only Storage</h4>
-                    </div>
-                    <p><strong>URIs stored in events only</strong>, hashes on-chain.</p>
-                    <table style="margin: 0.5rem 0;">
-                        <tr><th>Account</th><th>Before</th><th>After</th><th>Savings</th></tr>
-                        <tr><td>FeedbackAccount</td><td>375 bytes</td><td>171 bytes</td><td><strong>-54%</strong></td></tr>
-                        <tr><td>ResponseAccount</td><td>309 bytes</td><td>105 bytes</td><td><strong>-66%</strong></td></tr>
-                    </table>
-                    <p><small>Tags kept on-chain for <code>getProgramAccounts</code> filtering.</small></p>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <div class="icon blue">⚠️</div>
-                        <h4 style="margin: 0;">Breaking Changes</h4>
-                    </div>
-                    <ul>
-                        <li><code>file_uri</code> / <code>response_uri</code> removed from accounts (events only)</li>
-                        <li><code>set_metadata</code> → <code>set_metadata_pda</code></li>
-                        <li><code>Vec&lt;MetadataEntry&gt;</code> removed from AgentAccount</li>
-                        <li>MetadataExtension removed (use PDAs)</li>
-                        <li>Account sizes incompatible with v0.1.0</li>
-                    </ul>
-                </div>
-            </div>
+            <h3>Breaking Changes</h3>
+            <ul>
+                <li><code>file_uri</code> / <code>response_uri</code> removed from accounts (events only)</li>
+                <li><code>set_metadata</code> → <code>set_metadata_pda(key_hash, key, value, immutable)</code></li>
+                <li><code>Vec&lt;MetadataEntry&gt;</code> removed from AgentAccount</li>
+                <li>MetadataExtension removed (use PDAs instead)</li>
+                <li>Account sizes incompatible with v0.1.0</li>
+            </ul>
 
             <div class="warning" style="margin-top: 1.5rem;">
                 <strong>Migration:</strong> v0.2.0 requires new program deployment. Existing agents on v0.1.0 are not compatible.
