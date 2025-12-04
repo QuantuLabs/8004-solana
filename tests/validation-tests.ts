@@ -84,7 +84,8 @@ describe("Validation Module Tests", () => {
         program.programId
       );
 
-      const statsBefore = await program.account.validationStats.fetch(validationStatsPda);
+      // Stats may not exist yet on fresh deployment (init_if_needed)
+      const statsBefore = await program.account.validationStats.fetchNullable(validationStatsPda);
 
       const tx = await program.methods
         .requestValidation(
@@ -115,9 +116,8 @@ describe("Validation Module Tests", () => {
       expect(request.respondedAt.toNumber()).to.equal(0);
 
       const statsAfter = await program.account.validationStats.fetch(validationStatsPda);
-      expect(statsAfter.totalRequests.toNumber()).to.equal(
-        statsBefore.totalRequests.toNumber() + 1
-      );
+      const expectedRequests = (statsBefore?.totalRequests.toNumber() ?? 0) + 1;
+      expect(statsAfter.totalRequests.toNumber()).to.equal(expectedRequests);
     });
 
     it("requestValidation() with empty URI (allowed)", async () => {

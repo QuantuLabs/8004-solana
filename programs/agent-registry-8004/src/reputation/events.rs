@@ -24,10 +24,10 @@ pub struct FeedbackRevoked {
 
 /// Event emitted when response is appended to feedback
 /// v0.2.0: response_uri stored here only (not in ResponseAccount)
+/// client_address derivable from FeedbackAccount
 #[event]
 pub struct ResponseAppended {
     pub agent_id: u64,
-    pub client_address: Pubkey,
     pub feedback_index: u64,
     pub response_index: u64,
     pub responder: Pubkey,

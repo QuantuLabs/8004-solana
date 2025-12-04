@@ -222,13 +222,9 @@ pub fn append_response(
     response.created_at = Clock::get()?.unix_timestamp;
     response.bump = ctx.bumps.response_account;
 
-    // Get client_address from feedback account for the event
-    let client_address = ctx.accounts.feedback_account.client_address;
-
-    // Emit event (v0.2.0 - URI stored in event only)
+    // Emit event (v0.2.0 - URI stored in event only, client_address derivable from FeedbackAccount)
     emit!(ResponseAppended {
         agent_id,
-        client_address,
         feedback_index,
         response_index,
         responder: ctx.accounts.responder.key(),

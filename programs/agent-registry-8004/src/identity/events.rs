@@ -10,13 +10,12 @@ pub struct Registered {
 }
 
 /// Event emitted when agent metadata is set (8004 spec: MetadataSet)
-/// v0.2.0: Added immutable field
+/// v0.2.0: Added immutable field, removed indexed_key, value truncated to 64 bytes
 #[event]
 pub struct MetadataSet {
     pub agent_id: u64,
-    pub indexed_key: String, // Duplicate for indexing (like Ethereum)
     pub key: String,
-    pub value: Vec<u8>,
+    pub value: Vec<u8>, // Truncated to max 64 bytes in emit (fetch PDA for full value)
     pub immutable: bool, // v0.2.0: If true, cannot be modified/deleted
 }
 

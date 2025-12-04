@@ -73,7 +73,7 @@ pub fn request_validation(
         .checked_add(1)
         .ok_or(RegistryError::Overflow)?;
 
-    // Emit event with full metadata
+    // Emit event (timestamp available from transaction blockTime)
     emit!(ValidationRequested {
         agent_id,
         validator_address,
@@ -81,7 +81,6 @@ pub fn request_validation(
         request_uri,
         request_hash,
         requester: ctx.accounts.requester.key(),
-        created_at: clock.unix_timestamp,
     });
 
     msg!(
@@ -132,7 +131,7 @@ pub fn respond_to_validation(
             .ok_or(RegistryError::Overflow)?;
     }
 
-    // Emit event with full metadata
+    // Emit event (timestamp available from transaction blockTime)
     emit!(ValidationResponded {
         agent_id: validation_request.agent_id,
         validator_address: validation_request.validator_address,
@@ -141,7 +140,6 @@ pub fn respond_to_validation(
         response_uri,
         response_hash,
         tag,
-        responded_at: clock.unix_timestamp,
     });
 
     msg!(

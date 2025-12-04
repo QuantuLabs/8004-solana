@@ -72,30 +72,23 @@ fn register_internal(
     let agent_id = ctx.accounts.config.next_agent_id;
     let collection_key = ctx.accounts.config.collection;
 
-    // Create agent name early
-    let agent_name = format!("Agent #{}", agent_id);
-    let metadata_uri = if agent_uri.is_empty() {
-        String::new()
-    } else {
-        agent_uri.clone()
-    };
-
     // Config PDA seeds for signing
     let config_seeds = &[b"config".as_ref(), &[config_bump]];
     let signer_seeds = &[&config_seeds[..]];
 
-    // Create Metaplex Core asset in collection
-    // Config PDA is the collection's update_authority, so it signs via invoke_signed
-    CreateV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
-        .asset(&ctx.accounts.asset.to_account_info())
-        .collection(Some(&ctx.accounts.collection.to_account_info()))
-        .payer(&ctx.accounts.owner.to_account_info())
-        .owner(Some(&ctx.accounts.owner.to_account_info()))
-        .authority(Some(&ctx.accounts.config.to_account_info()))
-        .system_program(&ctx.accounts.system_program.to_account_info())
-        .name(agent_name.clone())
-        .uri(metadata_uri)
-        .invoke_signed(signer_seeds)?;
+    // Create Metaplex Core asset in collection via helper (separate stack frame)
+    create_core_asset_cpi(
+        &ctx.accounts.mpl_core_program.to_account_info(),
+        &ctx.accounts.asset.to_account_info(),
+        &ctx.accounts.collection.to_account_info(),
+        &ctx.accounts.owner.to_account_info(),
+        &ctx.accounts.owner.to_account_info(),
+        &ctx.accounts.config.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        format!("Agent #{}", agent_id),
+        if agent_uri.is_empty() { String::new() } else { agent_uri.clone() },
+        signer_seeds,
+    )?;
 
     // Now update config (after CPI is done)
     let config = &mut ctx.accounts.config;
@@ -117,7 +110,7 @@ fn register_internal(
     agent.owner = ctx.accounts.owner.key();
     agent.asset = ctx.accounts.asset.key();
     agent.agent_uri = agent_uri.clone();
-    agent.nft_name = agent_name;
+    agent.nft_name = format!("Agent #{}", agent_id);
     agent.nft_symbol = String::new();
     agent.created_at = Clock::get()?.unix_timestamp;
     agent.bump = ctx.bumps.agent_account;
@@ -186,12 +179,16 @@ pub fn set_metadata_pda(
         entry.bump = ctx.bumps.metadata_entry;
     }
 
-    // Emit event
+    // Emit event (value truncated to 64 bytes to reduce stack usage)
+    let truncated_value = if value.len() > 64 {
+        value[..64].to_vec()
+    } else {
+        value
+    };
     emit!(MetadataSet {
         agent_id,
-        indexed_key: key.clone(),
         key: key.clone(),
-        value,
+        value: truncated_value,
         immutable,
     });
 
@@ -246,36 +243,40 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
         RegistryError::UriTooLong
     );
 
-    let agent = &mut ctx.accounts.agent_account;
-
-    // Update AgentAccount URI
-    agent.agent_uri = new_uri.clone();
+    // Get agent_id before CPI to reduce stack usage during mpl-core call
+    let agent_id = ctx.accounts.agent_account.agent_id;
 
     // Config PDA seeds for signing (collection update_authority is config PDA)
     let config_bump = ctx.accounts.config.bump;
     let config_seeds = &[b"config".as_ref(), &[config_bump]];
     let signer_seeds = &[&config_seeds[..]];
 
-    // Update Core asset URI (config PDA signs as collection update_authority)
-    UpdateV1CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
-        .asset(&ctx.accounts.asset.to_account_info())
-        .collection(Some(&ctx.accounts.collection.to_account_info()))
-        .payer(&ctx.accounts.owner.to_account_info())
-        .authority(Some(&ctx.accounts.config.to_account_info()))
-        .system_program(&ctx.accounts.system_program.to_account_info())
-        .new_uri(new_uri.clone())
-        .invoke_signed(signer_seeds)?;
+    // Update Core asset URI via helper (separate stack frame)
+    update_core_asset_uri_cpi(
+        &ctx.accounts.mpl_core_program.to_account_info(),
+        &ctx.accounts.asset.to_account_info(),
+        &ctx.accounts.collection.to_account_info(),
+        &ctx.accounts.owner.to_account_info(),
+        &ctx.accounts.config.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        new_uri.clone(),
+        signer_seeds,
+    )?;
 
-    // Emit event
+    // CPI done, stack freed - now update AgentAccount
+    let agent = &mut ctx.accounts.agent_account;
+    agent.agent_uri = new_uri.clone();
+
+    // Emit event (move ownership, no clone needed)
     emit!(UriUpdated {
-        agent_id: agent.agent_id,
-        new_uri: new_uri.clone(),
+        agent_id,
+        new_uri,
         updated_by: ctx.accounts.owner.key(),
     });
 
     msg!(
         "Agent {} URI updated in AgentAccount and Core asset synced",
-        agent.agent_id
+        agent_id
     );
 
     Ok(())
@@ -363,6 +364,60 @@ pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
 // ============================================================================
 // Helper functions
 // ============================================================================
+
+/// Create Core asset via CPI in separate stack frame
+///
+/// Using #[inline(never)] to force a separate stack frame for mpl-core CPI.
+/// Note: mpl-core v0.11.1 has an internal stack overflow warning in
+/// registry_records_to_plugin_list - this is in the library, not our code.
+#[inline(never)]
+fn create_core_asset_cpi<'info>(
+    mpl_core_program: &AccountInfo<'info>,
+    asset: &AccountInfo<'info>,
+    collection: &AccountInfo<'info>,
+    payer: &AccountInfo<'info>,
+    owner: &AccountInfo<'info>,
+    authority: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+    name: String,
+    uri: String,
+    signer_seeds: &[&[&[u8]]],
+) -> Result<()> {
+    CreateV2CpiBuilder::new(mpl_core_program)
+        .asset(asset)
+        .collection(Some(collection))
+        .payer(payer)
+        .owner(Some(owner))
+        .authority(Some(authority))
+        .system_program(system_program)
+        .name(name)
+        .uri(uri)
+        .invoke_signed(signer_seeds)?;
+    Ok(())
+}
+
+/// Update Core asset URI via CPI in separate stack frame
+#[inline(never)]
+fn update_core_asset_uri_cpi<'info>(
+    mpl_core_program: &AccountInfo<'info>,
+    asset: &AccountInfo<'info>,
+    collection: &AccountInfo<'info>,
+    payer: &AccountInfo<'info>,
+    authority: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+    new_uri: String,
+    signer_seeds: &[&[&[u8]]],
+) -> Result<()> {
+    UpdateV1CpiBuilder::new(mpl_core_program)
+        .asset(asset)
+        .collection(Some(collection))
+        .payer(payer)
+        .authority(Some(authority))
+        .system_program(system_program)
+        .new_uri(new_uri)
+        .invoke_signed(signer_seeds)?;
+    Ok(())
+}
 
 /// Verify that the signer owns the Core asset
 fn verify_core_owner(asset_info: &AccountInfo, expected_owner: &Pubkey) -> Result<()> {
