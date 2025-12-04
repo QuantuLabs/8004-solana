@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 /// Feedback account - One per feedback (global index)
 /// Seeds: [b"feedback", agent_id, feedback_index]
+/// v0.2.0: Removed file_uri (stored in event only), kept tags for on-chain filtering
 #[account]
 pub struct FeedbackAccount {
     /// Agent ID from Identity Registry
@@ -17,15 +18,15 @@ pub struct FeedbackAccount {
     pub score: u8,
 
     /// Tag1 - String tag for categorization (max 32 bytes)
+    /// Kept on-chain for filtering via getProgramAccounts
     pub tag1: String,
 
     /// Tag2 - String tag for categorization (max 32 bytes)
+    /// Kept on-chain for filtering via getProgramAccounts
     pub tag2: String,
 
-    /// File URI (IPFS/Arweave link, max 200 bytes)
-    pub file_uri: String,
-
     /// File hash (SHA-256, 32 bytes)
+    /// file_uri is stored in FeedbackGiven event only (v0.2.0 optimization)
     pub file_hash: [u8; 32],
 
     /// Revocation status (preserves audit trail)
@@ -39,11 +40,10 @@ pub struct FeedbackAccount {
 }
 
 impl FeedbackAccount {
-    /// Maximum size calculation
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 1 + (4 + 32) + (4 + 32) + (4 + 200) + 32 + 1 + 8 + 1;
-
-    /// Maximum URI length
-    pub const MAX_URI_LENGTH: usize = 200;
+    /// Maximum size calculation (v0.2.0 - removed file_uri)
+    /// 8 (discriminator) + 8 (agent_id) + 32 (client) + 8 (index) + 1 (score) +
+    /// (4+32) (tag1) + (4+32) (tag2) + 32 (hash) + 1 (revoked) + 8 (timestamp) + 1 (bump)
+    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 1 + (4 + 32) + (4 + 32) + 32 + 1 + 8 + 1;
 
     /// Maximum tag length
     pub const MAX_TAG_LENGTH: usize = 32;
@@ -51,6 +51,7 @@ impl FeedbackAccount {
 
 /// Response account - Separate account per response (unlimited responses)
 /// Seeds: [b"response", agent_id, feedback_index, response_index]
+/// v0.2.0: Removed response_uri (stored in event only)
 #[account]
 pub struct ResponseAccount {
     /// Agent ID
@@ -65,10 +66,8 @@ pub struct ResponseAccount {
     /// Who responded (anyone can respond)
     pub responder: Pubkey,
 
-    /// Response URI (IPFS/Arweave link, max 200 bytes)
-    pub response_uri: String,
-
     /// Response hash (SHA-256, 32 bytes)
+    /// response_uri is stored in ResponseAppended event only (v0.2.0 optimization)
     pub response_hash: [u8; 32],
 
     /// Creation timestamp
@@ -79,11 +78,10 @@ pub struct ResponseAccount {
 }
 
 impl ResponseAccount {
-    /// Maximum size calculation (removed client_address)
-    pub const MAX_SIZE: usize = 8 + 8 + 8 + 8 + 32 + (4 + 200) + 32 + 8 + 1;
-
-    /// Maximum URI length
-    pub const MAX_URI_LENGTH: usize = 200;
+    /// Maximum size calculation (v0.2.0 - removed response_uri)
+    /// 8 (discriminator) + 8 (agent_id) + 8 (feedback_index) + 8 (response_index) +
+    /// 32 (responder) + 32 (hash) + 8 (timestamp) + 1 (bump)
+    pub const MAX_SIZE: usize = 8 + 8 + 8 + 8 + 32 + 32 + 8 + 1;
 }
 
 /// Agent reputation metadata - Cached aggregated stats and global feedback counter
@@ -113,7 +111,7 @@ pub struct AgentReputationMetadata {
 }
 
 impl AgentReputationMetadata {
-    /// Size calculation (added next_feedback_index)
+    /// Size calculation
     pub const SIZE: usize = 8 + 8 + 8 + 8 + 8 + 1 + 8 + 1;
 }
 
@@ -135,6 +133,6 @@ pub struct ResponseIndexAccount {
 }
 
 impl ResponseIndexAccount {
-    /// Size calculation (removed client_address)
+    /// Size calculation
     pub const SIZE: usize = 8 + 8 + 8 + 8 + 1;
 }

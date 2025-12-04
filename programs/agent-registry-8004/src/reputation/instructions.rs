@@ -32,10 +32,11 @@ pub fn give_feedback(
         RegistryError::TagTooLong
     );
 
-    // Validate URI length
+    // Validate URI length (still validated even though stored in event only)
+    const MAX_URI_LENGTH: usize = 200;
     require!(
-        file_uri.len() <= FeedbackAccount::MAX_URI_LENGTH,
-        RegistryError::ResponseUriTooLong
+        file_uri.len() <= MAX_URI_LENGTH,
+        RegistryError::UriTooLong
     );
 
     // Get or initialize agent reputation metadata (serves as global counter)
@@ -81,7 +82,7 @@ pub fn give_feedback(
 
     metadata.last_updated = Clock::get()?.unix_timestamp;
 
-    // Initialize feedback account
+    // Initialize feedback account (v0.2.0 - no file_uri, stored in event only)
     let feedback = &mut ctx.accounts.feedback_account;
     feedback.agent_id = agent_id;
     feedback.client_address = ctx.accounts.client.key();
@@ -89,7 +90,6 @@ pub fn give_feedback(
     feedback.score = score;
     feedback.tag1 = tag1.clone();
     feedback.tag2 = tag2.clone();
-    feedback.file_uri = file_uri.clone();
     feedback.file_hash = file_hash;
     feedback.is_revoked = false;
     feedback.created_at = Clock::get()?.unix_timestamp;
@@ -188,9 +188,10 @@ pub fn append_response(
     response_uri: String,
     response_hash: [u8; 32],
 ) -> Result<()> {
-    // Validate URI length
+    // Validate URI length (still validated even though stored in event only)
+    const MAX_URI_LENGTH: usize = 200;
     require!(
-        response_uri.len() <= ResponseAccount::MAX_URI_LENGTH,
+        response_uri.len() <= MAX_URI_LENGTH,
         RegistryError::ResponseUriTooLong
     );
 
@@ -211,13 +212,12 @@ pub fn append_response(
         current_index
     };
 
-    // Initialize response account
+    // Initialize response account (v0.2.0 - no response_uri, stored in event only)
     let response = &mut ctx.accounts.response_account;
     response.agent_id = agent_id;
     response.feedback_index = feedback_index;
     response.response_index = response_index;
     response.responder = ctx.accounts.responder.key();
-    response.response_uri = response_uri.clone();
     response.response_hash = response_hash;
     response.created_at = Clock::get()?.unix_timestamp;
     response.bump = ctx.bumps.response_account;
@@ -225,7 +225,7 @@ pub fn append_response(
     // Get client_address from feedback account for the event
     let client_address = ctx.accounts.feedback_account.client_address;
 
-    // Emit event
+    // Emit event (v0.2.0 - URI stored in event only)
     emit!(ResponseAppended {
         agent_id,
         client_address,
@@ -233,6 +233,7 @@ pub fn append_response(
         response_index,
         responder: ctx.accounts.responder.key(),
         response_uri,
+        response_hash,
     });
 
     msg!(
