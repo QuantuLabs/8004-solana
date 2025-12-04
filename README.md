@@ -211,18 +211,29 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ## Performance & Costs
 
-### Operation Costs (v0.2.0 Estimated)
+### Operation Costs (v0.2.0 Measured on Devnet)
 
-| Operation | v0.2.0 Cost | Notes |
-|-----------|-------------|-------|
-| Register Agent | ~0.0055 SOL | Core asset + lighter AgentAccount |
-| Set Metadata PDA | ~0.0031 SOL | New MetadataEntryPda (~330 bytes) |
-| Delete Metadata | ~0 SOL | Rent recovered via close |
-| Give Feedback (1st) | ~0.00280 SOL | Feedback + AgentReputation init |
-| Give Feedback (2nd+) | ~0.00180 SOL | FeedbackAccount only (171 bytes) |
-| Append Response (1st) | ~0.00185 SOL | Response + ResponseIndex init |
-| Append Response (2nd+) | ~0.00115 SOL | ResponseAccount only (105 bytes) |
-| Request Validation | ~0.00183 SOL | ValidationRequest |
+| Operation | Cost (SOL) | Lamports | Notes |
+|-----------|------------|----------|-------|
+| Register Agent | **0.00651** | 6,507,280 | Core asset + AgentAccount |
+| Set Metadata (1st) | **0.00319** | 3,192,680 | +MetadataEntryPda |
+| Set Metadata (update) | 0.000005 | 5,000 | TX fee only |
+| Give Feedback (1st) | 0.00332 | 3,324,920 | +AgentReputation init |
+| Give Feedback (2nd+) | 0.00209 | 2,086,040 | FeedbackAccount only |
+| Append Response (1st) | 0.00275 | 2,747,240 | +ResponseIndex init |
+| Append Response (2nd+) | 0.00163 | 1,626,680 | ResponseAccount only |
+| Revoke Feedback | 0.000005 | 5,000 | TX fee only |
+| Request Validation | 0.00183 | 1,828,520 | ValidationRequest |
+| Respond Validation | 0.000005 | 5,000 | TX fee only |
+| **Full Lifecycle** | **0.0245** | 24,521,040 | Complete test cycle |
+
+### First vs Subsequent Savings
+
+| Operation | 1st Call | 2nd+ Calls | Savings |
+|-----------|----------|------------|---------|
+| Set Metadata | 0.00319 | 0.000005 | **-99%** |
+| Give Feedback | 0.00332 | 0.00209 | **-37%** |
+| Append Response | 0.00275 | 0.00163 | **-41%** |
 
 ### v0.2.0 Account Size Optimizations
 
@@ -232,7 +243,7 @@ anchor test --skip-build tests/e2e-integration.ts
 | ResponseAccount | 309 bytes | 105 bytes | **-66%** |
 | AgentAccount | 661 bytes | ~365 bytes | **-45%** |
 
-*URIs now stored in events only. Tags kept on-chain for filtering.*
+*URIs stored in events only. Tags kept on-chain for filtering.*
 
 **Note**: Rent is recoverable when closing accounts or deleting metadata.
 
