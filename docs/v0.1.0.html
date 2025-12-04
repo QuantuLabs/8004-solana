@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8004 on Solana - Technical Documentation</title>
+    <style>
+        :root {
+            --bg-dark: #0d1117;
+            --bg-card: #161b22;
+            --bg-code: #1c2128;
+            --border: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-purple: #a371f7;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+            --accent-cyan: #39c5cf;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 3rem 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-size: 3rem;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+        }
+
+        .program-ids {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-top: 2rem;
+        }
+
+        .program-id {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+        }
+
+        .program-id .label {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+
+        .program-id.identity { border-left: 3px solid var(--accent-purple); }
+        .program-id.reputation { border-left: 3px solid var(--accent-green); }
+        .program-id.validation { border-left: 3px solid var(--accent-orange); }
+
+        nav {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 3rem;
+            position: sticky;
+            top: 1rem;
+            z-index: 100;
+        }
+
+        nav ul {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            list-style: none;
+        }
+
+        nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        nav a:hover {
+            background: var(--bg-code);
+            color: var(--accent-blue);
+        }
+
+        section {
+            margin-bottom: 4rem;
+        }
+
+        h2 {
+            font-size: 2rem;
+            color: var(--accent-purple);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        h3 {
+            font-size: 1.5rem;
+            color: var(--accent-blue);
+            margin: 2rem 0 1rem;
+        }
+
+        h4 {
+            font-size: 1.2rem;
+            color: var(--accent-cyan);
+            margin: 1.5rem 0 0.75rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .card-header .icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .icon.purple { background: rgba(163, 113, 247, 0.2); color: var(--accent-purple); }
+        .icon.green { background: rgba(63, 185, 80, 0.2); color: var(--accent-green); }
+        .icon.orange { background: rgba(210, 153, 34, 0.2); color: var(--accent-orange); }
+        .icon.blue { background: rgba(88, 166, 255, 0.2); color: var(--accent-blue); }
+
+        code {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            background: var(--bg-code);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        pre {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--bg-code);
+            color: var(--accent-blue);
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: rgba(88, 166, 255, 0.05);
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .tag.required { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+        .tag.optional { background: rgba(63, 185, 80, 0.2); color: var(--accent-green); }
+        .tag.signer { background: rgba(163, 113, 247, 0.2); color: var(--accent-purple); }
+        .tag.mut { background: rgba(210, 153, 34, 0.2); color: var(--accent-orange); }
+        .tag.init { background: rgba(88, 166, 255, 0.2); color: var(--accent-blue); }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .architecture-diagram {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+            white-space: pre;
+            overflow-x: auto;
+            line-height: 1.4;
+        }
+
+        .highlight {
+            color: var(--accent-green);
+        }
+
+        .warning {
+            background: rgba(210, 153, 34, 0.1);
+            border: 1px solid var(--accent-orange);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .warning::before {
+            content: "⚠️ ";
+        }
+
+        .info {
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid var(--accent-blue);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .info::before {
+            content: "ℹ️ ";
+        }
+
+        .success {
+            background: rgba(63, 185, 80, 0.1);
+            border: 1px solid var(--accent-green);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .success::before {
+            content: "✅ ";
+        }
+
+        .pda-seed {
+            background: var(--bg-code);
+            border-left: 3px solid var(--accent-purple);
+            padding: 0.5rem 1rem;
+            margin: 0.5rem 0;
+            font-family: monospace;
+        }
+
+        .flex-row {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            text-align: center;
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--accent-green);
+        }
+
+        .stat-card .label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        footer {
+            text-align: center;
+            padding: 3rem 0;
+            border-top: 1px solid var(--border);
+            margin-top: 4rem;
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            h1 { font-size: 2rem; }
+            nav { position: static; }
+            .program-ids { flex-direction: column; align-items: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>8004 on Solana</h1>
+            <p class="subtitle">Technical Documentation for AI Agent Identity & Reputation Registry</p>
+            <div class="program-ids">
+                <div class="program-id identity">
+                    <span class="label">Identity Registry</span>
+                    CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss
+                </div>
+                <div class="program-id reputation">
+                    <span class="label">Reputation Registry</span>
+                    Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr
+                </div>
+                <div class="program-id validation">
+                    <span class="label">Validation Registry</span>
+                    2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw
+                </div>
+            </div>
+        </header>
+
+        <nav>
+            <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#tools">Tools</a></li>
+                <li><a href="#identity">Identity Registry</a></li>
+                <li><a href="#reputation">Reputation Registry</a></li>
+                <li><a href="#validation">Validation Registry</a></li>
+                <li><a href="#security">Security</a></li>
+                <li><a href="#costs">Costs</a></li>
+                <li><a href="#pda-reference">PDA Reference</a></li>
+            </ul>
+        </nav>
+
+        <!-- OVERVIEW SECTION -->
+        <section id="overview">
+            <h2>Overview</h2>
+            <p>8004 is a standard for on-chain AI agent registries. This Solana implementation provides:</p>
+
+            <div class="grid" style="margin-top: 1.5rem;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon purple">ID</div>
+                        <h4 style="margin: 0;">Identity Registry</h4>
+                    </div>
+                    <p>NFT-based agent registration with Metaplex integration. Each agent gets a unique NFT (supply=1, decimals=0) as its on-chain identity.</p>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon green">★</div>
+                        <h4 style="margin: 0;">Reputation Registry</h4>
+                    </div>
+                    <p>Feedback/review system with scores (0-100), tags, and unlimited responses. Cached aggregates enable O(1) reputation queries.</p>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon orange">✓</div>
+                        <h4 style="margin: 0;">Validation Registry</h4>
+                    </div>
+                    <p>Third-party validation and attestation. Validators can provide scores (0-100) with progressive updates.</p>
+                </div>
+            </div>
+
+            <div class="flex-row" style="margin-top: 2rem;">
+                <div class="stat-card">
+                    <div class="value">~0.025</div>
+                    <div class="label">SOL per Agent Registration</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">~0.002</div>
+                    <div class="label">SOL per Feedback</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">O(1)</div>
+                    <div class="label">Reputation Queries</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">∞</div>
+                    <div class="label">Responses per Feedback</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ARCHITECTURE SECTION -->
+        <section id="architecture">
+            <h2>Architecture</h2>
+
+            <div class="architecture-diagram">
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SOLANA PROGRAMS (Devnet)                           │
+├────────────────────┬────────────────────────┬───────────────────────────────┤
+│  Identity Registry │   Reputation Registry  │     Validation Registry       │
+│  <span class="highlight">CAHKQ2am...acss</span>   │   <span class="highlight">Ejb8DaxZ...6Ajr</span>      │     <span class="highlight">2y87PVXu...whhw</span>          │
+├────────────────────┼────────────────────────┼───────────────────────────────┤
+│ • register()       │ • give_feedback()      │ • request_validation()        │
+│ • set_metadata()   │ • revoke_feedback()    │ • respond_to_validation()     │
+│ • set_agent_uri()  │ • append_response()    │ • update_validation()         │
+│ • sync_owner()     │                        │ • close_validation()          │
+│ • transfer_agent() │                        │                               │
+├────────────────────┴────────────────────────┴───────────────────────────────┤
+│                         CROSS-PROGRAM VALIDATION                             │
+│  Reputation & Validation registries validate agents exist via CPI to        │
+│  Identity Registry. Prevents fake agent attacks.                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                            METAPLEX INTEGRATION                              │
+│  • Collection NFT created on initialize()                                    │
+│  • Agent NFTs verified against collection via PDA signature                 │
+│  • Update authority transferred to new owner on transfer                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+            </div>
+        </section>
+
+        <!-- TOOLS & ECOSYSTEM SECTION -->
+        <section id="tools">
+            <h2>Tools & Ecosystem</h2>
+
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon blue">SDK</div>
+                        <h4 style="margin: 0;">8004 Solana TypeScript SDK</h4>
+                    </div>
+                    <p>Official TypeScript SDK for interacting with 8004 programs. Includes PDA derivation, Borsh schemas, and program wrappers.</p>
+                    <p style="margin-top: 1rem;">
+                        <span class="tag" style="background: rgba(63, 185, 80, 0.2); color: var(--accent-green);">Available</span>
+                    </p>
+                    <p style="margin-top: 0.75rem;">
+                        <a href="https://github.com/QuantuLabs/8004-solana-ts-sdk" style="color: var(--accent-blue);">GitHub Repository →</a>
+                    </p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon green">🔍</div>
+                        <h4 style="margin: 0;">Agent Explorer</h4>
+                    </div>
+                    <p>Browse and explore all registered 8004 agents on Solana. View agent metadata, reputation scores, and validation history.</p>
+                    <p style="margin-top: 1rem;">
+                        <span class="tag" style="background: rgba(63, 185, 80, 0.2); color: var(--accent-green);">Available</span>
+                    </p>
+                    <p style="margin-top: 0.75rem;">
+                        <a href="https://x402synthex.xyz/agents/" style="color: var(--accent-blue);">x402synthex.xyz/agents →</a>
+                    </p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon purple">UI</div>
+                        <h4 style="margin: 0;">Agent Creation Tool</h4>
+                    </div>
+                    <p>Web interface for creating and managing 8004 agents. No-code solution for registering AI agents on Solana.</p>
+                    <p style="margin-top: 1rem;">
+                        <span class="tag" style="background: rgba(163, 113, 247, 0.2); color: var(--accent-purple);">Launching This Week</span>
+                    </p>
+                    <p style="margin-top: 0.75rem;">
+                        <a href="https://x402synthex.xyz/create-agent/" style="color: var(--accent-blue);">x402synthex.xyz/create-agent →</a>
+                    </p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon orange">IDX</div>
+                        <h4 style="margin: 0;">8004 Indexer</h4>
+                    </div>
+                    <p>Off-chain indexer for 8004 events and account data. Enables fast queries for agent reputation, feedback history, and validation status.</p>
+                    <p style="margin-top: 1rem;">
+                        <span class="tag" style="background: rgba(210, 153, 34, 0.2); color: var(--accent-orange);">In Development</span>
+                        <span style="color: var(--text-secondary); font-size: 0.85rem; margin-left: 0.5rem;">Expected: December 2025</span>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- IDENTITY REGISTRY SECTION -->
+        <section id="identity">
+            <h2>Identity Registry</h2>
+            <p>Manages agent registration with NFT-based identity. Each agent is represented by a unique Metaplex NFT.</p>
+
+            <h3>Key Design: Permissionless Registration</h3>
+            <div class="info">
+                Anyone can register agents without requiring deployer signature. The program's <strong>Collection Authority PDA</strong> signs for Metaplex collection verification via <code>invoke_signed()</code>.
+            </div>
+
+            <h3>Instructions</h3>
+
+            <!-- initialize -->
+            <div class="card">
+                <h4>initialize()</h4>
+                <p>Initialize the registry and create the Metaplex Collection NFT.</p>
+
+                <p><strong>What it does:</strong></p>
+                <ul>
+                    <li>Creates <code>RegistryConfig</code> PDA with global state</li>
+                    <li>Mints Collection NFT to authority</li>
+                    <li>Creates Metaplex metadata + master edition</li>
+                    <li><strong>Transfers collection update_authority to Collection Authority PDA</strong> (enables permissionless registration)</li>
+                </ul>
+
+                <p><strong>Accounts:</strong></p>
+                <table>
+                    <tr><th>Account</th><th>Type</th><th>Description</th></tr>
+                    <tr><td>config</td><td><span class="tag init">init</span> <span class="tag mut">mut</span></td><td>PDA: <code>["config"]</code></td></tr>
+                    <tr><td>collection_mint</td><td><span class="tag init">init</span></td><td>Collection NFT mint</td></tr>
+                    <tr><td>collection_authority_pda</td><td>PDA</td><td><code>["collection_authority"]</code></td></tr>
+                    <tr><td>authority</td><td><span class="tag signer">signer</span></td><td>Registry deployer</td></tr>
+                </table>
+            </div>
+
+            <!-- register -->
+            <div class="card">
+                <h4>register(agent_uri: String) / register_with_metadata(...)</h4>
+                <p>Register a new agent with optional URI and metadata.</p>
+
+                <p><strong>Parameters:</strong></p>
+                <table>
+                    <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
+                    <tr><td>agent_uri</td><td>String</td><td>Max 200 bytes</td></tr>
+                    <tr><td>metadata</td><td>Vec&lt;MetadataEntry&gt;</td><td>Max 1 entry in base account</td></tr>
+                </table>
+
+                <p><strong>Flow:</strong></p>
+                <ol>
+                    <li>Increment <code>config.next_agent_id</code> (sequential u64)</li>
+                    <li>Create Agent NFT (supply=1, decimals=0)</li>
+                    <li>Create Metaplex metadata with <code>collection.verified = false</code></li>
+                    <li><strong>Verify collection via PDA signature</strong> (VerifyCollectionV1)</li>
+                    <li>Initialize AgentAccount PDA</li>
+                </ol>
+
+                <div class="pda-seed">
+                    <strong>Agent PDA:</strong> seeds = ["agent", agent_mint.key()]
+                </div>
+
+                <p><strong>Events:</strong> <code>Registered</code>, <code>MetadataSet</code> (for each entry)</p>
+            </div>
+
+            <!-- set_metadata -->
+            <div class="card">
+                <h4>set_metadata(key: String, value: Vec&lt;u8&gt;)</h4>
+                <p>Set or update a metadata entry. Only NFT holder can call.</p>
+
+                <p><strong>Constraints:</strong></p>
+                <ul>
+                    <li>Key: max 32 bytes</li>
+                    <li>Value: max 256 bytes</li>
+                    <li>Max 1 entry in base AgentAccount (use extensions for more)</li>
+                </ul>
+
+                <p><strong>Authorization:</strong> Verified via token account ownership check:</p>
+                <pre><code>constraint = token_account.mint == agent_account.agent_mint
+constraint = token_account.amount == 1
+constraint = owner.key() == token_account.owner</code></pre>
+            </div>
+
+            <!-- set_agent_uri -->
+            <div class="card">
+                <h4>set_agent_uri(new_uri: String)</h4>
+                <p>Update agent URI and sync to Metaplex metadata.</p>
+                <p>Uses <code>UpdateAsUpdateAuthorityV2CpiBuilder</code> to update Metaplex NFT URI.</p>
+            </div>
+
+            <!-- sync_owner -->
+            <div class="card">
+                <h4>sync_owner()</h4>
+                <p>Sync cached owner after SPL Token transfer + transfer Metaplex update_authority.</p>
+
+                <div class="warning">
+                    Must be called after transferring the agent NFT via standard SPL Token transfer. Updates <code>agent.owner</code> and transfers Metaplex update_authority to new owner.
+                </div>
+            </div>
+
+            <!-- transfer_agent -->
+            <div class="card">
+                <h4>transfer_agent()</h4>
+                <p>Convenience function: SPL Token transfer + sync_owner in one instruction.</p>
+            </div>
+
+            <h3>Account Structures</h3>
+
+            <div class="card">
+                <h4>RegistryConfig (82 bytes)</h4>
+                <pre><code>pub struct RegistryConfig {
+    pub authority: Pubkey,              // 32 bytes
+    pub next_agent_id: u64,             // 8 bytes (sequential counter)
+    pub total_agents: u64,              // 8 bytes
+    pub collection_mint: Pubkey,        // 32 bytes
+    pub collection_authority_bump: u8,  // 1 byte
+    pub bump: u8,                       // 1 byte
+}</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["config"]</div>
+            </div>
+
+            <div class="card">
+                <h4>AgentAccount (643 bytes)</h4>
+                <pre><code>pub struct AgentAccount {
+    pub agent_id: u64,                  // 8 bytes (NOT derived from mint)
+    pub owner: Pubkey,                  // 32 bytes (cached, sync on transfer)
+    pub agent_mint: Pubkey,             // 32 bytes
+    pub agent_uri: String,              // 4 + 200 = 204 bytes
+    pub nft_name: String,               // 4 + 32 = 36 bytes ("Agent #X")
+    pub nft_symbol: String,             // 4 + 10 = 14 bytes
+    pub metadata: Vec&lt;MetadataEntry&gt;,   // 4 + (1 * 296) = 300 bytes
+    pub created_at: i64,                // 8 bytes
+    pub bump: u8,                       // 1 byte
+}
+
+// Constants
+MAX_METADATA_ENTRIES: 1   // Use extensions for more
+MAX_URI_LENGTH: 200</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent", agent_mint.key()]</div>
+            </div>
+
+            <div class="card">
+                <h4>MetadataEntry (296 bytes)</h4>
+                <pre><code>pub struct MetadataEntry {
+    pub metadata_key: String,       // 4 + 32 = 36 bytes
+    pub metadata_value: Vec&lt;u8&gt;,    // 4 + 256 = 260 bytes
+}
+
+// Note: Uses metadata_key/metadata_value (not key/value)
+// to avoid Rust reserved keywords</code></pre>
+            </div>
+
+            <div class="card">
+                <h4>MetadataExtension (3006 bytes)</h4>
+                <p>For &gt;1 metadata entries, create extension PDAs (10 entries each, unlimited total).</p>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["metadata_ext", agent_mint, extension_index]</div>
+            </div>
+
+            <h3>Error Codes</h3>
+            <table>
+                <tr><th>Error</th><th>Message</th><th>Condition</th></tr>
+                <tr><td>UriTooLong</td><td>"URI&gt;200"</td><td>agent_uri exceeds 200 bytes</td></tr>
+                <tr><td>KeyTooLong</td><td>"Key&gt;32"</td><td>metadata key exceeds 32 bytes</td></tr>
+                <tr><td>ValueTooLong</td><td>"Val&gt;256"</td><td>metadata value exceeds 256 bytes</td></tr>
+                <tr><td>MetadataLimitReached</td><td>"Max1"</td><td>Exceeds 1 entry in base account</td></tr>
+                <tr><td>Unauthorized</td><td>"!owner"</td><td>Caller is not agent owner</td></tr>
+                <tr><td>Overflow</td><td>"Overflow"</td><td>Agent ID counter overflowed</td></tr>
+                <tr><td>InvalidTokenAccount</td><td>"!NFT"</td><td>Token account doesn't hold the NFT</td></tr>
+            </table>
+
+            <h3>Events</h3>
+            <table>
+                <tr><th>Event</th><th>Fields</th><th>Emitted</th></tr>
+                <tr><td>Registered</td><td>agent_id, agent_uri, owner, agent_mint</td><td>register()</td></tr>
+                <tr><td>MetadataSet</td><td>agent_id, indexed_key, key, value</td><td>register(), set_metadata()</td></tr>
+                <tr><td>UriUpdated</td><td>agent_id, new_uri, updated_by</td><td>set_agent_uri()</td></tr>
+                <tr><td>AgentOwnerSynced</td><td>agent_id, old_owner, new_owner, agent_mint</td><td>sync_owner(), transfer_agent()</td></tr>
+            </table>
+        </section>
+
+        <!-- REPUTATION REGISTRY SECTION -->
+        <section id="reputation">
+            <h2>Reputation Registry</h2>
+            <p>Manages feedback, responses, and cached reputation aggregates for agents.</p>
+
+            <h3>Key Design: Cached Aggregates</h3>
+            <div class="success">
+                <strong>O(1) Reputation Queries:</strong> The <code>AgentReputationMetadata</code> account stores pre-calculated aggregates (total_feedbacks, total_score_sum, average_score). Updated atomically on every give/revoke.
+            </div>
+
+            <h3>Instructions</h3>
+
+            <!-- give_feedback -->
+            <div class="card">
+                <h4>give_feedback(agent_id, score, tag1, tag2, file_uri, file_hash, feedback_index)</h4>
+                <p>Create feedback for an agent. Updates cached reputation stats.</p>
+
+                <p><strong>Parameters:</strong></p>
+                <table>
+                    <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
+                    <tr><td>agent_id</td><td>u64</td><td>Must exist in Identity Registry</td></tr>
+                    <tr><td>score</td><td>u8</td><td>0-100 (validated on-chain)</td></tr>
+                    <tr><td>tag1, tag2</td><td>String</td><td>Max 32 bytes each</td></tr>
+                    <tr><td>file_uri</td><td>String</td><td>Max 200 bytes</td></tr>
+                    <tr><td>file_hash</td><td>[u8; 32]</td><td>SHA-256 hash</td></tr>
+                    <tr><td>feedback_index</td><td>u64</td><td>Must match client_index.last_index</td></tr>
+                </table>
+
+                <p><strong>Cross-Program Validation:</strong></p>
+                <pre><code>// Verify agent exists in Identity Registry
+constraint = identity_registry_program.key() == IDENTITY_REGISTRY_ID
+constraint = agent_account.owner == &IDENTITY_REGISTRY_ID
+
+// Manual deserialization to extract agent_id
+let stored_agent_id = u64::from_le_bytes(agent_data[8..16]);</code></pre>
+
+                <p><strong>Aggregate Update:</strong></p>
+                <pre><code>agent_reputation.total_feedbacks += 1;
+agent_reputation.total_score_sum += score as u64;
+agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</code></pre>
+
+                <div class="pda-seed">
+                    <strong>Feedback PDA:</strong> seeds = ["feedback", agent_id (LE), client.key(), feedback_index (LE)]
+                </div>
+            </div>
+
+            <!-- revoke_feedback -->
+            <div class="card">
+                <h4>revoke_feedback(agent_id, feedback_index)</h4>
+                <p>Mark feedback as revoked (preserves audit trail). Only original author can revoke.</p>
+
+                <p><strong>State Changes:</strong></p>
+                <ul>
+                    <li><code>feedback.is_revoked = true</code></li>
+                    <li><code>agent_reputation.total_feedbacks -= 1</code></li>
+                    <li><code>agent_reputation.total_score_sum -= feedback.score</code></li>
+                    <li>Recalculates average_score</li>
+                </ul>
+            </div>
+
+            <!-- append_response -->
+            <div class="card">
+                <h4>append_response(agent_id, client_address, feedback_index, response_uri, response_hash)</h4>
+                <p>Append response to existing feedback. <strong>Anyone can respond</strong> (permissionless).</p>
+
+                <p><strong>Use Cases:</strong></p>
+                <ul>
+                    <li>Agent showing refund/resolution</li>
+                    <li>Data aggregator flagging spam</li>
+                    <li>Community providing context</li>
+                </ul>
+
+                <div class="pda-seed">
+                    <strong>Response PDA:</strong> seeds = ["response", agent_id (LE), client_address, feedback_index (LE), response_index (LE)]
+                </div>
+                <p><em>Unlimited responses per feedback via ResponseIndexAccount tracking.</em></p>
+            </div>
+
+            <h3>Account Structures</h3>
+
+            <div class="card">
+                <h4>FeedbackAccount (375 bytes)</h4>
+                <pre><code>pub struct FeedbackAccount {
+    pub agent_id: u64,           // 8 bytes
+    pub client_address: Pubkey,  // 32 bytes
+    pub feedback_index: u64,     // 8 bytes
+    pub score: u8,               // 1 byte (0-100)
+    pub tag1: String,            // 4 + 32 = 36 bytes
+    pub tag2: String,            // 4 + 32 = 36 bytes
+    pub file_uri: String,        // 4 + 200 = 204 bytes
+    pub file_hash: [u8; 32],     // 32 bytes
+    pub is_revoked: bool,        // 1 byte
+    pub created_at: i64,         // 8 bytes
+    pub bump: u8,                // 1 byte
+}</code></pre>
+            </div>
+
+            <div class="card">
+                <h4>AgentReputationMetadata (42 bytes) - Cached Stats</h4>
+                <pre><code>pub struct AgentReputationMetadata {
+    pub agent_id: u64,           // 8 bytes
+    pub total_feedbacks: u64,    // 8 bytes (non-revoked count)
+    pub total_score_sum: u64,    // 8 bytes (for precise average)
+    pub average_score: u8,       // 1 byte (0-100, pre-calculated)
+    pub last_updated: i64,       // 8 bytes
+    pub bump: u8,                // 1 byte
+}</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_reputation", agent_id (LE)]</div>
+            </div>
+
+            <div class="card">
+                <h4>ClientIndexAccount (57 bytes)</h4>
+                <p>Tracks next feedback index per client-agent pair. Prevents duplicate indices.</p>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["client_index", agent_id (LE), client.key()]</div>
+            </div>
+
+            <div class="card">
+                <h4>ResponseIndexAccount (65 bytes)</h4>
+                <p>Tracks next response index per feedback. Enables unlimited responses.</p>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response_index", agent_id (LE), client_address, feedback_index (LE)]</div>
+            </div>
+
+            <h3>Error Codes</h3>
+            <table>
+                <tr><th>Error</th><th>Message</th><th>Condition</th></tr>
+                <tr><td>InvalidScore</td><td>"Score[0-100]"</td><td>score &gt; 100</td></tr>
+                <tr><td>UriTooLong</td><td>"URI&gt;200"</td><td>file_uri exceeds 200 bytes</td></tr>
+                <tr><td>Unauthorized</td><td>"!author"</td><td>Non-author attempts revoke</td></tr>
+                <tr><td>AlreadyRevoked</td><td>"Revoked"</td><td>Already revoked</td></tr>
+                <tr><td>AgentNotFound</td><td>"!Agent"</td><td>Agent doesn't exist in Identity Registry</td></tr>
+                <tr><td>InvalidFeedbackIndex</td><td>"!FbIdx"</td><td>Index mismatch</td></tr>
+                <tr><td>InvalidIdentityRegistry</td><td>"!IdReg"</td><td>Wrong Identity Registry program</td></tr>
+            </table>
+
+            <h3>Events</h3>
+            <table>
+                <tr><th>Event</th><th>Fields</th></tr>
+                <tr><td>NewFeedback</td><td>agent_id, client_address, feedback_index, score, tag1, tag2, file_uri, file_hash</td></tr>
+                <tr><td>FeedbackRevoked</td><td>agent_id, client_address, feedback_index</td></tr>
+                <tr><td>ResponseAppended</td><td>agent_id, client_address, feedback_index, response_index, responder, response_uri</td></tr>
+            </table>
+        </section>
+
+        <!-- VALIDATION REGISTRY SECTION -->
+        <section id="validation">
+            <h2>Validation Registry</h2>
+            <p>Third-party validation and attestation system. Validators can provide scores with progressive updates.</p>
+
+            <h3>Key Design: Cost-Optimized Storage</h3>
+            <div class="success">
+                <strong>75% Cost Savings:</strong> URIs stored in events only (not on-chain). ValidationRequest is only 126 bytes vs ~590 bytes with URIs.
+            </div>
+
+            <h3>Instructions</h3>
+
+            <!-- request_validation -->
+            <div class="card">
+                <h4>request_validation(agent_id, validator_address, nonce, request_uri, request_hash)</h4>
+                <p>Request validation for an agent. Only NFT holder can request.</p>
+
+                <p><strong>Parameters:</strong></p>
+                <table>
+                    <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+                    <tr><td>agent_id</td><td>u64</td><td>Agent to validate</td></tr>
+                    <tr><td>validator_address</td><td>Pubkey</td><td>Who can respond</td></tr>
+                    <tr><td>nonce</td><td>u32</td><td>Sequence number (enables multiple validations from same validator)</td></tr>
+                    <tr><td>request_uri</td><td>String</td><td>Max 200 bytes (stored in event only)</td></tr>
+                    <tr><td>request_hash</td><td>[u8; 32]</td><td>SHA-256 hash (stored on-chain)</td></tr>
+                </table>
+
+                <div class="pda-seed">
+                    <strong>ValidationRequest PDA:</strong> seeds = ["validation", agent_id (LE), validator_address, nonce (LE)]
+                </div>
+            </div>
+
+            <!-- respond_to_validation -->
+            <div class="card">
+                <h4>respond_to_validation(response, response_uri, response_hash, tag)</h4>
+                <p>Validator responds to validation request. Only designated validator can respond.</p>
+
+                <p><strong>Parameters:</strong></p>
+                <table>
+                    <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+                    <tr><td>response</td><td>u8</td><td>0-100 (0=failed, 100=passed)</td></tr>
+                    <tr><td>response_uri</td><td>String</td><td>Max 200 bytes (stored in event)</td></tr>
+                    <tr><td>response_hash</td><td>[u8; 32]</td><td>SHA-256 hash</td></tr>
+                    <tr><td>tag</td><td>String</td><td>Max 32 bytes (e.g., "oasf-v0.8.0", "zkml-verified")</td></tr>
+                </table>
+            </div>
+
+            <!-- update_validation -->
+            <div class="card">
+                <h4>update_validation(...) - Progressive Validation</h4>
+                <p>Same as respond_to_validation. Allows validators to update scores as agents improve.</p>
+            </div>
+
+            <!-- close_validation -->
+            <div class="card">
+                <h4>close_validation()</h4>
+                <p>Close validation request to recover rent. Only agent owner or program authority can close.</p>
+            </div>
+
+            <h3>Account Structures</h3>
+
+            <div class="card">
+                <h4>ValidationConfig (81 bytes)</h4>
+                <pre><code>pub struct ValidationConfig {
+    pub authority: Pubkey,           // 32 bytes
+    pub identity_registry: Pubkey,   // 32 bytes
+    pub total_requests: u64,         // 8 bytes
+    pub total_responses: u64,        // 8 bytes
+    pub bump: u8,                    // 1 byte
+}</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["config"]</div>
+            </div>
+
+            <div class="card">
+                <h4>ValidationRequest (126 bytes) - Cost Optimized</h4>
+                <pre><code>pub struct ValidationRequest {
+    pub agent_id: u64,               // 8 bytes
+    pub validator_address: Pubkey,   // 32 bytes
+    pub nonce: u32,                  // 4 bytes
+    pub request_hash: [u8; 32],      // 32 bytes
+    pub response_hash: [u8; 32],     // 32 bytes (empty until response)
+    pub response: u8,                // 1 byte (0-100)
+    pub created_at: i64,             // 8 bytes
+    pub responded_at: i64,           // 8 bytes (0 if pending)
+    pub bump: u8,                    // 1 byte
+}
+
+// Helper methods
+pub fn has_response(&self) -> bool { self.responded_at > 0 }
+pub fn is_pending(&self) -> bool { self.responded_at == 0 }</code></pre>
+            </div>
+
+            <h3>Error Codes</h3>
+            <table>
+                <tr><th>Error</th><th>Message</th><th>Condition</th></tr>
+                <tr><td>RequestUriTooLong</td><td>"ReqURI&gt;200"</td><td>Request URI exceeds 200 bytes</td></tr>
+                <tr><td>ResponseUriTooLong</td><td>"RespURI&gt;200"</td><td>Response URI exceeds 200 bytes</td></tr>
+                <tr><td>InvalidResponse</td><td>"Resp[0-100]"</td><td>Response not in 0-100 range</td></tr>
+                <tr><td>UnauthorizedValidator</td><td>"!Validator"</td><td>Not the designated validator</td></tr>
+                <tr><td>UnauthorizedRequester</td><td>"!Owner"</td><td>Not the NFT holder</td></tr>
+                <tr><td>AgentNotFound</td><td>"!Agent"</td><td>Agent doesn't exist</td></tr>
+                <tr><td>InvalidIdentityRegistry</td><td>"!IdReg"</td><td>Wrong Identity Registry</td></tr>
+            </table>
+
+            <h3>Events</h3>
+            <table>
+                <tr><th>Event</th><th>Fields</th></tr>
+                <tr><td>ValidationRequested</td><td>agent_id, validator_address, nonce, request_uri, request_hash, requester, created_at</td></tr>
+                <tr><td>ValidationResponded</td><td>agent_id, validator_address, nonce, response, response_uri, response_hash, tag, responded_at</td></tr>
+            </table>
+        </section>
+
+        <!-- SECURITY SECTION -->
+        <section id="security">
+            <h2>Cross-Program Security</h2>
+            <p>Critical security mechanisms preventing fake agent attacks.</p>
+
+            <div class="card">
+                <h4>Problem: Fake Agent Attacks</h4>
+                <p>Without validation, an attacker could create fake "agent" PDAs and receive feedback/validation for non-existent agents.</p>
+            </div>
+
+            <div class="card">
+                <h4>Solution 1: Program ID Constraint</h4>
+                <pre><code>#[account(
+    constraint = identity_registry_program.key() == IDENTITY_REGISTRY_ID
+        @ Error::InvalidIdentityRegistry
+)]
+pub identity_registry_program: UncheckedAccount&lt;'info&gt;,</code></pre>
+                <p>Hardcoded program ID checked at runtime.</p>
+            </div>
+
+            <div class="card">
+                <h4>Solution 2: Environment-Based IDs</h4>
+                <pre><code>// Set via Cargo features in Anchor.toml
+#[cfg(feature = "devnet")]
+pub const IDENTITY_REGISTRY_ID: Pubkey = pubkey!("CAHKQ2am...");
+
+#[cfg(feature = "localnet")]
+pub const IDENTITY_REGISTRY_ID: Pubkey = pubkey!("AcngQwqu...");</code></pre>
+                <p>Compile-time configuration for each environment.</p>
+            </div>
+
+            <div class="card">
+                <h4>Solution 3: PDA Ownership Verification</h4>
+                <pre><code>#[account(
+    seeds = [b"agent", agent_mint.key().as_ref()],
+    bump,
+    seeds::program = identity_registry_program.key(),
+    constraint = agent_account.owner == &IDENTITY_REGISTRY_ID
+)]
+pub agent_account: UncheckedAccount&lt;'info&gt;,</code></pre>
+                <p>Verifies PDA is actually owned by Identity Registry.</p>
+            </div>
+
+            <div class="card">
+                <h4>Solution 4: Manual Agent ID Verification</h4>
+                <pre><code>// Manual deserialization (can't use Anchor parsing across programs)
+let agent_data = ctx.accounts.agent_account.try_borrow_data()?;
+let stored_agent_id = u64::from_le_bytes(agent_data[8..16].try_into()?);
+require!(stored_agent_id == agent_id, Error::AgentNotFound);</code></pre>
+                <p>Extracts and validates agent_id from raw account data.</p>
+            </div>
+
+            <h3>Ownership Verification (Identity Registry)</h3>
+            <div class="card">
+                <p>For metadata/URI updates, ownership verified via token account:</p>
+                <pre><code>#[account(
+    constraint = token_account.mint == agent_account.agent_mint,
+    constraint = token_account.amount == 1,  // Must hold exactly 1 NFT
+    constraint = owner.key() == token_account.owner
+)]
+pub token_account: Account&lt;'info, TokenAccount&gt;,</code></pre>
+                <p><strong>Why:</strong> Token account is source of truth for NFT ownership, not cached <code>agent.owner</code> field.</p>
+            </div>
+        </section>
+
+        <!-- COSTS SECTION -->
+        <section id="costs">
+            <h2>Cost Analysis</h2>
+
+            <h3>Operation Costs (Devnet Measured)</h3>
+            <table>
+                <tr><th>Operation</th><th>Account Size</th><th>Rent Cost</th><th>TX Fee</th><th>Compute Units</th></tr>
+                <tr><td>Register Agent</td><td>~2KB total</td><td><strong>~0.025 SOL</strong></td><td>0.000015</td><td>~198,000</td></tr>
+                <tr><td>Set Metadata</td><td>-</td><td>-</td><td>0.000010</td><td>~9,200</td></tr>
+                <tr><td>Give Feedback</td><td>375 bytes</td><td>~0.002 SOL</td><td>0.000010</td><td>~35,000</td></tr>
+                <tr><td>Append Response</td><td>341 bytes</td><td>~0.002 SOL</td><td>0.000010</td><td>~15,000</td></tr>
+                <tr><td>Request Validation</td><td>126 bytes</td><td>~0.001 SOL</td><td>0.000010</td><td>~25,000</td></tr>
+                <tr><td>Respond to Validation</td><td>-</td><td>-</td><td>0.000010</td><td>~13,600</td></tr>
+                <tr><td>Close Validation</td><td>-</td><td>Refund</td><td>0.000005</td><td>~14,800</td></tr>
+            </table>
+
+            <h3>Cost Optimizations Applied</h3>
+
+            <div class="card">
+                <h4>1. AgentAccount Size Reduction (-80%)</h4>
+                <p><strong>Before:</strong> 3,257 bytes (10 metadata entries)</p>
+                <p><strong>After:</strong> 643 bytes (1 metadata entry + extensions)</p>
+                <p><strong>Savings:</strong> ~77% on rent per agent</p>
+            </div>
+
+            <div class="card">
+                <h4>2. ValidationRequest URI Storage (-75%)</h4>
+                <p><strong>On-chain:</strong> 126 bytes (hashes only)</p>
+                <p><strong>If URIs stored:</strong> ~590 bytes</p>
+                <p>URIs stored in events for off-chain indexing.</p>
+            </div>
+
+            <div class="card">
+                <h4>3. Rent Recovery</h4>
+                <p>Accounts can be closed to recover rent:</p>
+                <ul>
+                    <li><code>close_validation()</code> - Returns rent to agent owner or authority</li>
+                    <li>Effectively "free" storage for temporary validations</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- PDA REFERENCE SECTION -->
+        <section id="pda-reference">
+            <h2>PDA Reference</h2>
+
+            <h3>Identity Registry PDAs</h3>
+            <table>
+                <tr><th>Account</th><th>Seeds</th><th>Size</th></tr>
+                <tr><td>Config</td><td><code>["config"]</code></td><td>82 bytes</td></tr>
+                <tr><td>Collection Authority</td><td><code>["collection_authority"]</code></td><td>-</td></tr>
+                <tr><td>Agent</td><td><code>["agent", agent_mint.key()]</code></td><td>643 bytes</td></tr>
+                <tr><td>Metadata Extension</td><td><code>["metadata_ext", agent_mint, extension_index]</code></td><td>3006 bytes</td></tr>
+            </table>
+
+            <h3>Reputation Registry PDAs</h3>
+            <table>
+                <tr><th>Account</th><th>Seeds</th><th>Size</th></tr>
+                <tr><td>Feedback</td><td><code>["feedback", agent_id (LE), client.key(), feedback_index (LE)]</code></td><td>375 bytes</td></tr>
+                <tr><td>Client Index</td><td><code>["client_index", agent_id (LE), client.key()]</code></td><td>57 bytes</td></tr>
+                <tr><td>Agent Reputation</td><td><code>["agent_reputation", agent_id (LE)]</code></td><td>42 bytes</td></tr>
+                <tr><td>Response</td><td><code>["response", agent_id (LE), client_address, feedback_index (LE), response_index (LE)]</code></td><td>341 bytes</td></tr>
+                <tr><td>Response Index</td><td><code>["response_index", agent_id (LE), client_address, feedback_index (LE)]</code></td><td>65 bytes</td></tr>
+            </table>
+
+            <h3>Validation Registry PDAs</h3>
+            <table>
+                <tr><th>Account</th><th>Seeds</th><th>Size</th></tr>
+                <tr><td>Config</td><td><code>["config"]</code></td><td>81 bytes</td></tr>
+                <tr><td>Validation Request</td><td><code>["validation", agent_id (LE), validator_address, nonce (LE)]</code></td><td>126 bytes</td></tr>
+            </table>
+
+            <h3>Metaplex PDAs (External)</h3>
+            <table>
+                <tr><th>Account</th><th>Seeds (Token Metadata Program)</th></tr>
+                <tr><td>Metadata</td><td><code>["metadata", token_metadata_program, mint.key()]</code></td></tr>
+                <tr><td>Master Edition</td><td><code>["metadata", token_metadata_program, mint.key(), "edition"]</code></td></tr>
+            </table>
+        </section>
+
+        <footer>
+            <p>8004 Solana Implementation - Technical Documentation</p>
+            <p>Generated: December 2025 | Programs deployed on Devnet</p>
+            <p style="margin-top: 1rem;">
+                <a href="https://eips.ethereum.org/EIPS/eip-8004" style="color: var(--accent-blue);">8004 Spec</a> ·
+                <a href="https://github.com/QuantuLabs/8004-solana" style="color: var(--accent-blue);">GitHub Repository</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

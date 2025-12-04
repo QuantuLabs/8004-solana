@@ -32,6 +32,7 @@ tests/sdk/
 # Documentation (implementation notes - not for public repo)
 docs/*
 !docs/index.html
+!docs/v0.1.0.html
 
 # Reference repositories (cloned for analysis only)
 agent0-ts/
