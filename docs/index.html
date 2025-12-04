@@ -966,36 +966,62 @@ constraint = asset.owner == owner.key()</code></pre>
         <section id="costs">
             <h2>Cost Analysis</h2>
 
-            <h3>Operation Costs (Devnet Measured)</h3>
+            <h3>Operation Costs (SDK E2E Measured on Devnet)</h3>
             <table>
-                <tr><th>Operation</th><th>Account Size</th><th>Rent Cost</th><th>TX Fee</th><th>Compute Units</th></tr>
-                <tr><td>Register Agent</td><td>~2KB total</td><td><strong>~0.025 SOL</strong></td><td>0.000015</td><td>~198,000</td></tr>
-                <tr><td>Set Metadata</td><td>-</td><td>-</td><td>0.000010</td><td>~9,200</td></tr>
-                <tr><td>Give Feedback</td><td>375 bytes</td><td>~0.002 SOL</td><td>0.000010</td><td>~35,000</td></tr>
-                <tr><td>Append Response</td><td>341 bytes</td><td>~0.002 SOL</td><td>0.000010</td><td>~15,000</td></tr>
-                <tr><td>Request Validation</td><td>126 bytes</td><td>~0.001 SOL</td><td>0.000010</td><td>~25,000</td></tr>
-                <tr><td>Respond to Validation</td><td>-</td><td>-</td><td>0.000010</td><td>~13,600</td></tr>
-                <tr><td>Close Validation</td><td>-</td><td>Refund</td><td>0.000005</td><td>~14,800</td></tr>
+                <tr><th>Operation</th><th>Total Cost</th><th>Lamports</th><th>Notes</th></tr>
+                <tr><td>Register Agent</td><td><strong>0.00859 SOL</strong></td><td>8,588,320</td><td>Core asset + AgentAccount</td></tr>
+                <tr><td>Set Metadata</td><td>0.000005 SOL</td><td>5,000</td><td>TX fee only</td></tr>
+                <tr><td>Give Feedback (1st)</td><td>0.00474 SOL</td><td>4,744,760</td><td>Feedback + AgentReputation init</td></tr>
+                <tr><td>Give Feedback (2nd+)</td><td>0.00351 SOL</td><td>3,505,880</td><td>FeedbackAccount only</td></tr>
+                <tr><td>Append Response (1st)</td><td>0.00417 SOL</td><td>4,167,080</td><td>Response + ResponseIndex init</td></tr>
+                <tr><td>Append Response (2nd+)</td><td>0.00305 SOL</td><td>3,046,520</td><td>ResponseAccount only</td></tr>
+                <tr><td>Revoke Feedback</td><td>0.000005 SOL</td><td>5,000</td><td>TX fee only</td></tr>
+                <tr><td>Request Validation</td><td>0.00183 SOL</td><td>1,828,520</td><td>ValidationRequest</td></tr>
+                <tr><td>Respond to Validation</td><td>0.000005 SOL</td><td>5,000</td><td>TX fee only</td></tr>
             </table>
 
-            <h3>Cost Optimizations Applied</h3>
+            <h3>First vs Subsequent Cost Savings (init_if_needed)</h3>
+            <table>
+                <tr><th>Operation</th><th>1st Call</th><th>2nd+ Calls</th><th>Savings</th></tr>
+                <tr><td>Give Feedback</td><td>0.00474 SOL</td><td>0.00351 SOL</td><td><strong>-26%</strong></td></tr>
+                <tr><td>Append Response</td><td>0.00417 SOL</td><td>0.00305 SOL</td><td><strong>-27%</strong></td></tr>
+            </table>
+            <p><small>First operation creates init_if_needed accounts (AgentReputation, ResponseIndex). Subsequent calls skip initialization.</small></p>
+
+            <h3>v0.2.0 vs v0.1.0 Cost Comparison</h3>
+            <table>
+                <tr><th>Operation</th><th>v0.1.0 (Token Metadata)</th><th>v0.2.0 (Metaplex Core)</th><th>Change</th></tr>
+                <tr><td>Register Agent</td><td>~0.025 SOL</td><td><strong>0.00859 SOL</strong></td><td class="highlight"><strong>-66%</strong></td></tr>
+                <tr><td>Set Metadata</td><td>~0.000010 SOL</td><td>0.000005 SOL</td><td>-50%</td></tr>
+                <tr><td>Full Lifecycle*</td><td>~0.031 SOL</td><td>0.0259 SOL</td><td><strong>-16%</strong></td></tr>
+            </table>
+            <p><small>* Register + Metadata + Feedback (x2) + Response (x2) + Revoke + Validation</small></p>
+
+            <h3>Cost Optimizations in v0.2.0</h3>
 
             <div class="card">
-                <h4>1. AgentAccount Size Reduction (-80%)</h4>
+                <h4>1. Metaplex Core vs Token Metadata (-66% on register)</h4>
+                <p><strong>Token Metadata:</strong> Mint + Metadata + MasterEdition + ATA = ~0.025 SOL</p>
+                <p><strong>Metaplex Core:</strong> Single Core Asset = 0.00859 SOL</p>
+                <p><strong>Savings:</strong> ~66% per agent registration</p>
+            </div>
+
+            <div class="card">
+                <h4>2. AgentAccount Size Reduction (-80%)</h4>
                 <p><strong>Before:</strong> 3,257 bytes (10 metadata entries)</p>
                 <p><strong>After:</strong> 643 bytes (1 metadata entry + extensions)</p>
                 <p><strong>Savings:</strong> ~77% on rent per agent</p>
             </div>
 
             <div class="card">
-                <h4>2. ValidationRequest URI Storage (-75%)</h4>
+                <h4>3. ValidationRequest URI Storage (-75%)</h4>
                 <p><strong>On-chain:</strong> 126 bytes (hashes only)</p>
                 <p><strong>If URIs stored:</strong> ~590 bytes</p>
                 <p>URIs stored in events for off-chain indexing.</p>
             </div>
 
             <div class="card">
-                <h4>3. Rent Recovery</h4>
+                <h4>4. Rent Recovery</h4>
                 <p>Accounts can be closed to recover rent:</p>
                 <ul>
                     <li><code>close_validation()</code> - Returns rent to agent owner or authority</li>

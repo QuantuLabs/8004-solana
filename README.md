@@ -202,17 +202,35 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ## Performance & Costs
 
-### Operation Costs (Measured on Devnet)
+### Operation Costs (SDK E2E Measured on Devnet)
 
-| Operation | Account Size | Rent (SOL) | Tx Fee (SOL) | Compute Units |
-|-----------|--------------|------------|--------------|---------------|
-| Register Agent | ~2KB total | ~0.025 | 0.000015 | ~198,000 |
-| Set Metadata | - | - | 0.000010 | ~9,200 |
-| Give Feedback | ~200 bytes | ~0.002 | 0.000010 | ~35,000 |
-| Respond to Validation | - | - | 0.000010 | ~13,600 |
-| Close Validation | - | - | 0.000005 | ~14,800 |
+| Operation | Total Cost | Lamports | Notes |
+|-----------|------------|----------|-------|
+| Register Agent | **0.00859 SOL** | 8,588,320 | Core asset + AgentAccount |
+| Set Metadata | 0.000005 SOL | 5,000 | TX fee only |
+| Give Feedback (1st) | 0.00474 SOL | 4,744,760 | Feedback + AgentReputation init |
+| Give Feedback (2nd+) | 0.00351 SOL | 3,505,880 | FeedbackAccount only |
+| Append Response (1st) | 0.00417 SOL | 4,167,080 | Response + ResponseIndex init |
+| Append Response (2nd+) | 0.00305 SOL | 3,046,520 | ResponseAccount only |
+| Revoke Feedback | 0.000005 SOL | 5,000 | TX fee only |
+| Request Validation | 0.00183 SOL | 1,828,520 | ValidationRequest |
+| Respond to Validation | 0.000005 SOL | 5,000 | TX fee only |
 
-**Cost Optimization**: AgentAccount reduced from 3,257 bytes to 651 bytes (-80%), saving ~77% on rent.
+### First vs Subsequent Cost Savings
+
+| Operation | 1st Call | 2nd+ Calls | Savings |
+|-----------|----------|------------|---------|
+| Give Feedback | 0.00474 SOL | 0.00351 SOL | **-26%** |
+| Append Response | 0.00417 SOL | 0.00305 SOL | **-27%** |
+
+*First operation creates init_if_needed accounts (AgentReputation, ResponseIndex). Subsequent calls skip initialization.*
+
+### v0.2.0 Cost Savings (Metaplex Core)
+
+| Operation | v0.1.0 | v0.2.0 | Savings |
+|-----------|--------|--------|---------|
+| Register Agent | ~0.025 SOL | 0.00859 SOL | **-66%** |
+| Full Lifecycle | ~0.031 SOL | 0.0259 SOL | **-16%** |
 
 **Note**: Rent is recoverable when closing accounts.
 
