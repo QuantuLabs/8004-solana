@@ -380,8 +380,8 @@
 
             <h3>Architecture</h3>
             <ul>
-                <li><strong>Program Consolidation</strong> — 3 programs (identity, reputation, validation) → 1 unified program</li>
-                <li><strong>Metaplex Core Migration</strong> — From Token Metadata to Core (6x cheaper NFT operations)</li>
+                <li><strong>Program Consolidation</strong> — 3 separate programs (identity, reputation, validation) merged into 1 unified <code>agent_registry_8004</code> program</li>
+                <li><strong>Metaplex Core Migration</strong> — Migrated from SPL Token + Token Metadata to Metaplex Core (6x cheaper NFT operations, simpler ownership model)</li>
                 <li><strong>Global Feedback Index</strong> — Simplified PDA derivation (client removed from seeds)</li>
             </ul>
 
@@ -410,12 +410,7 @@
                 <li><code>set_metadata</code> → <code>set_metadata_pda(key_hash, key, value, immutable)</code></li>
                 <li><code>Vec&lt;MetadataEntry&gt;</code> removed from AgentAccount</li>
                 <li>MetadataExtension removed (use PDAs instead)</li>
-                <li>Account sizes incompatible with v0.1.0</li>
             </ul>
-
-            <div class="warning" style="margin-top: 1.5rem;">
-                <strong>Migration:</strong> v0.2.0 requires new program deployment. Existing agents on v0.1.0 are not compatible.
-            </div>
         </section>
 
         <!-- OVERVIEW SECTION -->
@@ -449,15 +444,15 @@
 
             <div class="flex-row" style="margin-top: 2rem;">
                 <div class="stat-card">
-                    <div class="value">0.00651</div>
+                    <div class="value">0.00650</div>
                     <div class="label">SOL per Agent Registration</div>
                 </div>
                 <div class="stat-card">
-                    <div class="value">0.00209</div>
+                    <div class="value">0.00158</div>
                     <div class="label">SOL per Feedback (2nd+)</div>
                 </div>
                 <div class="stat-card">
-                    <div class="value">-54%</div>
+                    <div class="value">-74%</div>
                     <div class="label">FeedbackAccount Size</div>
                 </div>
                 <div class="stat-card">
