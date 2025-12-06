@@ -72,7 +72,7 @@ This Solana implementation leverages the platform's unique architecture:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │              AgentRegistry8004 (Devnet)                          │
-│         HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp            │
+│         GkC3LyywEPy3LaMr2XUHHKb7XMdd9T2aZ8iohtNGPXJg            │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────────┐ ┌──────────────────┐ ┌──────────────────┐  │
 │  │ Identity Module │ │ Reputation Module│ │ Validation Module│  │
@@ -152,7 +152,7 @@ Single unified program deployed on Solana Devnet:
 
 | Program | Address |
 |---------|---------|
-| **AgentRegistry8004** | `HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp` |
+| **AgentRegistry8004** | `GkC3LyywEPy3LaMr2XUHHKb7XMdd9T2aZ8iohtNGPXJg` |
 
 ### Run Specific Test Suites
 
