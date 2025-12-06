@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-agent_registry_8004 = "GkC3LyywEPy3LaMr2XUHHKb7XMdd9T2aZ8iohtNGPXJg"
+agent_registry_8004 = "HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp"
 
 [programs.devnet]
-agent_registry_8004 = "GkC3LyywEPy3LaMr2XUHHKb7XMdd9T2aZ8iohtNGPXJg"
+agent_registry_8004 = "HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp"
 
 [registry]
 url = "https://api.apr.dev"
