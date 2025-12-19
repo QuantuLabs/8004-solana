@@ -78,11 +78,11 @@ pub struct MetadataEntryPda {
     /// Agent ID this metadata belongs to
     pub agent_id: u64,
 
+    /// Creation timestamp (static - fixed offset for common queries)
+    pub created_at: i64,
+
     /// If true, this metadata cannot be modified or deleted (static - fixed offset)
     pub immutable: bool,
-
-    /// Creation timestamp (static - fixed offset)
-    pub created_at: i64,
 
     /// PDA bump seed (static - fixed offset)
     pub bump: u8,

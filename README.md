@@ -9,6 +9,24 @@
 [![Tests](https://img.shields.io/badge/Tests-89%20Passing-brightgreen)]()
 [![Spec Conformity](https://img.shields.io/badge/ERC--8004-100%25%20Conformity-success)]()
 
+## v0.2.1 - Field Ordering for Indexing Optimization
+
+**What's New in v0.2.1:**
+- **Static fields first** - Reordered account fields for `memcmp` filtering
+- **Fixed offsets** - `created_at`, `bump`, `immutable` now at predictable offsets
+- **SDK backward compatibility** - Dual deserializers support both old and new layouts
+
+**Affected Accounts:**
+- `AgentAccount` - `created_at`, `bump` moved before dynamic strings
+- `MetadataEntryPda` - `immutable`, `created_at`, `bump` moved before dynamic fields
+- `FeedbackTagsPda` - `bump` moved before tag strings
+
+**Breaking Changes:**
+- Account binary layout changed (new accounts incompatible with pre-v0.2.1)
+- SDK includes `LEGACY_DEVNET` fallback for old devnet accounts
+
+---
+
 ## v0.2.0 - Optimized Storage & Metadata PDAs
 
 **What's New in v0.2.0:**

@@ -41,6 +41,7 @@ impl FeedbackAccount {
 /// Optional tags PDA for feedback - Created only when tags are provided
 /// Seeds: [b"feedback_tags", agent_id, feedback_index]
 /// Separated from FeedbackAccount to save -42% when tags not used
+/// Field order: static fields first for indexing optimization (v0.2.1)
 #[account]
 pub struct FeedbackTagsPda {
     /// Agent ID (for validation)
@@ -49,14 +50,14 @@ pub struct FeedbackTagsPda {
     /// Feedback index (for validation)
     pub feedback_index: u64,
 
+    /// PDA bump seed (static - fixed offset)
+    pub bump: u8,
+
     /// Tag1 - String tag for categorization (max 32 bytes)
     pub tag1: String,
 
     /// Tag2 - String tag for categorization (max 32 bytes)
     pub tag2: String,
-
-    /// PDA bump seed
-    pub bump: u8,
 }
 
 impl FeedbackTagsPda {
