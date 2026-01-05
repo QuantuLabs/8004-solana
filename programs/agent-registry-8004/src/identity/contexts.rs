@@ -1,9 +1,11 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::bpf_loader_upgradeable;
 
 use super::state::*;
 use crate::error::RegistryError;
 
 /// Initialize the registry and create Core collection
+/// F-01: Only upgrade authority can initialize (prevents front-running)
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     #[account(
@@ -22,6 +24,17 @@ pub struct Initialize<'info> {
 
     #[account(mut)]
     pub authority: Signer<'info>,
+
+    /// Program data account for upgrade authority verification
+    /// F-01: Ensures only upgrade authority can initialize
+    #[account(
+        seeds = [crate::ID.as_ref()],
+        bump,
+        seeds::program = bpf_loader_upgradeable::ID,
+        constraint = program_data.upgrade_authority_address == Some(authority.key())
+            @ RegistryError::Unauthorized
+    )]
+    pub program_data: Account<'info, ProgramData>,
 
     pub system_program: Program<'info, System>,
 
