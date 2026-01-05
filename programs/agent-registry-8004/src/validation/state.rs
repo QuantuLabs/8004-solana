@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 /// Validation registry statistics (counters only, no authority needed)
 /// PDA seeds: [b"validation_config"]
 #[account]
+#[derive(InitSpace)]
 pub struct ValidationStats {
     /// Total validation requests created
     pub total_requests: u64,
@@ -14,15 +15,11 @@ pub struct ValidationStats {
     pub bump: u8,
 }
 
-impl ValidationStats {
-    /// Account size: 8 + 8 + 1 = 17 bytes
-    pub const SIZE: usize = 8 + 8 + 1;
-}
-
 /// Individual validation request (optimized for cost - minimal state)
 /// URIs and tags are stored in events only (not on-chain)
 /// PDA seeds: [b"validation", agent_id, validator_address, nonce]
 #[account]
+#[derive(InitSpace)]
 pub struct ValidationRequest {
     /// Agent ID from Identity Registry
     pub agent_id: u64,
@@ -54,9 +51,6 @@ pub struct ValidationRequest {
 }
 
 impl ValidationRequest {
-    /// Account size: 8 + 32 + 4 + 32 + 32 + 1 + 8 + 8 + 1 = 126 bytes
-    pub const SIZE: usize = 8 + 32 + 4 + 32 + 32 + 1 + 8 + 8 + 1;
-
     /// Maximum URI length (validated but not stored on-chain)
     pub const MAX_URI_LENGTH: usize = 200;
 

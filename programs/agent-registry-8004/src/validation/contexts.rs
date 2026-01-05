@@ -12,7 +12,7 @@ pub struct RequestValidation<'info> {
     #[account(
         init_if_needed,
         payer = payer,
-        space = 8 + ValidationStats::SIZE,
+        space = ValidationStats::DISCRIMINATOR.len() + ValidationStats::INIT_SPACE,
         seeds = [b"validation_config"],
         bump
     )]
@@ -41,7 +41,7 @@ pub struct RequestValidation<'info> {
     #[account(
         init,
         payer = payer,
-        space = 8 + ValidationRequest::SIZE,
+        space = ValidationRequest::DISCRIMINATOR.len() + ValidationRequest::INIT_SPACE,
         seeds = [
             b"validation",
             agent_id.to_le_bytes().as_ref(),

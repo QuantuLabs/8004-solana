@@ -9,7 +9,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + RegistryConfig::SIZE,
+        space = RegistryConfig::DISCRIMINATOR.len() + RegistryConfig::INIT_SPACE,
         seeds = [b"config"],
         bump
     )]
@@ -44,7 +44,7 @@ pub struct Register<'info> {
     #[account(
         init,
         payer = owner,
-        space = 8 + AgentAccount::MAX_SIZE,
+        space = AgentAccount::DISCRIMINATOR.len() + AgentAccount::INIT_SPACE,
         seeds = [b"agent", asset.key().as_ref()],
         bump
     )]
@@ -82,7 +82,7 @@ pub struct SetMetadataPda<'info> {
     #[account(
         init_if_needed,
         payer = owner,
-        space = 8 + MetadataEntryPda::MAX_SIZE,
+        space = MetadataEntryPda::DISCRIMINATOR.len() + MetadataEntryPda::INIT_SPACE,
         seeds = [b"agent_meta", agent_account.agent_id.to_le_bytes().as_ref(), key_hash.as_ref()],
         bump
     )]

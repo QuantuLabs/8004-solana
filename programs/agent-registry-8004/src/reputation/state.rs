@@ -4,6 +4,7 @@ use anchor_lang::prelude::*;
 /// Seeds: [b"feedback", agent_id, feedback_index]
 /// Tags moved to optional FeedbackTagsPda for cost optimization
 #[account]
+#[derive(InitSpace)]
 pub struct FeedbackAccount {
     /// Agent ID from Identity Registry
     pub agent_id: u64,
@@ -31,18 +32,12 @@ pub struct FeedbackAccount {
     pub bump: u8,
 }
 
-impl FeedbackAccount {
-    /// Maximum size calculation (tags moved to FeedbackTagsPda)
-    /// 8 (discriminator) + 8 (agent_id) + 32 (client) + 8 (index) + 1 (score) +
-    /// 32 (hash) + 1 (revoked) + 8 (timestamp) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 8 + 1 + 32 + 1 + 8 + 1; // 99 bytes
-}
-
 /// Optional tags PDA for feedback - Created only when tags are provided
 /// Seeds: [b"feedback_tags", agent_id, feedback_index]
 /// Separated from FeedbackAccount to save -42% when tags not used
 /// Field order: static fields first for indexing optimization (v0.2.1)
 #[account]
+#[derive(InitSpace)]
 pub struct FeedbackTagsPda {
     /// Agent ID (for validation)
     pub agent_id: u64,
@@ -54,19 +49,16 @@ pub struct FeedbackTagsPda {
     pub bump: u8,
 
     /// Tag1 - String tag for categorization (max 32 bytes)
+    #[max_len(32)]
     pub tag1: String,
 
     /// Tag2 - String tag for categorization (max 32 bytes)
+    #[max_len(32)]
     pub tag2: String,
 }
 
 impl FeedbackTagsPda {
-    /// Maximum size calculation
-    /// 8 (discriminator) + 8 (agent_id) + 8 (feedback_index) +
-    /// (4+32) (tag1) + (4+32) (tag2) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + 8 + (4 + 32) + (4 + 32) + 1; // 97 bytes
-
-    /// Maximum tag length
+    /// Maximum tag length (used for validation)
     pub const MAX_TAG_LENGTH: usize = 32;
 }
 
@@ -74,6 +66,7 @@ impl FeedbackTagsPda {
 /// Seeds: [b"response", agent_id, feedback_index, response_index]
 /// v0.2.0: Removed response_uri (stored in event only)
 #[account]
+#[derive(InitSpace)]
 pub struct ResponseAccount {
     /// Agent ID
     pub agent_id: u64,
@@ -98,16 +91,10 @@ pub struct ResponseAccount {
     pub bump: u8,
 }
 
-impl ResponseAccount {
-    /// Maximum size calculation (v0.2.0 - removed response_uri)
-    /// 8 (discriminator) + 8 (agent_id) + 8 (feedback_index) + 8 (response_index) +
-    /// 32 (responder) + 32 (hash) + 8 (timestamp) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + 8 + 8 + 32 + 32 + 8 + 1;
-}
-
 /// Agent reputation metadata - Cached aggregated stats and global feedback counter
 /// Seeds: [b"agent_reputation", agent_id]
 #[account]
+#[derive(InitSpace)]
 pub struct AgentReputationMetadata {
     /// Agent ID
     pub agent_id: u64,
@@ -131,14 +118,10 @@ pub struct AgentReputationMetadata {
     pub bump: u8,
 }
 
-impl AgentReputationMetadata {
-    /// Size calculation
-    pub const SIZE: usize = 8 + 8 + 8 + 8 + 8 + 1 + 8 + 1;
-}
-
 /// Response index account - Tracks next response index for a feedback
 /// Seeds: [b"response_index", agent_id, feedback_index]
 #[account]
+#[derive(InitSpace)]
 pub struct ResponseIndexAccount {
     /// Agent ID
     pub agent_id: u64,
@@ -151,9 +134,4 @@ pub struct ResponseIndexAccount {
 
     /// PDA bump seed
     pub bump: u8,
-}
-
-impl ResponseIndexAccount {
-    /// Size calculation
-    pub const SIZE: usize = 8 + 8 + 8 + 8 + 1;
 }

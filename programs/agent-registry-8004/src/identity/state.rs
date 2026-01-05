@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 /// Global registry configuration
 #[account]
+#[derive(InitSpace)]
 pub struct RegistryConfig {
     /// Registry authority (admin)
     pub authority: Pubkey,
@@ -19,16 +20,11 @@ pub struct RegistryConfig {
     pub bump: u8,
 }
 
-impl RegistryConfig {
-    /// Space required for RegistryConfig account
-    /// 32 (authority) + 8 (next_agent_id) + 8 (total_agents) + 32 (collection) + 1 (bump)
-    pub const SIZE: usize = 32 + 8 + 8 + 32 + 1;
-}
-
 /// Agent account (represents an AI agent identity)
 /// Metadata is now stored in separate MetadataEntryPda accounts (v0.2.0)
 /// Field order: static fields first for indexing optimization (v0.2.1)
 #[account]
+#[derive(InitSpace)]
 pub struct AgentAccount {
     /// Sequential agent ID
     pub agent_id: u64,
@@ -46,22 +42,20 @@ pub struct AgentAccount {
     pub bump: u8,
 
     /// Agent URI (IPFS/Arweave/HTTP link, max 200 bytes)
+    #[max_len(200)]
     pub agent_uri: String,
 
     /// NFT name (e.g., "Agent #123", max 32 bytes)
+    #[max_len(32)]
     pub nft_name: String,
 
     /// NFT symbol (max 10 bytes)
+    #[max_len(10)]
     pub nft_symbol: String,
 }
 
 impl AgentAccount {
-    /// Maximum size for AgentAccount (v0.2.0 - no inline metadata)
-    /// 8 (discriminator) + 8 (agent_id) + 32 (owner) + 32 (asset) +
-    /// 4+200 (agent_uri) + 4+32 (nft_name) + 4+10 (nft_symbol) + 8 (created_at) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + 32 + 32 + (4 + 200) + (4 + 32) + (4 + 10) + 8 + 1;
-
-    /// Maximum URI length in bytes
+    /// Maximum URI length in bytes (used for validation)
     pub const MAX_URI_LENGTH: usize = 200;
 }
 
@@ -74,6 +68,7 @@ impl AgentAccount {
 /// - Optional immutability for certification/audit use cases
 /// Field order: static fields first for indexing optimization (v0.2.1)
 #[account]
+#[derive(InitSpace)]
 pub struct MetadataEntryPda {
     /// Agent ID this metadata belongs to
     pub agent_id: u64,
@@ -88,20 +83,18 @@ pub struct MetadataEntryPda {
     pub bump: u8,
 
     /// Metadata key (max 32 bytes)
+    #[max_len(32)]
     pub metadata_key: String,
 
     /// Metadata value (max 256 bytes, arbitrary binary data)
+    #[max_len(256)]
     pub metadata_value: Vec<u8>,
 }
 
 impl MetadataEntryPda {
-    /// Maximum size for MetadataEntryPda
-    /// 8 (discriminator) + 8 (agent_id) + 4+32 (key) + 4+256 (value) + 1 (immutable) + 8 (created_at) + 1 (bump)
-    pub const MAX_SIZE: usize = 8 + 8 + (4 + 32) + (4 + 256) + 1 + 8 + 1;
-
-    /// Maximum key length in bytes
+    /// Maximum key length in bytes (used for validation)
     pub const MAX_KEY_LENGTH: usize = 32;
 
-    /// Maximum value length in bytes
+    /// Maximum value length in bytes (used for validation)
     pub const MAX_VALUE_LENGTH: usize = 256;
 }

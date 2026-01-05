@@ -32,7 +32,7 @@ pub struct GiveFeedback<'info> {
     #[account(
         init,
         payer = payer,
-        space = FeedbackAccount::MAX_SIZE,
+        space = FeedbackAccount::DISCRIMINATOR.len() + FeedbackAccount::INIT_SPACE,
         seeds = [
             b"feedback",
             agent_id.to_le_bytes().as_ref(),
@@ -46,7 +46,7 @@ pub struct GiveFeedback<'info> {
     #[account(
         init_if_needed,
         payer = payer,
-        space = AgentReputationMetadata::SIZE,
+        space = AgentReputationMetadata::DISCRIMINATOR.len() + AgentReputationMetadata::INIT_SPACE,
         seeds = [b"agent_reputation", agent_id.to_le_bytes().as_ref()],
         bump
     )]
@@ -110,7 +110,7 @@ pub struct AppendResponse<'info> {
     #[account(
         init_if_needed,
         payer = payer,
-        space = ResponseIndexAccount::SIZE,
+        space = ResponseIndexAccount::DISCRIMINATOR.len() + ResponseIndexAccount::INIT_SPACE,
         seeds = [
             b"response_index",
             agent_id.to_le_bytes().as_ref(),
@@ -124,7 +124,7 @@ pub struct AppendResponse<'info> {
     #[account(
         init,
         payer = payer,
-        space = ResponseAccount::MAX_SIZE,
+        space = ResponseAccount::DISCRIMINATOR.len() + ResponseAccount::INIT_SPACE,
         seeds = [
             b"response",
             agent_id.to_le_bytes().as_ref(),
@@ -166,7 +166,7 @@ pub struct SetFeedbackTags<'info> {
     #[account(
         init,
         payer = payer,
-        space = FeedbackTagsPda::MAX_SIZE,
+        space = FeedbackTagsPda::DISCRIMINATOR.len() + FeedbackTagsPda::INIT_SPACE,
         seeds = [
             b"feedback_tags",
             agent_id.to_le_bytes().as_ref(),
