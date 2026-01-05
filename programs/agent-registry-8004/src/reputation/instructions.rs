@@ -56,7 +56,9 @@ pub fn give_feedback(
         .checked_add(1)
         .ok_or(RegistryError::Overflow)?;
 
-    if metadata.agent_id == 0 {
+    // F-03: Use total_feedbacks == 0 instead of agent_id == 0 as sentinel
+    // This fixes the bug where agent #0 could have corrupted reputation stats
+    if metadata.total_feedbacks == 0 {
         // First feedback for this agent - initialize
         metadata.agent_id = agent_id;
         metadata.total_feedbacks = 1;
@@ -242,9 +244,10 @@ pub fn append_response(
     );
 
     // Get or initialize response index account
+    // F-03: Use next_index == 0 instead of agent_id == 0 as sentinel
     let response_index_account = &mut ctx.accounts.response_index;
-    let response_index = if response_index_account.agent_id == 0 {
-        // First response to this feedback
+    let response_index = if response_index_account.next_index == 0 {
+        // First response to this feedback - initialize
         response_index_account.agent_id = agent_id;
         response_index_account.feedback_index = feedback_index;
         response_index_account.next_index = 1;
