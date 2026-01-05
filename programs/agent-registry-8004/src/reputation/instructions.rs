@@ -77,8 +77,10 @@ pub fn give_feedback(
             .checked_add(score as u64)
             .ok_or(RegistryError::Overflow)?;
 
-        // Cap at 100 to ensure valid range
-        let avg = metadata.total_score_sum / metadata.total_feedbacks;
+        // A-07: Round to nearest instead of truncating
+        // Formula: (sum + count/2) / count rounds to nearest integer
+        let avg = (metadata.total_score_sum + metadata.total_feedbacks / 2)
+            / metadata.total_feedbacks;
         metadata.average_score = std::cmp::min(avg, 100) as u8;
     }
 
@@ -200,10 +202,12 @@ pub fn revoke_feedback(
         .ok_or(RegistryError::Overflow)?;
 
     // Recalculate average (avoid division by zero, cap at 100)
+    // A-07: Round to nearest instead of truncating
     metadata.average_score = if metadata.total_feedbacks == 0 {
         0
     } else {
-        let avg = metadata.total_score_sum / metadata.total_feedbacks;
+        let avg = (metadata.total_score_sum + metadata.total_feedbacks / 2)
+            / metadata.total_feedbacks;
         std::cmp::min(avg, 100) as u8
     };
 
