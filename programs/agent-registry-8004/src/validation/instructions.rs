@@ -123,6 +123,9 @@ pub fn respond_to_validation(
         RegistryError::ResponseUriTooLong
     );
 
+    // V-01: Validate tag length (consistent with FeedbackTagsPda::MAX_TAG_LENGTH)
+    require!(tag.len() <= 32, RegistryError::TagTooLong);
+
     let validation_stats = &mut ctx.accounts.validation_stats;
     let validation_request = &mut ctx.accounts.validation_request;
     let clock = Clock::get()?;
