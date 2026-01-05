@@ -266,7 +266,7 @@ describe("Security Tests", () => {
         })
         .rpc();
 
-      // Try to close as attacker
+      // Try to close as attacker (F-02: rent_receiver must be owner, checked first)
       const attacker = Keypair.generate();
 
       await expectAnchorError(
@@ -282,7 +282,7 @@ describe("Security Tests", () => {
           })
           .signers([attacker])
           .rpc(),
-        "Unauthorized"
+        "InvalidRentReceiver" // F-02: rent_receiver constraint checked before authorization
       );
     });
   });
