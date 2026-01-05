@@ -85,6 +85,7 @@ pub struct RespondToValidation<'info> {
 }
 
 /// Accounts for close_validation instruction
+/// F-02: Validation request must belong to this agent, rent goes to agent owner
 #[derive(Accounts)]
 pub struct CloseValidation<'info> {
     /// Identity config (for authority check)
@@ -109,6 +110,7 @@ pub struct CloseValidation<'info> {
     pub agent_account: Account<'info, AgentAccount>,
 
     /// Validation request to close
+    /// F-02: Must belong to this agent (prevents closing other agents' validations)
     #[account(
         mut,
         close = rent_receiver,
@@ -118,12 +120,19 @@ pub struct CloseValidation<'info> {
             validation_request.validator_address.as_ref(),
             validation_request.nonce.to_le_bytes().as_ref()
         ],
-        bump = validation_request.bump
+        bump = validation_request.bump,
+        constraint = validation_request.agent_id == agent_account.agent_id
+            @ RegistryError::AgentNotFound
     )]
     pub validation_request: Account<'info, ValidationRequest>,
 
     /// Receiver of recovered rent
-    /// CHECK: Any account can receive rent
-    #[account(mut)]
+    /// CHECK: Validated by constraint (must be agent owner)
+    /// F-02: Must be agent owner (prevents rent theft)
+    #[account(
+        mut,
+        constraint = rent_receiver.key() == agent_account.owner
+            @ RegistryError::InvalidRentReceiver
+    )]
     pub rent_receiver: UncheckedAccount<'info>,
 }

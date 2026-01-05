@@ -65,4 +65,6 @@ pub enum RegistryError {
     InvalidNonce = 6105,
     #[msg("Request hash mismatch")]
     RequestHashMismatch = 6106,
+    #[msg("Rent receiver must be agent owner")]
+    InvalidRentReceiver = 6107,
 }
