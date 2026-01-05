@@ -310,6 +310,7 @@ describe("Security Fixes Coverage Tests v0.2.2", () => {
 
       const attacker = Keypair.generate();
 
+      // F-02v2: closer is verified against Core owner first → Unauthorized
       await expectAnchorError(
         program.methods
           .closeValidation()
@@ -323,7 +324,7 @@ describe("Security Fixes Coverage Tests v0.2.2", () => {
           })
           .signers([attacker])
           .rpc(),
-        "InvalidRentReceiver"
+        "Unauthorized"
       );
     });
   });

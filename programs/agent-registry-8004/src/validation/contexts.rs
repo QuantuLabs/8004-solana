@@ -127,12 +127,8 @@ pub struct CloseValidation<'info> {
     pub validation_request: Account<'info, ValidationRequest>,
 
     /// Receiver of recovered rent
-    /// CHECK: Validated by constraint (must be agent owner)
-    /// F-02: Must be agent owner (prevents rent theft)
-    #[account(
-        mut,
-        constraint = rent_receiver.key() == agent_account.owner
-            @ RegistryError::InvalidRentReceiver
-    )]
+    /// CHECK: Validated in instruction (must be current Core asset owner)
+    /// F-02v2: Verified against actual Core asset owner (not cached agent_account.owner)
+    #[account(mut)]
     pub rent_receiver: UncheckedAccount<'info>,
 }

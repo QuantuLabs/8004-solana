@@ -6,6 +6,8 @@ import { expect } from "chai";
 
 // Metaplex Core program ID
 const MPL_CORE_PROGRAM_ID = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
+// BPF Loader Upgradeable program ID
+const BPF_LOADER_UPGRADEABLE_ID = new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
 
 describe("agent_registry_8004 - Core Minimal Test", () => {
   const provider = anchor.AnchorProvider.env();
@@ -17,6 +19,7 @@ describe("agent_registry_8004 - Core Minimal Test", () => {
   const collectionKeypair = Keypair.generate();
   let configPda: PublicKey;
   let configBump: number;
+  let programDataPda: PublicKey;
 
   before(async () => {
     // Derive config PDA
@@ -24,8 +27,16 @@ describe("agent_registry_8004 - Core Minimal Test", () => {
       [Buffer.from("config")],
       program.programId
     );
+
+    // Derive program data PDA (for F-01 upgrade authority check)
+    [programDataPda] = PublicKey.findProgramAddressSync(
+      [program.programId.toBuffer()],
+      BPF_LOADER_UPGRADEABLE_ID
+    );
+
     console.log("Program ID:", program.programId.toBase58());
     console.log("Config PDA:", configPda.toBase58());
+    console.log("Program Data PDA:", programDataPda.toBase58());
     console.log("Collection:", collectionKeypair.publicKey.toBase58());
   });
 
@@ -37,6 +48,7 @@ describe("agent_registry_8004 - Core Minimal Test", () => {
           config: configPda,
           collection: collectionKeypair.publicKey,
           authority: provider.wallet.publicKey,
+          programData: programDataPda,
           systemProgram: SystemProgram.programId,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })

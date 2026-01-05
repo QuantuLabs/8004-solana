@@ -5,8 +5,15 @@ use super::events::*;
 use super::state::*;
 use crate::error::RegistryError;
 
-/// Helper to verify Core asset ownership
-fn verify_core_owner(asset_info: &AccountInfo, expected_owner: &Pubkey) -> Result<()> {
+/// Get owner from Core asset account data
+/// F-06v2: Validates asset is owned by Metaplex Core program
+fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
+    // F-06v2: Verify this is actually a Metaplex Core asset
+    require!(
+        *asset_info.owner == mpl_core::ID,
+        RegistryError::InvalidAsset
+    );
+
     let data = asset_info.try_borrow_data()?;
 
     // Core asset layout: Key (1 byte) + Owner (32 bytes at offset 1)
@@ -18,7 +25,12 @@ fn verify_core_owner(asset_info: &AccountInfo, expected_owner: &Pubkey) -> Resul
         .try_into()
         .map_err(|_| RegistryError::InvalidAsset)?;
 
-    let actual_owner = Pubkey::new_from_array(owner_bytes);
+    Ok(Pubkey::new_from_array(owner_bytes))
+}
+
+/// Helper to verify Core asset ownership
+fn verify_core_owner(asset_info: &AccountInfo, expected_owner: &Pubkey) -> Result<()> {
+    let actual_owner = get_core_owner(asset_info)?;
     require!(
         actual_owner == *expected_owner,
         RegistryError::Unauthorized
@@ -166,15 +178,29 @@ pub fn update_validation(
 /// Close a validation request to recover rent
 ///
 /// Only the agent owner or program authority can close.
+/// F-02v2: rent_receiver must be the current Core asset owner (not cached)
 pub fn close_validation(ctx: Context<CloseValidation>) -> Result<()> {
+    // F-02v2: Get actual current owner from Core asset
+    let current_owner = get_core_owner(&ctx.accounts.asset)?;
+
     // Verify closer is either Core asset owner OR program authority
     let is_authority = ctx.accounts.config.authority == ctx.accounts.closer.key();
 
     if !is_authority {
         // Must be the Core asset owner
-        verify_core_owner(&ctx.accounts.asset, &ctx.accounts.closer.key())?;
+        require!(
+            ctx.accounts.closer.key() == current_owner,
+            RegistryError::Unauthorized
+        );
     }
 
-    msg!("Validation request closed, rent recovered");
+    // F-02v2: rent_receiver MUST be the current Core asset owner
+    // This prevents rent theft even if cached agent_account.owner is stale
+    require!(
+        ctx.accounts.rent_receiver.key() == current_owner,
+        RegistryError::InvalidRentReceiver
+    );
+
+    msg!("Validation request closed, rent recovered to current owner");
     Ok(())
 }
