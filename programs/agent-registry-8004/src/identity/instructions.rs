@@ -172,9 +172,18 @@ pub fn set_metadata_pda(
     let entry = &mut ctx.accounts.metadata_entry;
     let agent_id = ctx.accounts.agent_account.agent_id;
 
-    // Check if entry already exists and is immutable
-    if entry.created_at > 0 && entry.immutable {
-        return Err(RegistryError::MetadataImmutable.into());
+    // A-06: Check for key_hash collision (different keys with same hash)
+    // If entry exists, stored key must match provided key
+    if entry.created_at > 0 {
+        require!(
+            entry.metadata_key == key,
+            RegistryError::KeyHashCollision
+        );
+
+        // Check if immutable (only after collision check)
+        if entry.immutable {
+            return Err(RegistryError::MetadataImmutable.into());
+        }
     }
 
     // Set or update entry
