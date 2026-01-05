@@ -138,13 +138,22 @@ fn register_internal(
 /// Creates a new MetadataEntryPda if it doesn't exist.
 /// Updates existing entry if not immutable.
 /// key_hash is first 8 bytes of SHA256(key) for PDA derivation.
+/// F-05: Validates key_hash matches SHA256(key) to prevent PDA manipulation
 pub fn set_metadata_pda(
     ctx: Context<SetMetadataPda>,
-    _key_hash: [u8; 8],
+    key_hash: [u8; 8],
     key: String,
     value: Vec<u8>,
     immutable: bool,
 ) -> Result<()> {
+    // F-05: Verify key_hash matches SHA256(key)[0..8]
+    use anchor_lang::solana_program::hash::hash;
+    let computed_hash = hash(key.as_bytes());
+    let expected: [u8; 8] = computed_hash.to_bytes()[0..8]
+        .try_into()
+        .expect("hash is 32 bytes");
+    require!(key_hash == expected, RegistryError::KeyHashMismatch);
+
     // Verify ownership via Core asset
     verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
 

@@ -67,4 +67,10 @@ pub enum RegistryError {
     RequestHashMismatch = 6106,
     #[msg("Rent receiver must be agent owner")]
     InvalidRentReceiver = 6107,
+
+    // ========== Metadata Errors (6150-6199) ==========
+    #[msg("Key hash does not match SHA256(key)")]
+    KeyHashMismatch = 6150,
+    #[msg("Key hash collision detected - stored key differs from provided key")]
+    KeyHashCollision = 6151,
 }
