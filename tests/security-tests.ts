@@ -562,6 +562,267 @@ describe("Security Tests", () => {
   });
 
   // ============================================================================
+  // SECURITY FIX VALIDATION TESTS (v0.2.2)
+  // ============================================================================
+  describe("Security Fix Validation", () => {
+    let fixAgentAsset: Keypair;
+    let fixAgentPda: PublicKey;
+    let fixAgentId: anchor.BN;
+    let fixReputationPda: PublicKey;
+
+    before(async () => {
+      const config = await program.account.registryConfig.fetch(configPda);
+      fixAgentId = config.nextAgentId;
+
+      fixAgentAsset = Keypair.generate();
+      [fixAgentPda] = getAgentPda(fixAgentAsset.publicKey, program.programId);
+      [fixReputationPda] = getAgentReputationPda(fixAgentId, program.programId);
+
+      await program.methods
+        .register("https://example.com/agent/fix-test")
+        .accounts({
+          config: configPda,
+          agentAccount: fixAgentPda,
+          asset: fixAgentAsset.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([fixAgentAsset])
+        .rpc();
+    });
+
+    // F-02: close_validation must verify agent_id and rent goes to owner
+    it("F-02: closeValidation with wrong agent fails", async () => {
+      // Create a second agent
+      const otherAsset = Keypair.generate();
+      const [otherAgentPda] = getAgentPda(otherAsset.publicKey, program.programId);
+      const config = await program.account.registryConfig.fetch(configPda);
+      const otherAgentId = config.nextAgentId;
+
+      await program.methods
+        .register("https://example.com/agent/other-close-test")
+        .accounts({
+          config: configPda,
+          agentAccount: otherAgentPda,
+          asset: otherAsset.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([otherAsset])
+        .rpc();
+
+      // Create validation for first agent
+      const nonce = uniqueNonce();
+      const [requestPda] = getValidationRequestPda(
+        fixAgentId,
+        provider.wallet.publicKey,
+        nonce,
+        program.programId
+      );
+
+      await program.methods
+        .requestValidation(
+          fixAgentId,
+          provider.wallet.publicKey,
+          nonce,
+          "https://example.com/validation/f02-test",
+          Array.from(randomHash())
+        )
+        .accounts({
+          validationStats: validationStatsPda,
+          requester: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          asset: fixAgentAsset.publicKey,
+          agentAccount: fixAgentPda,
+          validationRequest: requestPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      await program.methods
+        .respondToValidation(
+          1,
+          "https://example.com/validation/f02-response",
+          Array.from(randomHash()),
+          "done"
+        )
+        .accounts({
+          validationStats: validationStatsPda,
+          validator: provider.wallet.publicKey,
+          validationRequest: requestPda,
+        })
+        .rpc();
+
+      // Try to close using OTHER agent's asset - should fail
+      await expectAnchorError(
+        program.methods
+          .closeValidation()
+          .accounts({
+            config: configPda,
+            closer: provider.wallet.publicKey,
+            asset: otherAsset.publicKey, // Wrong asset!
+            agentAccount: otherAgentPda, // Wrong agent!
+            validationRequest: requestPda,
+            rentReceiver: provider.wallet.publicKey,
+          })
+          .rpc(),
+        "AgentNotFound"
+      );
+    });
+
+    it("F-02: closeValidation rent_receiver must be agent owner", async () => {
+      // Create validation
+      const nonce = uniqueNonce();
+      const [requestPda] = getValidationRequestPda(
+        fixAgentId,
+        provider.wallet.publicKey,
+        nonce,
+        program.programId
+      );
+
+      await program.methods
+        .requestValidation(
+          fixAgentId,
+          provider.wallet.publicKey,
+          nonce,
+          "https://example.com/validation/f02-rent-test",
+          Array.from(randomHash())
+        )
+        .accounts({
+          validationStats: validationStatsPda,
+          requester: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          asset: fixAgentAsset.publicKey,
+          agentAccount: fixAgentPda,
+          validationRequest: requestPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      await program.methods
+        .respondToValidation(
+          1,
+          "https://example.com/validation/f02-rent-response",
+          Array.from(randomHash()),
+          "done"
+        )
+        .accounts({
+          validationStats: validationStatsPda,
+          validator: provider.wallet.publicKey,
+          validationRequest: requestPda,
+        })
+        .rpc();
+
+      // Try to redirect rent to attacker
+      const attacker = Keypair.generate();
+
+      await expectAnchorError(
+        program.methods
+          .closeValidation()
+          .accounts({
+            config: configPda,
+            closer: provider.wallet.publicKey,
+            asset: fixAgentAsset.publicKey,
+            agentAccount: fixAgentPda,
+            validationRequest: requestPda,
+            rentReceiver: attacker.publicKey, // Wrong receiver!
+          })
+          .rpc(),
+        "InvalidRentReceiver"
+      );
+    });
+
+    // F-05: key_hash must match SHA256(key)
+    it("F-05: Invalid key_hash fails", async () => {
+      const key = "test_key";
+      const wrongKeyHash = new Uint8Array(8).fill(0); // All zeros - definitely wrong
+      const correctKeyHash = computeKeyHash(key);
+      const [metadataPda] = getMetadataEntryPda(fixAgentId, correctKeyHash, program.programId);
+
+      // Use wrong hash in instruction but correct PDA (won't even find PDA)
+      // Actually, the PDA uses the passed key_hash, so we need to use wrong hash in both
+      const [wrongMetadataPda] = getMetadataEntryPda(fixAgentId, wrongKeyHash, program.programId);
+
+      await expectAnchorError(
+        program.methods
+          .setMetadataPda(Array.from(wrongKeyHash), key, Buffer.from("value"), false)
+          .accounts({
+            metadataEntry: wrongMetadataPda,
+            agentAccount: fixAgentPda,
+            asset: fixAgentAsset.publicKey,
+            owner: provider.wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc(),
+        "KeyHashMismatch"
+      );
+    });
+
+    // A-07: Average score rounds correctly
+    it("A-07: Average score rounds instead of truncating", async () => {
+      // Create a fresh agent for this test
+      const roundAsset = Keypair.generate();
+      const [roundAgentPda] = getAgentPda(roundAsset.publicKey, program.programId);
+      const config = await program.account.registryConfig.fetch(configPda);
+      const roundAgentId = config.nextAgentId;
+      const [roundReputationPda] = getAgentReputationPda(roundAgentId, program.programId);
+
+      await program.methods
+        .register("https://example.com/agent/round-test")
+        .accounts({
+          config: configPda,
+          agentAccount: roundAgentPda,
+          asset: roundAsset.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([roundAsset])
+        .rpc();
+
+      // Give 3 feedbacks with scores that require rounding
+      // 33 + 34 + 34 = 101, avg = 33.67 should round to 34
+      for (let i = 0; i < 3; i++) {
+        const score = i === 0 ? 33 : 34;
+        const feedbackIndex = new anchor.BN(i);
+        const [feedbackPda] = getFeedbackPda(roundAgentId, feedbackIndex, program.programId);
+
+        await program.methods
+          .giveFeedback(
+            roundAgentId,
+            score,
+            "round",
+            "test",
+            `https://example.com/feedback/round-${i}`,
+            Array.from(randomHash()),
+            feedbackIndex
+          )
+          .accounts({
+            client: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
+            asset: roundAsset.publicKey,
+            agentAccount: roundAgentPda,
+            feedbackAccount: feedbackPda,
+            agentReputation: roundReputationPda,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc();
+      }
+
+      const reputation = await program.account.agentReputationMetadata.fetch(roundReputationPda);
+      // 33 + 34 + 34 = 101
+      // Truncating: 101 / 3 = 33
+      // Rounding: (101 + 1) / 3 = 34
+      expect(reputation.averageScore).to.equal(34, "Average should round to 34, not truncate to 33");
+    });
+  });
+
+  // ============================================================================
   // TRANSFER SECURITY TESTS
   // ============================================================================
   describe("Transfer Security", () => {
