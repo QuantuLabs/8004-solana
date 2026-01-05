@@ -430,7 +430,14 @@ fn verify_core_owner(asset_info: &AccountInfo, expected_owner: &Pubkey) -> Resul
 }
 
 /// Get owner from Core asset account data
+/// F-06: Validates asset is owned by Metaplex Core program
 fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
+    // F-06: Verify this is actually a Metaplex Core asset
+    require!(
+        *asset_info.owner == mpl_core::ID,
+        RegistryError::InvalidAsset
+    );
+
     let data = asset_info.try_borrow_data()?;
 
     // Core asset layout: discriminator (1 byte) + update_authority (33 bytes) + owner (32 bytes)
