@@ -6,8 +6,30 @@
 [![Anchor Version](https://img.shields.io/badge/Anchor-0.32.1-blue)](https://github.com/coral-xyz/anchor)
 [![Solana](https://img.shields.io/badge/Solana-Compatible-green)](https://solana.com)
 [![Status](https://img.shields.io/badge/Status-Deployed%20on%20Devnet-success)]()
-[![Tests](https://img.shields.io/badge/Tests-89%20Passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-118%20Passing-brightgreen)]()
 [![Spec Conformity](https://img.shields.io/badge/ERC--8004-100%25%20Conformity-success)]()
+
+## v0.2.2 - Security Audit Fixes
+
+**What's New in v0.2.2:**
+- **F-01**: Initialize gate with upgrade authority check
+- **F-02v2**: `close_validation` rent goes to current Core asset owner (not cached)
+- **F-03**: Fixed `agent_id==0` sentinel bug for agent #0
+- **F-05**: `key_hash` validated against SHA256(key)
+- **F-06v2**: `mpl_core::ID` ownership check in `get_core_owner()`
+- **A-06**: Key hash collision protection for metadata
+- **A-07**: Average score rounding (instead of truncation)
+- **V-01**: Tag length validation in `respond_to_validation`
+
+**Security Improvements:**
+- 100% conformity with Metaplex Core best practices
+- 100% conformity with Anchor framework guidelines
+- 29 dedicated security tests added
+- All `UncheckedAccount` properly validated
+
+**No Breaking Changes** - All fixes are transparent to the SDK.
+
+---
 
 ## v0.2.1 - Field Ordering for Indexing Optimization
 
@@ -196,13 +218,14 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ## Test Coverage
 
-**Total: 89 tests passing on Devnet (100% success rate)**
+**Total: 118 tests passing on Devnet (100% success rate)**
 
 | Test Suite | Tests | Coverage | Status |
 |------------|-------|----------|--------|
 | E2E Identity | 24 | Registration, metadata, transfers | ✅ |
 | E2E Reputation | 35 | Feedback, responses, aggregates | ✅ |
 | E2E Validation | 18 | Requests, responses, updates | ✅ |
+| Security Fixes | 29 | F-01 to V-01, edge cases | ✅ |
 | SDK Integration | 12 | Full SDK coverage | ✅ |
 
 ## ERC-8004 Compliance Matrix
@@ -219,15 +242,19 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ## Security
 
-### Security Features
+### Security Features (v0.2.2)
 
-- ✅ Input validation (score 0-100, URI limits)
+- ✅ **F-01**: Initialize protected by upgrade authority
+- ✅ **F-02v2**: Rent recovery to current Core asset owner only
+- ✅ **F-06v2**: Metaplex Core ownership validation (`mpl_core::ID`)
+- ✅ **F-05**: Key hash integrity verification (SHA256)
+- ✅ **A-06**: Metadata key collision protection
+- ✅ Input validation (score 0-100, URI limits, tag length)
 - ✅ Access control (author-only revoke, validator permissions)
 - ✅ Integer overflow protection (checked arithmetic)
-- ✅ Division by zero protection
+- ✅ Average score rounding (A-07)
 - ✅ PDA substitution prevention
 - ✅ Cross-program validation (Identity Registry checks)
-- ✅ Input validation (score 0-100, URI limits, expiry checks)
 
 ## Performance & Costs
 
@@ -276,6 +303,17 @@ Use `setFeedbackTags` after `giveFeedback` to add tags on-chain for `getProgramA
 **Note**: Rent is recoverable when closing accounts or deleting metadata.
 
 ## Roadmap
+
+### ✅ v0.2.2 - COMPLETE (Security Audit)
+
+- [x] **F-01**: Initialize gate with upgrade authority
+- [x] **F-02v2**: Rent to current Core owner
+- [x] **F-03**: Agent #0 sentinel fix
+- [x] **F-05/A-06**: Key hash validation & collision protection
+- [x] **F-06v2**: Metaplex Core ownership check
+- [x] **A-07/V-01**: Score rounding & tag validation
+- [x] 29 security tests added
+- [x] 100% Metaplex/Anchor conformity
 
 ### ✅ v0.2.0 - COMPLETE
 
@@ -337,6 +375,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status**: ✅ v0.2.0 Deployed on Devnet | Full ERC-8004 conformity
+**Status**: ✅ v0.2.2 Deployed on Devnet | Full ERC-8004 conformity | Security Audited
 
-**Last Updated**: 2025-12-04
+**Last Updated**: 2026-01-06
