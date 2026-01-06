@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use mpl_core::accounts::BaseAssetV1;
 use mpl_core::instructions::{
     CreateCollectionV2CpiBuilder, CreateV2CpiBuilder, TransferV1CpiBuilder,
     UpdateV1CpiBuilder,
@@ -448,8 +449,7 @@ fn verify_core_owner(asset_info: &AccountInfo, expected_owner: &Pubkey) -> Resul
 }
 
 /// Get owner from Core asset account data
-/// F-06: Validates asset is owned by Metaplex Core program
-/// F-07: Validates discriminator is Key::AssetV1
+/// Uses official mpl-core deserialization (no manual byte parsing)
 fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
     // F-06: Verify this is actually a Metaplex Core asset
     require!(
@@ -457,22 +457,10 @@ fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
         RegistryError::InvalidAsset
     );
 
+    // Use official mpl-core deserialization
     let data = asset_info.try_borrow_data()?;
-
-    // Core asset layout (BaseAssetV1):
-    // - Key: 1 byte (discriminator) - Key::AssetV1 = 1
-    // - Owner: 32 bytes (at offset 1)
-    if data.len() < 33 {
-        return Err(RegistryError::InvalidAsset.into());
-    }
-
-    // F-07: Verify discriminator is Key::AssetV1 (value = 1)
-    // mpl-core Key enum: Uninitialized=0, AssetV1=1, HashedAssetV1=2, etc.
-    require!(data[0] == 1, RegistryError::InvalidAsset);
-
-    let owner_bytes: [u8; 32] = data[1..33]
-        .try_into()
+    let asset = BaseAssetV1::from_bytes(&data)
         .map_err(|_| RegistryError::InvalidAsset)?;
 
-    Ok(Pubkey::new_from_array(owner_bytes))
+    Ok(asset.owner)
 }
