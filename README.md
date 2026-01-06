@@ -353,7 +353,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - **ERC-8004 Spec**: https://eips.ethereum.org/EIPS/eip-8004
 - **Forum**: https://ethereum-magicians.org/t/erc-8004-trustless-agents/25098
-- **agent0-ts SDK**: https://github.com/agent0lab/agent0-ts
+- **Solana SDK**: https://github.com/QuantuLabs/8004-solana-ts
+- **Original agent0-ts**: https://github.com/agent0lab/agent0-ts
 - **Ethereum Contracts** (Sepolia):
   - Identity: `0x8004a6090Cd10A7288092483047B097295Fb8847`
   - Reputation: `0x8004B8FD1A363aa02fDC07635C0c5F94f6Af5B7E`
