@@ -449,6 +449,7 @@ fn verify_core_owner(asset_info: &AccountInfo, expected_owner: &Pubkey) -> Resul
 
 /// Get owner from Core asset account data
 /// F-06: Validates asset is owned by Metaplex Core program
+/// F-07: Validates discriminator is Key::AssetV1
 fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
     // F-06: Verify this is actually a Metaplex Core asset
     require!(
@@ -458,16 +459,16 @@ fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
 
     let data = asset_info.try_borrow_data()?;
 
-    // Core asset layout: discriminator (1 byte) + update_authority (33 bytes) + owner (32 bytes)
-    // Skip: Key (1) + UpdateAuthority (1 + 32) = 34 bytes, then owner is next 32 bytes
-    // Actually, for BaseAssetV1:
-    // - Key: 1 byte (discriminator)
+    // Core asset layout (BaseAssetV1):
+    // - Key: 1 byte (discriminator) - Key::AssetV1 = 1
     // - Owner: 32 bytes (at offset 1)
-    // - UpdateAuthority: 33 bytes (enum variant + optional pubkey)
-    // Let's read owner at offset 1
     if data.len() < 33 {
         return Err(RegistryError::InvalidAsset.into());
     }
+
+    // F-07: Verify discriminator is Key::AssetV1 (value = 1)
+    // mpl-core Key enum: Uninitialized=0, AssetV1=1, HashedAssetV1=2, etc.
+    require!(data[0] == 1, RegistryError::InvalidAsset);
 
     let owner_bytes: [u8; 32] = data[1..33]
         .try_into()

@@ -79,7 +79,11 @@ pub fn give_feedback(
 
         // A-07: Round to nearest instead of truncating
         // Formula: (sum + count/2) / count rounds to nearest integer
-        let avg = (metadata.total_score_sum + metadata.total_feedbacks / 2)
+        // A-08: Use checked_add to prevent theoretical overflow
+        let avg = metadata
+            .total_score_sum
+            .checked_add(metadata.total_feedbacks / 2)
+            .ok_or(RegistryError::Overflow)?
             / metadata.total_feedbacks;
         metadata.average_score = std::cmp::min(avg, 100) as u8;
     }

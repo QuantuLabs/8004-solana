@@ -7,6 +7,7 @@ use crate::error::RegistryError;
 
 /// Get owner from Core asset account data
 /// F-06v2: Validates asset is owned by Metaplex Core program
+/// F-07: Validates discriminator is Key::AssetV1
 fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
     // F-06v2: Verify this is actually a Metaplex Core asset
     require!(
@@ -16,10 +17,16 @@ fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
 
     let data = asset_info.try_borrow_data()?;
 
-    // Core asset layout: Key (1 byte) + Owner (32 bytes at offset 1)
+    // Core asset layout (BaseAssetV1):
+    // - Key: 1 byte (discriminator) - Key::AssetV1 = 1
+    // - Owner: 32 bytes (at offset 1)
     if data.len() < 33 {
         return Err(RegistryError::InvalidAsset.into());
     }
+
+    // F-07: Verify discriminator is Key::AssetV1 (value = 1)
+    // mpl-core Key enum: Uninitialized=0, AssetV1=1, HashedAssetV1=2, etc.
+    require!(data[0] == 1, RegistryError::InvalidAsset);
 
     let owner_bytes: [u8; 32] = data[1..33]
         .try_into()
