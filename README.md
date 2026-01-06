@@ -242,19 +242,12 @@ anchor test --skip-build tests/e2e-integration.ts
 
 ## Security
 
-### Security Features (v0.2.2)
+See [v0.2.2 changelog](#v022---security-audit-fixes) for detailed security fixes.
 
-- ✅ **F-01**: Initialize protected by upgrade authority
-- ✅ **F-02v2**: Rent recovery to current Core asset owner only
-- ✅ **F-06v2**: Metaplex Core ownership validation (`mpl_core::ID`)
-- ✅ **F-05**: Key hash integrity verification (SHA256)
-- ✅ **A-06**: Metadata key collision protection
-- ✅ Input validation (score 0-100, URI limits, tag length)
-- ✅ Access control (author-only revoke, validator permissions)
-- ✅ Integer overflow protection (checked arithmetic)
-- ✅ Average score rounding (A-07)
-- ✅ PDA substitution prevention
-- ✅ Cross-program validation (Identity Registry checks)
+- ✅ 8 security vulnerabilities fixed (F-01 to V-01)
+- ✅ 100% Metaplex Core / Anchor conformity
+- ✅ 29 dedicated security tests
+- ✅ Input validation, access control, overflow protection
 
 ## Performance & Costs
 
@@ -306,14 +299,7 @@ Use `setFeedbackTags` after `giveFeedback` to add tags on-chain for `getProgramA
 
 ### ✅ v0.2.2 - COMPLETE (Security Audit)
 
-- [x] **F-01**: Initialize gate with upgrade authority
-- [x] **F-02v2**: Rent to current Core owner
-- [x] **F-03**: Agent #0 sentinel fix
-- [x] **F-05/A-06**: Key hash validation & collision protection
-- [x] **F-06v2**: Metaplex Core ownership check
-- [x] **A-07/V-01**: Score rounding & tag validation
-- [x] 29 security tests added
-- [x] 100% Metaplex/Anchor conformity
+See [changelog](#v022---security-audit-fixes) for details.
 
 ### ✅ v0.2.0 - COMPLETE
 
