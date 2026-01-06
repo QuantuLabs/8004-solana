@@ -1,5 +1,13 @@
 {
-  "license": "ISC",
+  "name": "8004-solana",
+  "version": "0.2.2",
+  "description": "Solana implementation of ERC-8004 (Trustless Agents Registry)",
+  "author": "QuantuLabs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/QuantuLabs/8004-solana.git"
+  },
   "scripts": {
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
