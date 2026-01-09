@@ -102,14 +102,16 @@ pub mod agent_registry_8004 {
     // ============================================================================
 
     /// Give feedback to an agent
+    /// 8004 Jan 2026 spec: renamed file_uri -> feedback_uri, file_hash -> feedback_hash, added endpoint
     pub fn give_feedback(
         ctx: Context<GiveFeedback>,
         agent_id: u64,
         score: u8,
         tag1: String,
         tag2: String,
-        file_uri: String,
-        file_hash: [u8; 32],
+        endpoint: String,
+        feedback_uri: String,
+        feedback_hash: [u8; 32],
         feedback_index: u64,
     ) -> Result<()> {
         reputation::instructions::give_feedback(
@@ -118,8 +120,9 @@ pub mod agent_registry_8004 {
             score,
             tag1,
             tag2,
-            file_uri,
-            file_hash,
+            endpoint,
+            feedback_uri,
+            feedback_hash,
             feedback_index,
         )
     }

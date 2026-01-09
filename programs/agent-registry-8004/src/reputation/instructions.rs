@@ -8,16 +8,18 @@ use crate::error::RegistryError;
 /// Give feedback to an agent (8004 spec: giveFeedback)
 ///
 /// Creates a new feedback entry for the specified agent with score 0-100
-/// and file metadata. Uses global sequential feedback index.
-/// Tags are stored in event only, use set_feedback_tags for on-chain tags.
+/// and feedback metadata. Uses global sequential feedback index.
+/// Tags and endpoint are stored in event only, use set_feedback_tags for on-chain tags.
+/// 8004 Jan 2026 spec: renamed file_uri -> feedback_uri, file_hash -> feedback_hash, added endpoint
 pub fn give_feedback(
     ctx: Context<GiveFeedback>,
     agent_id: u64,
     score: u8,
     tag1: String,
     tag2: String,
-    file_uri: String,
-    file_hash: [u8; 32],
+    endpoint: String,
+    feedback_uri: String,
+    feedback_hash: [u8; 32],
     feedback_index: u64,
 ) -> Result<()> {
     // Validate score (0-100)
@@ -36,7 +38,11 @@ pub fn give_feedback(
     // Validate URI length (still validated even though stored in event only)
     const MAX_URI_LENGTH: usize = 200;
     require!(
-        file_uri.len() <= MAX_URI_LENGTH,
+        feedback_uri.len() <= MAX_URI_LENGTH,
+        RegistryError::UriTooLong
+    );
+    require!(
+        endpoint.len() <= MAX_URI_LENGTH,
         RegistryError::UriTooLong
     );
 
@@ -97,12 +103,12 @@ pub fn give_feedback(
     feedback.feedback_index = feedback_index;
     feedback.score = score;
     // Tags removed from FeedbackAccount, use set_feedback_tags for on-chain tags
-    feedback.file_hash = file_hash;
+    feedback.feedback_hash = feedback_hash;
     feedback.is_revoked = false;
     feedback.created_at = Clock::get()?.unix_timestamp;
     feedback.bump = ctx.bumps.feedback_account;
 
-    // Emit event (tags always in event for indexers)
+    // Emit event (tags and endpoint always in event for indexers)
     emit!(NewFeedback {
         agent_id,
         client_address: ctx.accounts.client.key(),
@@ -110,8 +116,9 @@ pub fn give_feedback(
         score,
         tag1,
         tag2,
-        file_uri,
-        file_hash,
+        endpoint,
+        feedback_uri,
+        feedback_hash,
     });
 
     msg!(
