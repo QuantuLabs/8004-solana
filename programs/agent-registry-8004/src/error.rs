@@ -85,4 +85,24 @@ pub enum RegistryError {
     MissingSignatureVerification = 6202,
     #[msg("Ed25519 signature verification failed")]
     InvalidSignature = 6203,
+
+    // ========== Scalability/Registry Errors (6250-6299) ==========
+    #[msg("Invalid registry type for this operation")]
+    InvalidRegistryType = 6250,
+    #[msg("Root config already initialized")]
+    RootAlreadyInitialized = 6251,
+    #[msg("Registry already exists for this collection")]
+    RegistryAlreadyExists = 6252,
+    #[msg("Collection name exceeds maximum length")]
+    CollectionNameTooLong = 6253,
+    #[msg("Collection URI exceeds maximum length")]
+    CollectionUriTooLong = 6254,
+    #[msg("Cannot register in this registry")]
+    RegistrationNotAllowed = 6255,
+
+    // ========== Anti-Gaming Errors (6300-6309) ==========
+    #[msg("Self-feedback is not allowed - agent owner cannot give feedback to their own agent")]
+    SelfFeedbackNotAllowed = 6300,
+    #[msg("Self-validation is not allowed - agent owner cannot validate their own agent")]
+    SelfValidationNotAllowed = 6301,
 }

@@ -33,7 +33,9 @@ pub struct RequestValidation<'info> {
     #[account(
         seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
-        constraint = agent_account.agent_id == agent_id @ RegistryError::AgentNotFound
+        constraint = agent_account.agent_id == agent_id @ RegistryError::AgentNotFound,
+        // Anti-gaming: prevent agent owner from validating their own agent
+        constraint = agent_account.owner != validator_address @ RegistryError::SelfValidationNotAllowed
     )]
     pub agent_account: Account<'info, AgentAccount>,
 
@@ -82,6 +84,22 @@ pub struct RespondToValidation<'info> {
         constraint = validation_request.validator_address == validator.key() @ RegistryError::UnauthorizedValidator
     )]
     pub validation_request: Account<'info, ValidationRequest>,
+
+    /// Core asset (for deriving agent PDA)
+    /// CHECK: Used for PDA derivation
+    pub asset: UncheckedAccount<'info>,
+
+    /// Agent account (for self-validation check at response time)
+    /// This double-checks even if agent was transferred after request
+    #[account(
+        seeds = [b"agent", asset.key().as_ref()],
+        bump = agent_account.bump,
+        // Verify this is the correct agent
+        constraint = agent_account.agent_id == validation_request.agent_id @ RegistryError::AgentNotFound,
+        // Anti-gaming: prevent current owner from validating (even after transfer)
+        constraint = agent_account.owner != validator.key() @ RegistryError::SelfValidationNotAllowed
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
 }
 
 /// Accounts for close_validation instruction

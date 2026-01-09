@@ -1,20 +1,64 @@
 use anchor_lang::prelude::*;
 
-/// Global registry configuration
+// ============================================================================
+// Scalability: Sharding via Multiple Collections
+// ============================================================================
+
+/// Registry type - Base (protocol managed) or User (custom shards)
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace, Debug)]
+pub enum RegistryType {
+    /// Base registry managed by protocol authority
+    Base,
+    /// User-created registry (custom shard)
+    User,
+}
+
+impl Default for RegistryType {
+    fn default() -> Self {
+        RegistryType::Base
+    }
+}
+
+/// Root configuration - Global pointer to current base registry
+/// Seeds: ["root_config"]
+#[account]
+#[derive(InitSpace)]
+pub struct RootConfig {
+    /// Current active base registry for new agent registrations
+    pub current_base_registry: Pubkey,
+
+    /// Number of base registries created (for indexing)
+    pub base_registry_count: u32,
+
+    /// Authority (can create base registries, rotate)
+    pub authority: Pubkey,
+
+    /// PDA bump seed
+    pub bump: u8,
+}
+
+/// Per-collection registry configuration
+/// Seeds: ["registry_config", collection.key()]
 #[account]
 #[derive(InitSpace)]
 pub struct RegistryConfig {
-    /// Registry authority (admin)
+    /// Metaplex Core Collection address (also in seeds)
+    pub collection: Pubkey,
+
+    /// Registry type: Base (protocol) or User (custom shard)
+    pub registry_type: RegistryType,
+
+    /// Authority (protocol authority for Base, user for User)
     pub authority: Pubkey,
 
-    /// Next agent ID to assign (sequential counter)
+    /// Next agent ID to assign (sequential counter, local to this registry)
     pub next_agent_id: u64,
 
-    /// Total agents registered
+    /// Total agents registered in this registry
     pub total_agents: u64,
 
-    /// Metaplex Core Collection address
-    pub collection: Pubkey,
+    /// Base registry index (0, 1, 2...) - only meaningful for Base type
+    pub base_index: u32,
 
     /// PDA bump seed
     pub bump: u8,

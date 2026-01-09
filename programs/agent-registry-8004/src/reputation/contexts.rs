@@ -6,7 +6,7 @@ use crate::identity::state::AgentAccount;
 
 /// Accounts for give_feedback instruction
 #[derive(Accounts)]
-#[instruction(agent_id: u64, _score: u8, _tag1: String, _tag2: String, _file_uri: String, _file_hash: [u8; 32], feedback_index: u64)]
+#[instruction(agent_id: u64, _score: u8, _tag1: String, _tag2: String, _endpoint: String, _feedback_uri: String, _feedback_hash: [u8; 32], feedback_index: u64)]
 pub struct GiveFeedback<'info> {
     /// Client giving the feedback (signer & author)
     #[account(mut)]
@@ -24,7 +24,9 @@ pub struct GiveFeedback<'info> {
     #[account(
         seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
-        constraint = agent_account.agent_id == agent_id @ RegistryError::AgentNotFound
+        constraint = agent_account.agent_id == agent_id @ RegistryError::AgentNotFound,
+        // Anti-gaming: prevent agent owner from giving feedback to their own agent
+        constraint = agent_account.owner != client.key() @ RegistryError::SelfFeedbackNotAllowed
     )]
     pub agent_account: Account<'info, AgentAccount>,
 

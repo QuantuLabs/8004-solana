@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp");
+declare_id!("ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v");
 
 pub mod error;
 pub mod identity;
@@ -95,6 +95,54 @@ pub mod agent_registry_8004 {
         deadline: i64,
     ) -> Result<()> {
         identity::instructions::set_agent_wallet(ctx, new_wallet, deadline)
+    }
+
+    // ============================================================================
+    // Scalability Instructions (Multi-Collection Sharding)
+    // ============================================================================
+
+    /// Initialize root config and first base registry
+    /// Only upgrade authority can call this
+    pub fn initialize_root(ctx: Context<InitializeRoot>) -> Result<()> {
+        identity::instructions::initialize_root(ctx)
+    }
+
+    /// Create a new base registry (authority only)
+    /// Does NOT automatically rotate - use rotate_base_registry
+    pub fn create_base_registry(ctx: Context<CreateBaseRegistry>) -> Result<()> {
+        identity::instructions::create_base_registry(ctx)
+    }
+
+    /// Rotate to a new base registry (authority only)
+    pub fn rotate_base_registry(ctx: Context<RotateBaseRegistry>) -> Result<()> {
+        identity::instructions::rotate_base_registry(ctx)
+    }
+
+    /// Create a user registry (anyone can create their own shard)
+    /// Program PDA is collection authority, user can update metadata
+    pub fn create_user_registry(
+        ctx: Context<CreateUserRegistry>,
+        collection_name: String,
+        collection_uri: String,
+    ) -> Result<()> {
+        identity::instructions::create_user_registry(ctx, collection_name, collection_uri)
+    }
+
+    /// Update user registry collection metadata (owner only)
+    pub fn update_user_registry_metadata(
+        ctx: Context<UpdateUserRegistryMetadata>,
+        new_name: Option<String>,
+        new_uri: Option<String>,
+    ) -> Result<()> {
+        identity::instructions::update_user_registry_metadata(ctx, new_name, new_uri)
+    }
+
+    /// Register agent in a specific registry (base or user)
+    pub fn register_agent_in_registry(
+        ctx: Context<RegisterAgentInRegistry>,
+        agent_uri: String,
+    ) -> Result<()> {
+        identity::instructions::register_agent_in_registry(ctx, agent_uri)
     }
 
     // ============================================================================
