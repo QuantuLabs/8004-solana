@@ -73,4 +73,16 @@ pub enum RegistryError {
     KeyHashMismatch = 6150,
     #[msg("Key hash collision detected - stored key differs from provided key")]
     KeyHashCollision = 6151,
+    #[msg("Reserved metadata key - use dedicated instruction")]
+    ReservedMetadataKey = 6152,
+
+    // ========== Wallet Errors (6200-6249) ==========
+    #[msg("Deadline has expired")]
+    DeadlineExpired = 6200,
+    #[msg("Deadline too far in the future (max 5 minutes)")]
+    DeadlineTooFar = 6201,
+    #[msg("Missing Ed25519 signature verification instruction")]
+    MissingSignatureVerification = 6202,
+    #[msg("Ed25519 signature verification failed")]
+    InvalidSignature = 6203,
 }

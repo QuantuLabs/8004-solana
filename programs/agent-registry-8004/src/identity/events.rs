@@ -42,3 +42,12 @@ pub struct AgentOwnerSynced {
     pub new_owner: Pubkey,
     pub asset: Pubkey,
 }
+
+/// Event emitted when agent wallet is set or updated (8004 spec: WalletUpdated)
+#[event]
+pub struct WalletUpdated {
+    pub agent_id: u64,
+    pub old_wallet: Option<Pubkey>,
+    pub new_wallet: Pubkey,
+    pub updated_by: Pubkey,
+}

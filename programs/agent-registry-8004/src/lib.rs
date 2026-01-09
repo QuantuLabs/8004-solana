@@ -86,6 +86,17 @@ pub mod agent_registry_8004 {
         identity::instructions::transfer_agent(ctx)
     }
 
+    /// Set agent wallet with Ed25519 signature verification
+    /// The wallet owner must sign a message off-chain to prove control
+    /// Transaction must include Ed25519Program verify instruction before this one
+    pub fn set_agent_wallet(
+        ctx: Context<SetAgentWallet>,
+        new_wallet: Pubkey,
+        deadline: i64,
+    ) -> Result<()> {
+        identity::instructions::set_agent_wallet(ctx, new_wallet, deadline)
+    }
+
     // ============================================================================
     // Reputation Instructions
     // ============================================================================

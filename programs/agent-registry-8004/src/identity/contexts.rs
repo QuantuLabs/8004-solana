@@ -1,8 +1,13 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::bpf_loader_upgradeable;
+use anchor_lang::solana_program::sysvar::instructions as sysvar_instructions;
 
 use super::state::*;
 use crate::error::RegistryError;
+
+/// Reserved key hash for "agentWallet" metadata
+/// Computed as: sha256("agentWallet")[0..8] = 0x9554ffa5cdc8747a
+pub const AGENT_WALLET_KEY_HASH: [u8; 8] = [0x95, 0x54, 0xff, 0xa5, 0xcd, 0xc8, 0x74, 0x7a];
 
 /// Initialize the registry and create Core collection
 /// F-01: Only upgrade authority can initialize (prevents front-running)
@@ -258,4 +263,50 @@ pub struct TransferAgent<'info> {
     /// CHECK: Verified by address constraint
     #[account(address = mpl_core::ID)]
     pub mpl_core_program: UncheckedAccount<'info>,
+}
+
+/// Set agent wallet with Ed25519 signature verification
+/// The wallet owner must sign a message off-chain to prove control
+/// Transaction must include Ed25519Program verify instruction before this one
+#[derive(Accounts)]
+#[instruction(new_wallet: Pubkey, deadline: i64)]
+pub struct SetAgentWallet<'info> {
+    /// Agent owner (must be Core asset owner)
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    /// Payer for wallet metadata PDA (if new)
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account(
+        seeds = [b"agent", agent_account.asset.as_ref()],
+        bump = agent_account.bump,
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    /// MetadataEntryPda for reserved "agentWallet" key
+    /// Uses fixed AGENT_WALLET_KEY_HASH for PDA derivation
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = MetadataEntryPda::DISCRIMINATOR.len() + MetadataEntryPda::INIT_SPACE,
+        seeds = [b"agent_meta", agent_account.agent_id.to_le_bytes().as_ref(), AGENT_WALLET_KEY_HASH.as_ref()],
+        bump
+    )]
+    pub wallet_metadata: Account<'info, MetadataEntryPda>,
+
+    /// Core asset - ownership verified in instruction
+    /// CHECK: Verified via agent_account constraint and in instruction
+    #[account(
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
+    )]
+    pub asset: UncheckedAccount<'info>,
+
+    /// Instructions sysvar for Ed25519 signature introspection
+    /// CHECK: Verified by address constraint
+    #[account(address = sysvar_instructions::ID)]
+    pub instructions_sysvar: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
 }
