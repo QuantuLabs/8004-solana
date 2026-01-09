@@ -87,8 +87,9 @@ describe("Reputation Module Tests", () => {
           score,
           "quality",
           "reliable",
-          "https://example.com/feedback/0",
-          Array.from(randomHash()),
+          "https://agent.example.com/api", // endpoint
+          "https://example.com/feedback/0", // feedback_uri
+          Array.from(randomHash()), // feedback_hash
           feedbackIndex
         )
         .accounts({
@@ -128,6 +129,7 @@ describe("Reputation Module Tests", () => {
           score,
           "poor",
           "issue",
+          "https://agent.example.com/api",
           "https://example.com/feedback/zero",
           Array.from(randomHash()),
           feedbackIndex
@@ -163,6 +165,7 @@ describe("Reputation Module Tests", () => {
           score,
           "perfect",
           "excellent",
+          "https://agent.example.com/api",
           "https://example.com/feedback/perfect",
           Array.from(randomHash()),
           feedbackIndex
@@ -195,6 +198,7 @@ describe("Reputation Module Tests", () => {
             101, // Invalid score
             "invalid",
             "score",
+            "https://agent.example.com/api",
             "https://example.com/feedback/invalid",
             Array.from(randomHash()),
             feedbackIndex
@@ -223,6 +227,7 @@ describe("Reputation Module Tests", () => {
           75,
           "good",
           "fast",
+          "https://agent.example.com/api",
           "", // Empty URI is allowed
           Array.from(randomHash()),
           feedbackIndex
@@ -258,6 +263,7 @@ describe("Reputation Module Tests", () => {
             50,
             "tag1",
             "tag2",
+            "https://agent.example.com/api",
             longUri,
             Array.from(randomHash()),
             feedbackIndex
@@ -286,6 +292,7 @@ describe("Reputation Module Tests", () => {
           60,
           "", // Empty tag1
           "", // Empty tag2
+          "https://agent.example.com/api",
           "https://example.com/feedback/empty-tags",
           Array.from(randomHash()),
           feedbackIndex
@@ -320,6 +327,7 @@ describe("Reputation Module Tests", () => {
             50,
             longTag,
             "valid",
+            "https://agent.example.com/api",
             "https://example.com/feedback/long-tag",
             Array.from(randomHash()),
             feedbackIndex
@@ -350,6 +358,7 @@ describe("Reputation Module Tests", () => {
             50,
             "tag1",
             "tag2",
+            "https://agent.example.com/api",
             "https://example.com/feedback/wrong-index",
             Array.from(randomHash()),
             wrongIndex
@@ -380,6 +389,7 @@ describe("Reputation Module Tests", () => {
           70,
           "self",
           "paid",
+          "https://agent.example.com/api",
           "https://example.com/feedback/self-paid",
           Array.from(randomHash()),
           feedbackIndex
@@ -443,6 +453,7 @@ describe("Reputation Module Tests", () => {
           88,
           "", // Empty tags in giveFeedback
           "",
+          "https://agent.example.com/api",
           "https://example.com/feedback/no-tags",
           Array.from(randomHash()),
           feedbackIndex
@@ -502,6 +513,7 @@ describe("Reputation Module Tests", () => {
           75,
           "",
           "",
+          "https://agent.example.com/api",
           "https://example.com/feedback/for-tags",
           Array.from(randomHash()),
           feedbackIndex
@@ -555,6 +567,7 @@ describe("Reputation Module Tests", () => {
           80,
           "",
           "",
+          "https://agent.example.com/api",
           "https://example.com/feedback/empty-tags-test",
           Array.from(randomHash()),
           feedbackIndex
@@ -633,6 +646,7 @@ describe("Reputation Module Tests", () => {
           90,
           "high",
           "quality",
+          "https://agent.example.com/api",
           "https://example.com/feedback/to-revoke",
           Array.from(randomHash()),
           feedbackIndex
@@ -686,6 +700,7 @@ describe("Reputation Module Tests", () => {
           85,
           "test",
           "revoke",
+          "https://agent.example.com/api",
           "https://example.com/feedback/non-author",
           Array.from(randomHash()),
           feedbackIndex
@@ -777,6 +792,7 @@ describe("Reputation Module Tests", () => {
           75,
           "feedback",
           "test",
+          "https://agent.example.com/api",
           "https://example.com/feedback/for-response",
           Array.from(randomHash()),
           feedbackIndex
@@ -1003,6 +1019,7 @@ describe("Reputation Module Tests", () => {
             scores[i],
             `tag${i}`,
             "test",
+            "https://agent.example.com/api",
             `https://example.com/feedback/agg-${i}`,
             Array.from(randomHash()),
             feedbackIndex

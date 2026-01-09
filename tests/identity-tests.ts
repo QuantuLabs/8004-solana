@@ -13,14 +13,19 @@ import {
   MAX_URI_LENGTH,
   MAX_METADATA_KEY_LENGTH,
   MAX_METADATA_VALUE_LENGTH,
+  AGENT_WALLET_KEY_HASH,
   getConfigPda,
   getAgentPda,
   getMetadataEntryPda,
+  getWalletMetadataPda,
   computeKeyHash,
+  buildWalletSetMessage,
   stringOfLength,
   uriOfLength,
   expectAnchorError,
 } from "./utils/helpers";
+import { Ed25519Program, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
+import * as nacl from "tweetnacl";
 
 describe("Identity Module Tests", () => {
   const provider = anchor.AnchorProvider.env();
@@ -570,12 +575,13 @@ describe("Identity Module Tests", () => {
     it("transferAgent() transfers the Core asset", async () => {
       const tx = await program.methods
         .transferAgent()
-        .accounts({
+        .accountsPartial({
           asset: assetKeypair.publicKey,
           agentAccount: agentPda,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
           newOwner: newOwner.publicKey,
+          walletMetadata: null, // No wallet set for this agent
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
         .rpc();
@@ -667,6 +673,467 @@ describe("Identity Module Tests", () => {
 
       const agent = await program.account.agentAccount.fetch(agentPda);
       expect(agent.owner.toBase58()).to.equal(provider.wallet.publicKey.toBase58());
+    });
+  });
+
+  // ============================================================================
+  // SET AGENT WALLET TESTS (8004 Jan 2026 Spec)
+  // ============================================================================
+  describe("Agent Wallet Operations", () => {
+    let assetKeypair: Keypair;
+    let agentPda: PublicKey;
+    let agentId: anchor.BN;
+    let walletKeypair: Keypair;
+
+    before(async () => {
+      // Register a fresh agent for wallet tests
+      assetKeypair = Keypair.generate();
+      [agentPda] = getAgentPda(assetKeypair.publicKey, program.programId);
+      walletKeypair = Keypair.generate();
+
+      await program.methods
+        .register("https://example.com/agent/wallet-test")
+        .accounts({
+          config: configPda,
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([assetKeypair])
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      agentId = agent.agentId;
+      console.log("=== Wallet Tests Setup ===");
+      console.log("Agent ID:", agentId.toString());
+      console.log("Wallet pubkey:", walletKeypair.publicKey.toBase58());
+    });
+
+    it("setAgentWallet() with valid Ed25519 signature + cost measurement", async () => {
+      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const clock = await provider.connection.getSlot();
+      const blockTime = await provider.connection.getBlockTime(clock);
+      const deadline = new anchor.BN(blockTime! + 60); // 60 seconds from now
+
+      // Build message and sign with wallet private key
+      const message = buildWalletSetMessage(
+        agentId,
+        walletKeypair.publicKey,
+        provider.wallet.publicKey,
+        deadline
+      );
+      const signature = nacl.sign.detached(message, walletKeypair.secretKey);
+
+      // Create Ed25519 verify instruction
+      const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
+        publicKey: walletKeypair.publicKey.toBytes(),
+        message: message,
+        signature: signature,
+      });
+
+      // Get balance before for rent measurement
+      const balanceBefore = await provider.connection.getBalance(provider.wallet.publicKey);
+
+      // Call setAgentWallet with Ed25519 instruction prepended
+      const tx = await program.methods
+        .setAgentWallet(walletKeypair.publicKey, deadline)
+        .accounts({
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          agentAccount: agentPda,
+          walletMetadata: walletMetadataPda,
+          asset: assetKeypair.publicKey,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          systemProgram: SystemProgram.programId,
+        })
+        .preInstructions([ed25519Ix])
+        .rpc({ commitment: "confirmed" });
+
+      console.log("SetAgentWallet tx:", tx);
+
+      // Verify wallet was stored
+      const metadata = await program.account.metadataEntryPda.fetch(walletMetadataPda);
+      expect(metadata.metadataKey).to.equal("agentWallet");
+      const storedWallet = new PublicKey(metadata.metadataValue);
+      expect(storedWallet.toBase58()).to.equal(walletKeypair.publicKey.toBase58());
+      expect(metadata.immutable).to.be.false;
+
+      // Cost measurement
+      const balanceAfter = await provider.connection.getBalance(provider.wallet.publicKey);
+      const txInfo = await provider.connection.getTransaction(tx, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0,
+      });
+
+      console.log("=== setAgentWallet Cost ===");
+      console.log("Compute Units:", txInfo?.meta?.computeUnitsConsumed);
+      console.log("Transaction Fee:", txInfo?.meta?.fee, "lamports");
+      console.log("Rent paid (first time):", balanceBefore - balanceAfter - (txInfo?.meta?.fee || 0), "lamports");
+      console.log("Total cost:", balanceBefore - balanceAfter, "lamports");
+    });
+
+    it("setAgentWallet() fails with expired deadline", async () => {
+      const newWallet = Keypair.generate();
+      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const deadline = new anchor.BN(1000000); // Far in the past
+
+      const message = buildWalletSetMessage(
+        agentId,
+        newWallet.publicKey,
+        provider.wallet.publicKey,
+        deadline
+      );
+      const signature = nacl.sign.detached(message, newWallet.secretKey);
+
+      const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
+        publicKey: newWallet.publicKey.toBytes(),
+        message: message,
+        signature: signature,
+      });
+
+      await expectAnchorError(
+        program.methods
+          .setAgentWallet(newWallet.publicKey, deadline)
+          .accounts({
+            owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
+            agentAccount: agentPda,
+            walletMetadata: walletMetadataPda,
+            asset: assetKeypair.publicKey,
+            instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          .preInstructions([ed25519Ix])
+          .rpc(),
+        "DeadlineExpired"
+      );
+    });
+
+    it("setAgentWallet() fails with deadline too far in future", async () => {
+      const newWallet = Keypair.generate();
+      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const clock = await provider.connection.getSlot();
+      const blockTime = await provider.connection.getBlockTime(clock);
+      const deadline = new anchor.BN(blockTime! + 600); // 10 minutes (> 5 min limit)
+
+      const message = buildWalletSetMessage(
+        agentId,
+        newWallet.publicKey,
+        provider.wallet.publicKey,
+        deadline
+      );
+      const signature = nacl.sign.detached(message, newWallet.secretKey);
+
+      const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
+        publicKey: newWallet.publicKey.toBytes(),
+        message: message,
+        signature: signature,
+      });
+
+      await expectAnchorError(
+        program.methods
+          .setAgentWallet(newWallet.publicKey, deadline)
+          .accounts({
+            owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
+            agentAccount: agentPda,
+            walletMetadata: walletMetadataPda,
+            asset: assetKeypair.publicKey,
+            instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          .preInstructions([ed25519Ix])
+          .rpc(),
+        "DeadlineTooFar"
+      );
+    });
+
+    it("setAgentWallet() fails without Ed25519 verify instruction", async () => {
+      const newWallet = Keypair.generate();
+      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const clock = await provider.connection.getSlot();
+      const blockTime = await provider.connection.getBlockTime(clock);
+      const deadline = new anchor.BN(blockTime! + 60);
+
+      // Call without Ed25519 instruction
+      await expectAnchorError(
+        program.methods
+          .setAgentWallet(newWallet.publicKey, deadline)
+          .accounts({
+            owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
+            agentAccount: agentPda,
+            walletMetadata: walletMetadataPda,
+            asset: assetKeypair.publicKey,
+            instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc(),
+        "MissingSignatureVerification"
+      );
+    });
+
+    it("setAgentWallet() fails with wrong signer (signature mismatch)", async () => {
+      const newWallet = Keypair.generate();
+      const wrongSigner = Keypair.generate();
+      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const clock = await provider.connection.getSlot();
+      const blockTime = await provider.connection.getBlockTime(clock);
+      const deadline = new anchor.BN(blockTime! + 60);
+
+      // Sign with wrong key (wrongSigner) but claim it's newWallet's signature
+      const message = buildWalletSetMessage(
+        agentId,
+        newWallet.publicKey,
+        provider.wallet.publicKey,
+        deadline
+      );
+      const signature = nacl.sign.detached(message, wrongSigner.secretKey);
+
+      // Create Ed25519 verify instruction with wrong signer's pubkey
+      // The Ed25519Program will validate the signature, but our instruction
+      // expects the signer to be newWallet, not wrongSigner
+      const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
+        publicKey: wrongSigner.publicKey.toBytes(),
+        message: message,
+        signature: signature,
+      });
+
+      // This fails with MissingSignatureVerification because the Ed25519 instruction
+      // verifies wrongSigner, but we're looking for newWallet's signature
+      await expectAnchorError(
+        program.methods
+          .setAgentWallet(newWallet.publicKey, deadline)
+          .accounts({
+            owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
+            agentAccount: agentPda,
+            walletMetadata: walletMetadataPda,
+            asset: assetKeypair.publicKey,
+            instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          .preInstructions([ed25519Ix])
+          .rpc(),
+        "MissingSignatureVerification"
+      );
+    });
+
+    it("setAgentWallet() fails if non-owner tries to set wallet", async () => {
+      const fakeOwner = Keypair.generate();
+      const newWallet = Keypair.generate();
+      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+
+      // Fund fakeOwner
+      const transferTx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: provider.wallet.publicKey,
+          toPubkey: fakeOwner.publicKey,
+          lamports: 50000000,
+        })
+      );
+      await provider.sendAndConfirm(transferTx);
+
+      const clock = await provider.connection.getSlot();
+      const blockTime = await provider.connection.getBlockTime(clock);
+      const deadline = new anchor.BN(blockTime! + 60);
+
+      const message = buildWalletSetMessage(
+        agentId,
+        newWallet.publicKey,
+        fakeOwner.publicKey, // Wrong owner in message
+        deadline
+      );
+      const signature = nacl.sign.detached(message, newWallet.secretKey);
+
+      const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
+        publicKey: newWallet.publicKey.toBytes(),
+        message: message,
+        signature: signature,
+      });
+
+      await expectAnchorError(
+        program.methods
+          .setAgentWallet(newWallet.publicKey, deadline)
+          .accounts({
+            owner: fakeOwner.publicKey,
+            payer: fakeOwner.publicKey,
+            agentAccount: agentPda,
+            walletMetadata: walletMetadataPda,
+            asset: assetKeypair.publicKey,
+            instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([fakeOwner])
+          .preInstructions([ed25519Ix])
+          .rpc(),
+        "Unauthorized"
+      );
+    });
+
+    it("setMetadataPda() blocks 'agentWallet' as reserved key", async () => {
+      const keyHash = computeKeyHash("agentWallet");
+      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const fakeWallet = Buffer.from(Keypair.generate().publicKey.toBytes());
+
+      await expectAnchorError(
+        program.methods
+          .setMetadataPda(Array.from(keyHash), "agentWallet", fakeWallet, false)
+          .accounts({
+            metadataEntry: metadataPda,
+            agentAccount: agentPda,
+            asset: assetKeypair.publicKey,
+            owner: provider.wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc(),
+        "ReservedMetadataKey"
+      );
+    });
+
+    it("transferAgent() resets wallet PDA (closes it)", async () => {
+      // Register a new agent for transfer test
+      const transferAsset = Keypair.generate();
+      const [transferAgentPda] = getAgentPda(transferAsset.publicKey, program.programId);
+      const transferWallet = Keypair.generate();
+      const newOwner = Keypair.generate();
+
+      // Fund newOwner
+      const fundTx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: provider.wallet.publicKey,
+          toPubkey: newOwner.publicKey,
+          lamports: 50000000,
+        })
+      );
+      await provider.sendAndConfirm(fundTx);
+
+      // Register agent
+      await program.methods
+        .register("https://example.com/agent/transfer-wallet-test")
+        .accounts({
+          config: configPda,
+          agentAccount: transferAgentPda,
+          asset: transferAsset.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([transferAsset])
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(transferAgentPda);
+      const transferAgentId = agent.agentId;
+      const [transferWalletPda] = getWalletMetadataPda(transferAgentId, program.programId);
+
+      // Set wallet
+      const clock = await provider.connection.getSlot();
+      const blockTime = await provider.connection.getBlockTime(clock);
+      const deadline = new anchor.BN(blockTime! + 60);
+
+      const message = buildWalletSetMessage(
+        transferAgentId,
+        transferWallet.publicKey,
+        provider.wallet.publicKey,
+        deadline
+      );
+      const signature = nacl.sign.detached(message, transferWallet.secretKey);
+
+      const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
+        publicKey: transferWallet.publicKey.toBytes(),
+        message: message,
+        signature: signature,
+      });
+
+      await program.methods
+        .setAgentWallet(transferWallet.publicKey, deadline)
+        .accounts({
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          agentAccount: transferAgentPda,
+          walletMetadata: transferWalletPda,
+          asset: transferAsset.publicKey,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          systemProgram: SystemProgram.programId,
+        })
+        .preInstructions([ed25519Ix])
+        .rpc();
+
+      // Verify wallet is set
+      let walletAccount = await provider.connection.getAccountInfo(transferWalletPda);
+      expect(walletAccount).to.not.be.null;
+
+      // Transfer agent (should close wallet PDA)
+      const tx = await program.methods
+        .transferAgent()
+        .accounts({
+          asset: transferAsset.publicKey,
+          agentAccount: transferAgentPda,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          newOwner: newOwner.publicKey,
+          walletMetadata: transferWalletPda,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .rpc();
+
+      console.log("TransferAgent (with wallet reset) tx:", tx);
+
+      // Verify wallet PDA is closed
+      walletAccount = await provider.connection.getAccountInfo(transferWalletPda);
+      expect(walletAccount).to.be.null;
+
+      // Verify agent is transferred
+      const updatedAgent = await program.account.agentAccount.fetch(transferAgentPda);
+      expect(updatedAgent.owner.toBase58()).to.equal(newOwner.publicKey.toBase58());
+    });
+
+    it("setAgentWallet() can update existing wallet", async () => {
+      const newWallet = Keypair.generate();
+      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const clock = await provider.connection.getSlot();
+      const blockTime = await provider.connection.getBlockTime(clock);
+      const deadline = new anchor.BN(blockTime! + 60);
+
+      // Sign with new wallet
+      const message = buildWalletSetMessage(
+        agentId,
+        newWallet.publicKey,
+        provider.wallet.publicKey,
+        deadline
+      );
+      const signature = nacl.sign.detached(message, newWallet.secretKey);
+
+      const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
+        publicKey: newWallet.publicKey.toBytes(),
+        message: message,
+        signature: signature,
+      });
+
+      const tx = await program.methods
+        .setAgentWallet(newWallet.publicKey, deadline)
+        .accounts({
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          agentAccount: agentPda,
+          walletMetadata: walletMetadataPda,
+          asset: assetKeypair.publicKey,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          systemProgram: SystemProgram.programId,
+        })
+        .preInstructions([ed25519Ix])
+        .rpc();
+
+      console.log("SetAgentWallet (update) tx:", tx);
+
+      // Verify wallet was updated
+      const metadata = await program.account.metadataEntryPda.fetch(walletMetadataPda);
+      const storedWallet = new PublicKey(metadata.metadataValue);
+      expect(storedWallet.toBase58()).to.equal(newWallet.publicKey.toBase58());
     });
   });
 });

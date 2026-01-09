@@ -19,6 +19,11 @@ export const MAX_METADATA_KEY_LENGTH = 32;
 export const MAX_METADATA_VALUE_LENGTH = 256;
 export const MAX_METADATA_ENTRIES = 1;
 
+// Agent wallet key hash: sha256("agentWallet")[0..8]
+export const AGENT_WALLET_KEY_HASH: Uint8Array = new Uint8Array([
+  0x95, 0x54, 0xff, 0xa5, 0xcd, 0xc8, 0x74, 0x7a,
+]);
+
 // ============================================================================
 // PDA Derivation Helpers
 // ============================================================================
@@ -184,6 +189,36 @@ export function getMetadataEntryPda(
     ],
     programId
   );
+}
+
+/**
+ * Derive wallet metadata PDA: ["agent_meta", agent_id (u64 LE), AGENT_WALLET_KEY_HASH]
+ * Used by setAgentWallet instruction
+ */
+export function getWalletMetadataPda(
+  agentId: anchor.BN,
+  programId: PublicKey
+): [PublicKey, number] {
+  return getMetadataEntryPda(agentId, AGENT_WALLET_KEY_HASH, programId);
+}
+
+/**
+ * Build the wallet set message for Ed25519 signature verification
+ * Format: "8004_WALLET_SET:" || agent_id (8 bytes LE) || new_wallet (32 bytes) || owner (32 bytes) || deadline (8 bytes LE)
+ */
+export function buildWalletSetMessage(
+  agentId: anchor.BN,
+  newWallet: PublicKey,
+  owner: PublicKey,
+  deadline: anchor.BN
+): Buffer {
+  return Buffer.concat([
+    Buffer.from("8004_WALLET_SET:"),
+    agentId.toArrayLike(Buffer, "le", 8),
+    newWallet.toBuffer(),
+    owner.toBuffer(),
+    deadline.toArrayLike(Buffer, "le", 8),
+  ]);
 }
 
 /**
