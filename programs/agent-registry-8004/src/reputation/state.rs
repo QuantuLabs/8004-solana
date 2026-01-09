@@ -18,10 +18,6 @@ pub struct FeedbackAccount {
     /// Score (0-100, validated on-chain)
     pub score: u8,
 
-    /// Feedback hash (SHA-256, 32 bytes) - renamed from file_hash per 8004 Jan 2026 spec
-    /// feedback_uri is stored in NewFeedback event only (v0.2.0 optimization)
-    pub feedback_hash: [u8; 32],
-
     /// Revocation status (preserves audit trail)
     pub is_revoked: bool,
 
@@ -79,10 +75,6 @@ pub struct ResponseAccount {
 
     /// Who responded (anyone can respond)
     pub responder: Pubkey,
-
-    /// Response hash (SHA-256, 32 bytes)
-    /// response_uri is stored in ResponseAppended event only (v0.2.0 optimization)
-    pub response_hash: [u8; 32],
 
     /// Creation timestamp
     pub created_at: i64,

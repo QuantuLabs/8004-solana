@@ -102,8 +102,6 @@ pub fn give_feedback(
     feedback.client_address = ctx.accounts.client.key();
     feedback.feedback_index = feedback_index;
     feedback.score = score;
-    // Tags removed from FeedbackAccount, use set_feedback_tags for on-chain tags
-    feedback.feedback_hash = feedback_hash;
     feedback.is_revoked = false;
     feedback.created_at = Clock::get()?.unix_timestamp;
     feedback.bump = ctx.bumps.feedback_account;
@@ -276,13 +274,11 @@ pub fn append_response(
         current_index
     };
 
-    // Initialize response account (v0.2.0 - no response_uri, stored in event only)
     let response = &mut ctx.accounts.response_account;
     response.agent_id = agent_id;
     response.feedback_index = feedback_index;
     response.response_index = response_index;
     response.responder = ctx.accounts.responder.key();
-    response.response_hash = response_hash;
     response.created_at = Clock::get()?.unix_timestamp;
     response.bump = ctx.bumps.response_account;
 
