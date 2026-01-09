@@ -229,6 +229,7 @@ pub struct OwnerOf<'info> {
 }
 
 /// Transfer agent with automatic owner sync
+/// Optionally closes wallet metadata PDA to reset agent wallet on transfer
 #[derive(Accounts)]
 pub struct TransferAgent<'info> {
     #[account(
@@ -251,7 +252,7 @@ pub struct TransferAgent<'info> {
     #[account(mut)]
     pub collection: UncheckedAccount<'info>,
 
-    /// Current owner (must sign)
+    /// Current owner (must sign, receives rent back from wallet PDA if closed)
     #[account(mut)]
     pub owner: Signer<'info>,
 
@@ -263,6 +264,17 @@ pub struct TransferAgent<'info> {
     /// CHECK: Verified by address constraint
     #[account(address = mpl_core::ID)]
     pub mpl_core_program: UncheckedAccount<'info>,
+
+    /// Optional wallet metadata PDA to close on transfer
+    /// If provided, it will be closed and rent returned to owner
+    /// Seeds: [b"agent_meta", agent_id, AGENT_WALLET_KEY_HASH]
+    #[account(
+        mut,
+        seeds = [b"agent_meta", agent_account.agent_id.to_le_bytes().as_ref(), AGENT_WALLET_KEY_HASH.as_ref()],
+        bump = wallet_metadata.bump,
+        close = owner
+    )]
+    pub wallet_metadata: Option<Account<'info, MetadataEntryPda>>,
 }
 
 /// Set agent wallet with Ed25519 signature verification

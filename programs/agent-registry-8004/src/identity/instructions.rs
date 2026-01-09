@@ -150,6 +150,7 @@ fn register_internal(
 /// Updates existing entry if not immutable.
 /// key_hash is first 8 bytes of SHA256(key) for PDA derivation.
 /// F-05: Validates key_hash matches SHA256(key) to prevent PDA manipulation
+/// Note: "agentWallet" is a reserved key - use set_agent_wallet instruction instead
 pub fn set_metadata_pda(
     ctx: Context<SetMetadataPda>,
     key_hash: [u8; 8],
@@ -157,6 +158,12 @@ pub fn set_metadata_pda(
     value: Vec<u8>,
     immutable: bool,
 ) -> Result<()> {
+    // Block reserved metadata key "agentWallet" - must use set_agent_wallet instruction
+    require!(
+        key != "agentWallet",
+        RegistryError::ReservedMetadataKey
+    );
+
     // F-05: Verify key_hash matches SHA256(key)[0..8]
     use anchor_lang::solana_program::hash::hash;
     let computed_hash = hash(key.as_bytes());
@@ -347,6 +354,7 @@ pub fn owner_of(ctx: Context<OwnerOf>) -> Result<Pubkey> {
 }
 
 /// Transfer agent with automatic owner sync
+/// If wallet_metadata PDA is provided, it will be closed (reset wallet on transfer)
 pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
     // Verify current ownership
     verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
@@ -359,6 +367,7 @@ pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
 
     let old_owner = ctx.accounts.owner.key();
     let new_owner = ctx.accounts.new_owner.key();
+    let agent_id = ctx.accounts.agent_account.agent_id;
 
     // Transfer Core asset
     TransferV1CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
@@ -373,8 +382,35 @@ pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
     let agent = &mut ctx.accounts.agent_account;
     agent.owner = new_owner;
 
+    // If wallet_metadata was provided, it's been closed by Anchor (close = owner)
+    // Emit WalletUpdated event to indicate wallet was reset
+    if ctx.accounts.wallet_metadata.is_some() {
+        // Get the old wallet from the PDA before it was closed
+        // Note: The PDA is closed after this instruction, but we can still read it here
+        let old_wallet = ctx.accounts.wallet_metadata.as_ref().and_then(|pda| {
+            if pda.metadata_value.len() == 32 {
+                Some(Pubkey::try_from(&pda.metadata_value[..]).unwrap())
+            } else {
+                None
+            }
+        });
+
+        emit!(WalletUpdated {
+            agent_id,
+            old_wallet,
+            new_wallet: Pubkey::default(), // Zero address = no wallet
+            updated_by: old_owner,
+        });
+
+        msg!(
+            "Agent {} wallet reset on transfer (PDA closed, rent returned to {})",
+            agent_id,
+            old_owner
+        );
+    }
+
     emit!(AgentOwnerSynced {
-        agent_id: agent.agent_id,
+        agent_id,
         old_owner,
         new_owner,
         asset: agent.asset,
@@ -382,7 +418,7 @@ pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
 
     msg!(
         "Agent {} transferred: {} -> {}",
-        agent.agent_id,
+        agent_id,
         old_owner,
         new_owner
     );
