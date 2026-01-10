@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v");
+declare_id!("GjNgGJCZYRwzHtXU2iqzTbtbtPKB8STMZCuzaEDhcNjk");
 
 pub mod error;
 pub mod identity;
@@ -27,26 +27,20 @@ pub mod agent_registry_8004 {
     use super::*;
 
     // ============================================================================
-    // Identity Instructions (Metaplex Core) - v0.2.0
+    // Identity Instructions (Metaplex Core) - Multi-Collection Architecture
     // ============================================================================
 
-    /// Initialize the registry and create Core collection
+    /// Initialize the registry with root config and first base registry
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         identity::instructions::initialize(ctx)
     }
 
-    /// Register a new agent with empty URI
-    pub fn register_empty(ctx: Context<Register>) -> Result<()> {
-        identity::instructions::register_empty(ctx)
-    }
-
-    /// Register a new agent with URI
+    /// Register agent in a specific registry (base or user)
     pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
         identity::instructions::register(ctx, agent_uri)
     }
 
-    /// Set agent metadata as individual PDA (v0.2.0)
-    /// key_hash is first 8 bytes of SHA256(key) for PDA derivation
+    /// Set agent metadata as individual PDA
     pub fn set_metadata_pda(
         ctx: Context<SetMetadataPda>,
         key_hash: [u8; 8],
@@ -57,12 +51,8 @@ pub mod agent_registry_8004 {
         identity::instructions::set_metadata_pda(ctx, key_hash, key, value, immutable)
     }
 
-    /// Delete agent metadata PDA and recover rent (v0.2.0)
-    /// Only works if metadata is not immutable
-    pub fn delete_metadata_pda(
-        ctx: Context<DeleteMetadataPda>,
-        key_hash: [u8; 8],
-    ) -> Result<()> {
+    /// Delete agent metadata PDA and recover rent
+    pub fn delete_metadata_pda(ctx: Context<DeleteMetadataPda>, key_hash: [u8; 8]) -> Result<()> {
         identity::instructions::delete_metadata_pda(ctx, key_hash)
     }
 
@@ -87,8 +77,6 @@ pub mod agent_registry_8004 {
     }
 
     /// Set agent wallet with Ed25519 signature verification
-    /// The wallet owner must sign a message off-chain to prove control
-    /// Transaction must include Ed25519Program verify instruction before this one
     pub fn set_agent_wallet(
         ctx: Context<SetAgentWallet>,
         new_wallet: Pubkey,
@@ -97,18 +85,7 @@ pub mod agent_registry_8004 {
         identity::instructions::set_agent_wallet(ctx, new_wallet, deadline)
     }
 
-    // ============================================================================
-    // Scalability Instructions (Multi-Collection Sharding)
-    // ============================================================================
-
-    /// Initialize root config and first base registry
-    /// Only upgrade authority can call this
-    pub fn initialize_root(ctx: Context<InitializeRoot>) -> Result<()> {
-        identity::instructions::initialize_root(ctx)
-    }
-
     /// Create a new base registry (authority only)
-    /// Does NOT automatically rotate - use rotate_base_registry
     pub fn create_base_registry(ctx: Context<CreateBaseRegistry>) -> Result<()> {
         identity::instructions::create_base_registry(ctx)
     }
@@ -119,7 +96,6 @@ pub mod agent_registry_8004 {
     }
 
     /// Create a user registry (anyone can create their own shard)
-    /// Program PDA is collection authority, user can update metadata
     pub fn create_user_registry(
         ctx: Context<CreateUserRegistry>,
         collection_name: String,
@@ -137,23 +113,13 @@ pub mod agent_registry_8004 {
         identity::instructions::update_user_registry_metadata(ctx, new_name, new_uri)
     }
 
-    /// Register agent in a specific registry (base or user)
-    pub fn register_agent_in_registry(
-        ctx: Context<RegisterAgentInRegistry>,
-        agent_uri: String,
-    ) -> Result<()> {
-        identity::instructions::register_agent_in_registry(ctx, agent_uri)
-    }
-
     // ============================================================================
     // Reputation Instructions
     // ============================================================================
 
     /// Give feedback to an agent
-    /// 8004 Jan 2026 spec: renamed file_uri -> feedback_uri, file_hash -> feedback_hash, added endpoint
     pub fn give_feedback(
         ctx: Context<GiveFeedback>,
-        agent_id: u64,
         score: u8,
         tag1: String,
         tag2: String,
@@ -164,7 +130,6 @@ pub mod agent_registry_8004 {
     ) -> Result<()> {
         reputation::instructions::give_feedback(
             ctx,
-            agent_id,
             score,
             tag1,
             tag2,
@@ -176,41 +141,28 @@ pub mod agent_registry_8004 {
     }
 
     /// Revoke feedback
-    pub fn revoke_feedback(
-        ctx: Context<RevokeFeedback>,
-        agent_id: u64,
-        feedback_index: u64,
-    ) -> Result<()> {
-        reputation::instructions::revoke_feedback(ctx, agent_id, feedback_index)
+    pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Result<()> {
+        reputation::instructions::revoke_feedback(ctx, feedback_index)
     }
 
     /// Append response to feedback
     pub fn append_response(
         ctx: Context<AppendResponse>,
-        agent_id: u64,
         feedback_index: u64,
         response_uri: String,
         response_hash: [u8; 32],
     ) -> Result<()> {
-        reputation::instructions::append_response(
-            ctx,
-            agent_id,
-            feedback_index,
-            response_uri,
-            response_hash,
-        )
+        reputation::instructions::append_response(ctx, feedback_index, response_uri, response_hash)
     }
 
     /// Set feedback tags (creates optional FeedbackTagsPda)
-    /// Only the original feedback author can set tags.
     pub fn set_feedback_tags(
         ctx: Context<SetFeedbackTags>,
-        agent_id: u64,
         feedback_index: u64,
         tag1: String,
         tag2: String,
     ) -> Result<()> {
-        reputation::instructions::set_feedback_tags(ctx, agent_id, feedback_index, tag1, tag2)
+        reputation::instructions::set_feedback_tags(ctx, feedback_index, tag1, tag2)
     }
 
     // ============================================================================
@@ -220,7 +172,6 @@ pub mod agent_registry_8004 {
     /// Request validation for an agent
     pub fn request_validation(
         ctx: Context<RequestValidation>,
-        agent_id: u64,
         validator_address: Pubkey,
         nonce: u32,
         request_uri: String,
@@ -228,7 +179,6 @@ pub mod agent_registry_8004 {
     ) -> Result<()> {
         validation::instructions::request_validation(
             ctx,
-            agent_id,
             validator_address,
             nonce,
             request_uri,
@@ -244,7 +194,13 @@ pub mod agent_registry_8004 {
         response_hash: [u8; 32],
         tag: String,
     ) -> Result<()> {
-        validation::instructions::respond_to_validation(ctx, response, response_uri, response_hash, tag)
+        validation::instructions::respond_to_validation(
+            ctx,
+            response,
+            response_uri,
+            response_hash,
+            tag,
+        )
     }
 
     /// Update an existing validation response

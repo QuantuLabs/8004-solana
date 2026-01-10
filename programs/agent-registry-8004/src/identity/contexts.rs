@@ -9,90 +9,7 @@ use crate::error::RegistryError;
 /// Computed as: sha256("agentWallet")[0..8] = 0x9554ffa5cdc8747a
 pub const AGENT_WALLET_KEY_HASH: [u8; 8] = [0x95, 0x54, 0xff, 0xa5, 0xcd, 0xc8, 0x74, 0x7a];
 
-/// Initialize the registry and create Core collection
-/// F-01: Only upgrade authority can initialize (prevents front-running)
-#[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(
-        init,
-        payer = authority,
-        space = RegistryConfig::DISCRIMINATOR.len() + RegistryConfig::INIT_SPACE,
-        seeds = [b"config"],
-        bump
-    )]
-    pub config: Account<'info, RegistryConfig>,
-
-    /// Metaplex Core collection (created by CPI)
-    /// CHECK: Created by Metaplex Core CPI
-    #[account(mut)]
-    pub collection: Signer<'info>,
-
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    /// Program data account for upgrade authority verification
-    /// F-01: Ensures only upgrade authority can initialize
-    #[account(
-        seeds = [crate::ID.as_ref()],
-        bump,
-        seeds::program = bpf_loader_upgradeable::ID,
-        constraint = program_data.upgrade_authority_address == Some(authority.key())
-            @ RegistryError::Unauthorized
-    )]
-    pub program_data: Account<'info, ProgramData>,
-
-    pub system_program: Program<'info, System>,
-
-    /// Metaplex Core program
-    /// CHECK: Verified by address constraint
-    #[account(address = mpl_core::ID)]
-    pub mpl_core_program: UncheckedAccount<'info>,
-}
-
-/// Register a new agent with Core asset
-#[derive(Accounts)]
-pub struct Register<'info> {
-    #[account(
-        mut,
-        seeds = [b"config"],
-        bump = config.bump
-    )]
-    pub config: Account<'info, RegistryConfig>,
-
-    #[account(
-        init,
-        payer = owner,
-        space = AgentAccount::DISCRIMINATOR.len() + AgentAccount::INIT_SPACE,
-        seeds = [b"agent", asset.key().as_ref()],
-        bump
-    )]
-    pub agent_account: Account<'info, AgentAccount>,
-
-    /// Metaplex Core asset (created by CPI)
-    /// CHECK: Created by Metaplex Core CPI
-    #[account(mut)]
-    pub asset: Signer<'info>,
-
-    /// Collection account (must match config)
-    /// CHECK: Verified via constraint and Core CPI
-    #[account(
-        mut,
-        constraint = collection.key() == config.collection @ RegistryError::InvalidCollection
-    )]
-    pub collection: UncheckedAccount<'info>,
-
-    #[account(mut)]
-    pub owner: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-
-    /// Metaplex Core program
-    /// CHECK: Verified by address constraint
-    #[account(address = mpl_core::ID)]
-    pub mpl_core_program: UncheckedAccount<'info>,
-}
-
-/// Set metadata as individual PDA (v0.2.0)
+/// Set metadata as individual PDA
 /// Creates new PDA if not exists, updates if exists and not immutable
 #[derive(Accounts)]
 #[instruction(key_hash: [u8; 8], key: String, value: Vec<u8>, immutable: bool)]
@@ -101,13 +18,13 @@ pub struct SetMetadataPda<'info> {
         init_if_needed,
         payer = owner,
         space = MetadataEntryPda::DISCRIMINATOR.len() + MetadataEntryPda::INIT_SPACE,
-        seeds = [b"agent_meta", agent_account.agent_id.to_le_bytes().as_ref(), key_hash.as_ref()],
+        seeds = [b"agent_meta", asset.key().as_ref(), key_hash.as_ref()],
         bump
     )]
     pub metadata_entry: Account<'info, MetadataEntryPda>,
 
     #[account(
-        seeds = [b"agent", agent_account.asset.as_ref()],
+        seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
     )]
     pub agent_account: Account<'info, AgentAccount>,
@@ -126,7 +43,7 @@ pub struct SetMetadataPda<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Delete metadata PDA and recover rent (v0.2.0)
+/// Delete metadata PDA and recover rent
 /// Only works if metadata is not immutable
 #[derive(Accounts)]
 #[instruction(key_hash: [u8; 8])]
@@ -134,13 +51,13 @@ pub struct DeleteMetadataPda<'info> {
     #[account(
         mut,
         close = owner,
-        seeds = [b"agent_meta", agent_account.agent_id.to_le_bytes().as_ref(), key_hash.as_ref()],
+        seeds = [b"agent_meta", asset.key().as_ref(), key_hash.as_ref()],
         bump = metadata_entry.bump
     )]
     pub metadata_entry: Account<'info, MetadataEntryPda>,
 
     #[account(
-        seeds = [b"agent", agent_account.asset.as_ref()],
+        seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
     )]
     pub agent_account: Account<'info, AgentAccount>,
@@ -159,12 +76,9 @@ pub struct DeleteMetadataPda<'info> {
 }
 
 /// Set agent URI (owner only)
-/// Updated for multi-collection architecture - uses registry_config seeds
-/// Supports both base registries and user registries
 #[derive(Accounts)]
 pub struct SetAgentUri<'info> {
     /// Registry config for this collection
-    /// Seeds: ["registry_config", collection.key()]
     #[account(
         seeds = [b"registry_config", collection.key().as_ref()],
         bump = registry_config.bump
@@ -173,7 +87,7 @@ pub struct SetAgentUri<'info> {
 
     #[account(
         mut,
-        seeds = [b"agent", agent_account.asset.as_ref()],
+        seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
     )]
     pub agent_account: Account<'info, AgentAccount>,
@@ -195,7 +109,6 @@ pub struct SetAgentUri<'info> {
     pub collection: UncheckedAccount<'info>,
 
     /// User collection authority PDA (required for user registries)
-    /// Seeds: ["user_collection_authority"]
     /// Optional: only needed when registry_type == User
     /// CHECK: Verified by seeds constraint when provided
     #[account(
@@ -220,7 +133,7 @@ pub struct SetAgentUri<'info> {
 pub struct SyncOwner<'info> {
     #[account(
         mut,
-        seeds = [b"agent", agent_account.asset.as_ref()],
+        seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump
     )]
     pub agent_account: Account<'info, AgentAccount>,
@@ -237,10 +150,14 @@ pub struct SyncOwner<'info> {
 #[derive(Accounts)]
 pub struct OwnerOf<'info> {
     #[account(
-        seeds = [b"agent", agent_account.asset.as_ref()],
+        seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump
     )]
     pub agent_account: Account<'info, AgentAccount>,
+
+    /// Core asset (for PDA derivation)
+    /// CHECK: Used for PDA derivation
+    pub asset: UncheckedAccount<'info>,
 }
 
 /// Transfer agent with automatic owner sync
@@ -249,7 +166,7 @@ pub struct OwnerOf<'info> {
 pub struct TransferAgent<'info> {
     #[account(
         mut,
-        seeds = [b"agent", agent_account.asset.as_ref()],
+        seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump
     )]
     pub agent_account: Account<'info, AgentAccount>,
@@ -282,10 +199,9 @@ pub struct TransferAgent<'info> {
 
     /// Optional wallet metadata PDA to close on transfer
     /// If provided, it will be closed and rent returned to owner
-    /// Seeds: [b"agent_meta", agent_id, AGENT_WALLET_KEY_HASH]
     #[account(
         mut,
-        seeds = [b"agent_meta", agent_account.agent_id.to_le_bytes().as_ref(), AGENT_WALLET_KEY_HASH.as_ref()],
+        seeds = [b"agent_meta", asset.key().as_ref(), AGENT_WALLET_KEY_HASH.as_ref()],
         bump = wallet_metadata.bump,
         close = owner
     )]
@@ -293,7 +209,6 @@ pub struct TransferAgent<'info> {
 }
 
 /// Set agent wallet with Ed25519 signature verification
-/// The wallet owner must sign a message off-chain to prove control
 /// Transaction must include Ed25519Program verify instruction before this one
 #[derive(Accounts)]
 #[instruction(new_wallet: Pubkey, deadline: i64)]
@@ -307,18 +222,17 @@ pub struct SetAgentWallet<'info> {
     pub payer: Signer<'info>,
 
     #[account(
-        seeds = [b"agent", agent_account.asset.as_ref()],
+        seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
     )]
     pub agent_account: Account<'info, AgentAccount>,
 
     /// MetadataEntryPda for reserved "agentWallet" key
-    /// Uses fixed AGENT_WALLET_KEY_HASH for PDA derivation
     #[account(
         init_if_needed,
         payer = payer,
         space = MetadataEntryPda::DISCRIMINATOR.len() + MetadataEntryPda::INIT_SPACE,
-        seeds = [b"agent_meta", agent_account.agent_id.to_le_bytes().as_ref(), AGENT_WALLET_KEY_HASH.as_ref()],
+        seeds = [b"agent_meta", asset.key().as_ref(), AGENT_WALLET_KEY_HASH.as_ref()],
         bump
     )]
     pub wallet_metadata: Account<'info, MetadataEntryPda>,
@@ -342,10 +256,10 @@ pub struct SetAgentWallet<'info> {
 // Scalability: Multi-Collection Sharding Contexts
 // ============================================================================
 
-/// Initialize the root config and first base registry
+/// Initialize the registry with root config and first base registry
 /// Only upgrade authority can call this (prevents front-running)
 #[derive(Accounts)]
-pub struct InitializeRoot<'info> {
+pub struct Initialize<'info> {
     /// Global root config pointing to current base registry
     #[account(
         init,
@@ -393,7 +307,6 @@ pub struct InitializeRoot<'info> {
 }
 
 /// Create a new base registry (authority only)
-/// Called when current base registry approaches collection max
 #[derive(Accounts)]
 pub struct CreateBaseRegistry<'info> {
     #[account(
@@ -431,7 +344,6 @@ pub struct CreateBaseRegistry<'info> {
 }
 
 /// Rotate to a new base registry (authority only)
-/// Updates RootConfig.current_base_registry
 #[derive(Accounts)]
 pub struct RotateBaseRegistry<'info> {
     #[account(
@@ -442,7 +354,7 @@ pub struct RotateBaseRegistry<'info> {
     )]
     pub root_config: Account<'info, RootConfig>,
 
-    /// New registry to rotate to (must be Base type, already created)
+    /// New registry to rotate to (must be Base type)
     #[account(
         constraint = new_registry.registry_type == RegistryType::Base @ RegistryError::InvalidRegistryType
     )]
@@ -452,8 +364,6 @@ pub struct RotateBaseRegistry<'info> {
 }
 
 /// Create a user registry (anyone can create their own shard)
-/// The program PDA is the collection authority (not the user)
-/// User can update collection metadata via update_user_registry_metadata
 #[derive(Accounts)]
 #[instruction(collection_name: String, collection_uri: String)]
 pub struct CreateUserRegistry<'info> {
@@ -493,7 +403,6 @@ pub struct CreateUserRegistry<'info> {
 }
 
 /// Update user registry collection metadata (owner only)
-/// Program PDA signs as collection authority
 #[derive(Accounts)]
 #[instruction(new_name: Option<String>, new_uri: Option<String>)]
 pub struct UpdateUserRegistryMetadata<'info> {
@@ -535,9 +444,8 @@ pub struct UpdateUserRegistryMetadata<'info> {
 /// Register agent in a specific registry (base or user)
 #[derive(Accounts)]
 #[instruction(agent_uri: String)]
-pub struct RegisterAgentInRegistry<'info> {
+pub struct Register<'info> {
     #[account(
-        mut,
         seeds = [b"registry_config", collection.key().as_ref()],
         bump = registry_config.bump
     )]
@@ -566,7 +474,6 @@ pub struct RegisterAgentInRegistry<'info> {
     pub collection: UncheckedAccount<'info>,
 
     /// Optional: PDA authority for user collections
-    /// Required for user registries, not needed for base registries
     /// CHECK: PDA verified by seeds when needed
     #[account(
         seeds = [b"user_collection_authority"],

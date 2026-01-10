@@ -37,8 +37,9 @@ pub struct RootConfig {
     pub bump: u8,
 }
 
-/// Per-collection registry configuration
+/// Per-collection registry configuration - Without counters (off-chain via indexer)
 /// Seeds: ["registry_config", collection.key()]
+/// EVM conformity: counters (total_agents, next_id) computed off-chain
 #[account]
 #[derive(InitSpace)]
 pub struct RegistryConfig {
@@ -51,12 +52,6 @@ pub struct RegistryConfig {
     /// Authority (protocol authority for Base, user for User)
     pub authority: Pubkey,
 
-    /// Next agent ID to assign (sequential counter, local to this registry)
-    pub next_agent_id: u64,
-
-    /// Total agents registered in this registry
-    pub total_agents: u64,
-
     /// Base registry index (0, 1, 2...) - only meaningful for Base type
     pub base_index: u32,
 
@@ -65,22 +60,17 @@ pub struct RegistryConfig {
 }
 
 /// Agent account (represents an AI agent identity)
-/// Metadata is now stored in separate MetadataEntryPda accounts (v0.2.0)
-/// Field order: static fields first for indexing optimization (v0.2.1)
+/// Seeds: [b"agent", asset.key()]
+/// EVM conformity: asset = unique identifier (no sequential agent_id)
+/// Keeps nft_name to avoid extra Metaplex RPC calls
 #[account]
 #[derive(InitSpace)]
 pub struct AgentAccount {
-    /// Sequential agent ID
-    pub agent_id: u64,
-
     /// Agent owner (cached from Core asset)
     pub owner: Pubkey,
 
-    /// Metaplex Core asset address
+    /// Metaplex Core asset address (unique identifier)
     pub asset: Pubkey,
-
-    /// Creation timestamp (static field - fixed offset for indexing)
-    pub created_at: i64,
 
     /// PDA bump seed (static field - fixed offset)
     pub bump: u8,
@@ -90,12 +80,9 @@ pub struct AgentAccount {
     pub agent_uri: String,
 
     /// NFT name (e.g., "Agent #123", max 32 bytes)
+    /// Kept to avoid extra RPC to Metaplex for display
     #[max_len(32)]
     pub nft_name: String,
-
-    /// NFT symbol (max 10 bytes)
-    #[max_len(10)]
-    pub nft_symbol: String,
 }
 
 impl AgentAccount {
@@ -103,22 +90,18 @@ impl AgentAccount {
     pub const MAX_URI_LENGTH: usize = 200;
 }
 
-/// Individual metadata entry stored as separate PDA (v0.2.0)
-/// Seeds: [b"agent_meta", agent_id.to_le_bytes(), key_hash[0..8]]
+/// Individual metadata entry stored as separate PDA
+/// Seeds: [b"agent_meta", asset.key(), key_hash[0..8]]
 ///
 /// This replaces Vec<MetadataEntry> in AgentAccount for:
 /// - Unlimited metadata entries per agent
 /// - Ability to delete entries and recover rent
 /// - Optional immutability for certification/audit use cases
-/// Field order: static fields first for indexing optimization (v0.2.1)
 #[account]
 #[derive(InitSpace)]
 pub struct MetadataEntryPda {
-    /// Agent ID this metadata belongs to
-    pub agent_id: u64,
-
-    /// Creation timestamp (static - fixed offset for common queries)
-    pub created_at: i64,
+    /// Asset this metadata belongs to (unique identifier)
+    pub asset: Pubkey,
 
     /// If true, this metadata cannot be modified or deleted (static - fixed offset)
     pub immutable: bool,

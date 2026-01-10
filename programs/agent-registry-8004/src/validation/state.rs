@@ -1,28 +1,14 @@
 use anchor_lang::prelude::*;
 
-/// Validation registry statistics (counters only, no authority needed)
-/// PDA seeds: [b"validation_config"]
-#[account]
-#[derive(InitSpace)]
-pub struct ValidationStats {
-    /// Total validation requests created
-    pub total_requests: u64,
-
-    /// Total validation responses recorded
-    pub total_responses: u64,
-
-    /// PDA bump seed
-    pub bump: u8,
-}
-
-/// Individual validation request (optimized for cost - minimal state)
+/// Individual validation request
+/// Seeds: [b"validation", asset.key(), validator_address, nonce]
+/// EVM conformity: struct ValidationStatus { hasResponse, lastUpdate, response, responseHash }
 /// URIs and tags are stored in events only (not on-chain)
-/// PDA seeds: [b"validation", agent_id, validator_address, nonce]
 #[account]
 #[derive(InitSpace)]
 pub struct ValidationRequest {
-    /// Agent ID from Identity Registry
-    pub agent_id: u64,
+    /// Asset (NFT address - unique identifier replacing agent_id)
+    pub asset: Pubkey,
 
     /// Validator address (who can respond)
     pub validator_address: Pubkey,
@@ -40,11 +26,11 @@ pub struct ValidationRequest {
     /// Current response value (0-100, 0 = pending/no response)
     pub response: u8,
 
-    /// Timestamp of request creation
-    pub created_at: i64,
+    /// Last update timestamp (EVM: lastUpdate)
+    pub last_update: i64,
 
-    /// Timestamp of last response (0 if no response yet)
-    pub responded_at: i64,
+    /// Has response flag (EVM: hasResponse)
+    pub has_response: bool,
 
     /// PDA bump seed
     pub bump: u8,
@@ -55,12 +41,12 @@ impl ValidationRequest {
     pub const MAX_URI_LENGTH: usize = 200;
 
     /// Check if validation has been responded to
-    pub fn has_response(&self) -> bool {
-        self.responded_at > 0
+    pub fn is_responded(&self) -> bool {
+        self.has_response
     }
 
     /// Check if response is pending
     pub fn is_pending(&self) -> bool {
-        self.responded_at == 0
+        !self.has_response
     }
 }

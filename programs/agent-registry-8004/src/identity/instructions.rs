@@ -20,136 +20,11 @@ const MAX_DEADLINE_WINDOW: i64 = 300;
 /// Message prefix for wallet set signature
 const WALLET_SET_MESSAGE_PREFIX: &[u8] = b"8004_WALLET_SET:";
 
-/// Initialize the identity registry
-///
-/// Creates the global RegistryConfig account and the Metaplex Core Collection.
-/// All agents will be created as part of this collection.
-/// The config PDA is set as collection update_authority for permissionless registration.
-pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-    let config = &mut ctx.accounts.config;
-
-    config.authority = ctx.accounts.authority.key();
-    config.next_agent_id = 0;
-    config.total_agents = 0;
-    config.collection = ctx.accounts.collection.key();
-    config.bump = ctx.bumps.config;
-
-    // Create Metaplex Core Collection with config PDA as update_authority
-    // This allows permissionless registration via invoke_signed
-    CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
-        .collection(&ctx.accounts.collection.to_account_info())
-        .payer(&ctx.accounts.authority.to_account_info())
-        .update_authority(Some(&config.to_account_info()))
-        .system_program(&ctx.accounts.system_program.to_account_info())
-        .name("8004 Agent Registry".to_string())
-        .uri(String::new())
-        .invoke_signed(&[&[b"config", &[ctx.bumps.config]]])?;
-
-    msg!(
-        "Identity Registry initialized with Core collection: {}",
-        config.collection
-    );
-    msg!(
-        "Collection update_authority set to config PDA for permissionless registration"
-    );
-
-    Ok(())
-}
-
-/// Register a new agent with empty URI
-pub fn register_empty(ctx: Context<Register>) -> Result<()> {
-    register_internal(ctx, String::new())
-}
-
-/// Register a new agent with URI
-pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
-    register_internal(ctx, agent_uri)
-}
-
-/// Internal registration logic (v0.2.0 - no inline metadata)
-#[doc(hidden)]
-fn register_internal(
-    ctx: Context<Register>,
-    agent_uri: String,
-) -> Result<()> {
-    // Validate token URI length
-    require!(
-        agent_uri.len() <= AgentAccount::MAX_URI_LENGTH,
-        RegistryError::UriTooLong
-    );
-
-    // Extract values before mutable borrow
-    let config_bump = ctx.accounts.config.bump;
-    let agent_id = ctx.accounts.config.next_agent_id;
-    let collection_key = ctx.accounts.config.collection;
-
-    // Config PDA seeds for signing
-    let config_seeds = &[b"config".as_ref(), &[config_bump]];
-    let signer_seeds = &[&config_seeds[..]];
-
-    // Create Metaplex Core asset in collection via helper (separate stack frame)
-    create_core_asset_cpi(
-        &ctx.accounts.mpl_core_program.to_account_info(),
-        &ctx.accounts.asset.to_account_info(),
-        &ctx.accounts.collection.to_account_info(),
-        &ctx.accounts.owner.to_account_info(),
-        &ctx.accounts.owner.to_account_info(),
-        &ctx.accounts.config.to_account_info(),
-        &ctx.accounts.system_program.to_account_info(),
-        format!("Agent #{}", agent_id),
-        if agent_uri.is_empty() { String::new() } else { agent_uri.clone() },
-        signer_seeds,
-    )?;
-
-    // Now update config (after CPI is done)
-    let config = &mut ctx.accounts.config;
-
-    // Increment counters with overflow protection
-    config.next_agent_id = config
-        .next_agent_id
-        .checked_add(1)
-        .ok_or(RegistryError::Overflow)?;
-
-    config.total_agents = config
-        .total_agents
-        .checked_add(1)
-        .ok_or(RegistryError::Overflow)?;
-
-    // Initialize agent account (v0.2.0 - no inline metadata)
-    let agent = &mut ctx.accounts.agent_account;
-    agent.agent_id = agent_id;
-    agent.owner = ctx.accounts.owner.key();
-    agent.asset = ctx.accounts.asset.key();
-    agent.agent_uri = agent_uri.clone();
-    agent.nft_name = format!("Agent #{}", agent_id);
-    agent.nft_symbol = String::new();
-    agent.created_at = Clock::get()?.unix_timestamp;
-    agent.bump = ctx.bumps.agent_account;
-
-    // Emit registration event
-    emit!(Registered {
-        agent_id,
-        agent_uri,
-        owner: ctx.accounts.owner.key(),
-        asset: ctx.accounts.asset.key(),
-    });
-
-    msg!(
-        "Agent {} registered with Core asset {} in collection {}",
-        agent_id,
-        agent.asset,
-        collection_key
-    );
-
-    Ok(())
-}
-
-/// Set metadata as individual PDA (v0.2.0)
+/// Set metadata as individual PDA
 ///
 /// Creates a new MetadataEntryPda if it doesn't exist.
 /// Updates existing entry if not immutable.
 /// key_hash is first 8 bytes of SHA256(key) for PDA derivation.
-/// F-05: Validates key_hash matches SHA256(key) to prevent PDA manipulation
 /// Note: "agentWallet" is a reserved key - use set_agent_wallet instruction instead
 pub fn set_metadata_pda(
     ctx: Context<SetMetadataPda>,
@@ -159,12 +34,9 @@ pub fn set_metadata_pda(
     immutable: bool,
 ) -> Result<()> {
     // Block reserved metadata key "agentWallet" - must use set_agent_wallet instruction
-    require!(
-        key != "agentWallet",
-        RegistryError::ReservedMetadataKey
-    );
+    require!(key != "agentWallet", RegistryError::ReservedMetadataKey);
 
-    // F-05: Verify key_hash matches SHA256(key)[0..8]
+    // Verify key_hash matches SHA256(key)[0..8]
     use anchor_lang::solana_program::hash::hash;
     let computed_hash = hash(key.as_bytes());
     let expected: [u8; 8] = computed_hash.to_bytes()[0..8]
@@ -188,11 +60,11 @@ pub fn set_metadata_pda(
     );
 
     let entry = &mut ctx.accounts.metadata_entry;
-    let agent_id = ctx.accounts.agent_account.agent_id;
+    let asset = ctx.accounts.asset.key();
 
-    // A-06: Check for key_hash collision (different keys with same hash)
-    // If entry exists, stored key must match provided key
-    if entry.created_at > 0 {
+    // Check for key_hash collision (different keys with same hash)
+    // If entry exists (has asset set), stored key must match provided key
+    if entry.asset != Pubkey::default() {
         require!(
             entry.metadata_key == key,
             RegistryError::KeyHashCollision
@@ -205,72 +77,56 @@ pub fn set_metadata_pda(
     }
 
     // Set or update entry
-    let is_new = entry.created_at == 0;
-    entry.agent_id = agent_id;
+    let is_new = entry.asset == Pubkey::default();
+    entry.asset = asset;
     entry.metadata_key = key.clone();
     entry.metadata_value = value.clone();
     entry.immutable = immutable;
     if is_new {
-        entry.created_at = Clock::get()?.unix_timestamp;
         entry.bump = ctx.bumps.metadata_entry;
     }
 
-    // Emit event (value truncated to 64 bytes to reduce stack usage)
+    // Emit event (value truncated to 64 bytes)
     let truncated_value = if value.len() > 64 {
         value[..64].to_vec()
     } else {
         value
     };
     emit!(MetadataSet {
-        agent_id,
+        asset,
         key: key.clone(),
         value: truncated_value,
         immutable,
     });
 
-    msg!(
-        "Metadata '{}' set for agent {} (immutable: {})",
-        key,
-        agent_id,
-        immutable
-    );
+    msg!("Metadata '{}' set for asset {} (immutable: {})", key, asset, immutable);
 
     Ok(())
 }
 
-/// Delete metadata PDA and recover rent (v0.2.0)
+/// Delete metadata PDA and recover rent
 ///
 /// Only works if metadata is not immutable.
-/// Rent is returned to the owner.
-pub fn delete_metadata_pda(
-    ctx: Context<DeleteMetadataPda>,
-    _key_hash: [u8; 8],
-) -> Result<()> {
+pub fn delete_metadata_pda(ctx: Context<DeleteMetadataPda>, _key_hash: [u8; 8]) -> Result<()> {
     // Verify ownership via Core asset
     verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
 
     let entry = &ctx.accounts.metadata_entry;
-    let agent_id = ctx.accounts.agent_account.agent_id;
+    let asset = ctx.accounts.asset.key();
     let key = entry.metadata_key.clone();
 
     // Check if immutable
     require!(!entry.immutable, RegistryError::MetadataImmutable);
 
     // Emit event before closing
-    emit!(MetadataDeleted {
-        agent_id,
-        key: key.clone(),
-    });
+    emit!(MetadataDeleted { asset, key: key.clone() });
 
-    msg!("Metadata '{}' deleted for agent {}, rent recovered", key, agent_id);
+    msg!("Metadata '{}' deleted for asset {}, rent recovered", key, asset);
 
-    // Account is closed automatically via close = owner constraint
     Ok(())
 }
 
 /// Set agent URI
-/// Updated for multi-collection architecture
-/// Supports both base registries and user registries
 pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
     // Verify ownership via Core asset
     verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
@@ -281,14 +137,12 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
         RegistryError::UriTooLong
     );
 
-    // Get agent_id before CPI to reduce stack usage during mpl-core call
-    let agent_id = ctx.accounts.agent_account.agent_id;
+    let asset = ctx.accounts.asset.key();
 
     // Determine authority based on registry type
     let is_user_registry = ctx.accounts.registry_config.registry_type == RegistryType::User;
 
     if is_user_registry {
-        // User registry: use user_collection_authority PDA
         let user_auth = ctx
             .accounts
             .user_collection_authority
@@ -309,7 +163,6 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
             signer_seeds,
         )?;
     } else {
-        // Base registry: use registry_config PDA as authority
         let collection_key = ctx.accounts.collection.key();
         let registry_bump = ctx.accounts.registry_config.bump;
         let signer_seeds: &[&[&[u8]]] = &[&[
@@ -330,21 +183,17 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
         )?;
     }
 
-    // CPI done, stack freed - now update AgentAccount
+    // Update AgentAccount
     let agent = &mut ctx.accounts.agent_account;
     agent.agent_uri = new_uri.clone();
 
-    // Emit event (move ownership, no clone needed)
     emit!(UriUpdated {
-        agent_id,
+        asset,
         new_uri,
         updated_by: ctx.accounts.owner.key(),
     });
 
-    msg!(
-        "Agent {} URI updated in AgentAccount and Core asset synced",
-        agent_id
-    );
+    msg!("Agent URI updated for asset {}", asset);
 
     Ok(())
 }
@@ -352,29 +201,19 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
 /// Sync agent owner from Core asset
 pub fn sync_owner(ctx: Context<SyncOwner>) -> Result<()> {
     let agent = &mut ctx.accounts.agent_account;
-
-    // Get current owner from Core asset
     let new_owner = get_core_owner(&ctx.accounts.asset)?;
-
     let old_owner = agent.owner;
+    let asset = agent.asset;
 
-    // Update cached owner
     agent.owner = new_owner;
 
-    // Emit event
     emit!(AgentOwnerSynced {
-        agent_id: agent.agent_id,
+        asset,
         old_owner,
         new_owner,
-        asset: agent.asset,
     });
 
-    msg!(
-        "Agent {} owner synced: {} -> {}",
-        agent.agent_id,
-        old_owner,
-        new_owner
-    );
+    msg!("Agent owner synced for asset {}: {} -> {}", asset, old_owner, new_owner);
 
     Ok(())
 }
@@ -385,7 +224,6 @@ pub fn owner_of(ctx: Context<OwnerOf>) -> Result<Pubkey> {
 }
 
 /// Transfer agent with automatic owner sync
-/// If wallet_metadata PDA is provided, it will be closed (reset wallet on transfer)
 pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
     // Verify current ownership
     verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
@@ -398,7 +236,7 @@ pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
 
     let old_owner = ctx.accounts.owner.key();
     let new_owner = ctx.accounts.new_owner.key();
-    let agent_id = ctx.accounts.agent_account.agent_id;
+    let asset = ctx.accounts.agent_account.asset;
 
     // Transfer Core asset
     TransferV1CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
@@ -413,11 +251,8 @@ pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
     let agent = &mut ctx.accounts.agent_account;
     agent.owner = new_owner;
 
-    // If wallet_metadata was provided, it's been closed by Anchor (close = owner)
-    // Emit WalletUpdated event to indicate wallet was reset
+    // If wallet_metadata was provided, emit event
     if ctx.accounts.wallet_metadata.is_some() {
-        // Get the old wallet from the PDA before it was closed
-        // Note: The PDA is closed after this instruction, but we can still read it here
         let old_wallet = ctx.accounts.wallet_metadata.as_ref().and_then(|pda| {
             if pda.metadata_value.len() == 32 {
                 Some(Pubkey::try_from(&pda.metadata_value[..]).unwrap())
@@ -427,49 +262,36 @@ pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
         });
 
         emit!(WalletUpdated {
-            agent_id,
+            asset,
             old_wallet,
-            new_wallet: Pubkey::default(), // Zero address = no wallet
+            new_wallet: Pubkey::default(),
             updated_by: old_owner,
         });
 
-        msg!(
-            "Agent {} wallet reset on transfer (PDA closed, rent returned to {})",
-            agent_id,
-            old_owner
-        );
+        msg!("Agent wallet reset on transfer (PDA closed, rent returned to {})", old_owner);
     }
 
     emit!(AgentOwnerSynced {
-        agent_id,
+        asset,
         old_owner,
         new_owner,
-        asset: agent.asset,
     });
 
-    msg!(
-        "Agent {} transferred: {} -> {}",
-        agent_id,
-        old_owner,
-        new_owner
-    );
+    msg!("Agent transferred: {} -> {}", old_owner, new_owner);
 
     Ok(())
 }
 
 /// Set agent wallet with Ed25519 signature verification
 ///
-/// The wallet owner must sign a message off-chain proving they control the wallet.
-/// This transaction must include an Ed25519Program verify instruction before this one.
-///
-/// Message format: "8004_WALLET_SET:" || agent_id (8 bytes LE) || new_wallet (32 bytes) || owner (32 bytes) || deadline (8 bytes LE)
+/// Message format: "8004_WALLET_SET:" || asset (32 bytes) || new_wallet (32 bytes) || owner (32 bytes) || deadline (8 bytes LE)
 pub fn set_agent_wallet(
     ctx: Context<SetAgentWallet>,
     new_wallet: Pubkey,
     deadline: i64,
 ) -> Result<()> {
     let clock = Clock::get()?;
-    let agent = &ctx.accounts.agent_account;
+    let asset = ctx.accounts.asset.key();
 
     // 1. Verify caller is Core asset owner
     verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
@@ -480,19 +302,15 @@ pub fn set_agent_wallet(
         RegistryError::DeadlineExpired
     );
 
-    // 3. Verify deadline is not too far in the future (max 5 minutes)
+    // 3. Verify deadline is not too far in the future
     require!(
         deadline <= clock.unix_timestamp + MAX_DEADLINE_WINDOW,
         RegistryError::DeadlineTooFar
     );
 
     // 4. Build expected message and verify Ed25519 signature
-    let expected_message = build_wallet_set_message(
-        agent.agent_id,
-        new_wallet,
-        ctx.accounts.owner.key(),
-        deadline,
-    );
+    let expected_message =
+        build_wallet_set_message(asset, new_wallet, ctx.accounts.owner.key(), deadline);
     verify_ed25519_signature(
         &ctx.accounts.instructions_sysvar,
         new_wallet,
@@ -507,30 +325,23 @@ pub fn set_agent_wallet(
         None
     };
 
-    // Initialize or update the PDA
-    let is_new = wallet_pda.created_at == 0;
-    wallet_pda.agent_id = agent.agent_id;
+    let is_new = wallet_pda.asset == Pubkey::default();
+    wallet_pda.asset = asset;
     wallet_pda.metadata_key = "agentWallet".to_string();
     wallet_pda.metadata_value = new_wallet.to_bytes().to_vec();
-    wallet_pda.immutable = false; // Wallet can be updated via this instruction
+    wallet_pda.immutable = false;
     if is_new {
-        wallet_pda.created_at = clock.unix_timestamp;
         wallet_pda.bump = ctx.bumps.wallet_metadata;
     }
 
-    // 6. Emit event
     emit!(WalletUpdated {
-        agent_id: agent.agent_id,
+        asset,
         old_wallet,
         new_wallet,
         updated_by: ctx.accounts.owner.key(),
     });
 
-    msg!(
-        "Agent {} wallet set to {} (verified via Ed25519 signature)",
-        agent.agent_id,
-        new_wallet
-    );
+    msg!("Agent wallet set to {} (verified via Ed25519 signature)", new_wallet);
 
     Ok(())
 }
@@ -540,16 +351,15 @@ pub fn set_agent_wallet(
 // ============================================================================
 
 /// Build the message that wallet owner must sign for set_agent_wallet
-/// Format: "8004_WALLET_SET:" || agent_id (8 bytes LE) || new_wallet (32 bytes) || owner (32 bytes) || deadline (8 bytes LE)
 fn build_wallet_set_message(
-    agent_id: u64,
+    asset: Pubkey,
     new_wallet: Pubkey,
     owner: Pubkey,
     deadline: i64,
 ) -> Vec<u8> {
-    let mut message = Vec::with_capacity(WALLET_SET_MESSAGE_PREFIX.len() + 8 + 32 + 32 + 8);
+    let mut message = Vec::with_capacity(WALLET_SET_MESSAGE_PREFIX.len() + 32 + 32 + 32 + 8);
     message.extend_from_slice(WALLET_SET_MESSAGE_PREFIX);
-    message.extend_from_slice(&agent_id.to_le_bytes());
+    message.extend_from_slice(asset.as_ref());
     message.extend_from_slice(new_wallet.as_ref());
     message.extend_from_slice(owner.as_ref());
     message.extend_from_slice(&deadline.to_le_bytes());
@@ -557,9 +367,6 @@ fn build_wallet_set_message(
 }
 
 /// Verify Ed25519 signature via sysvar introspection
-///
-/// Checks that an Ed25519Program instruction exists before the current instruction
-/// and that it verifies a signature from expected_signer on expected_message.
 fn verify_ed25519_signature(
     instructions_sysvar: &AccountInfo,
     expected_signer: Pubkey,
@@ -568,16 +375,11 @@ fn verify_ed25519_signature(
     let current_idx = load_current_index_checked(instructions_sysvar)
         .map_err(|_| RegistryError::MissingSignatureVerification)?;
 
-    // Look for Ed25519Program instruction before current
     for idx in 0..current_idx {
         let ix = load_instruction_at_checked(idx as usize, instructions_sysvar)
             .map_err(|_| RegistryError::MissingSignatureVerification)?;
 
         if ix.program_id == ed25519_program::ID {
-            // Parse Ed25519 instruction data
-            // Format: num_signatures (1) + padding (1) + signature_offset (2) + signature_instruction_index (2) +
-            //         public_key_offset (2) + public_key_instruction_index (2) + message_data_offset (2) +
-            //         message_data_size (2) + message_instruction_index (2) + [signature (64)] + [pubkey (32)] + [message]
             if ix.data.len() < 16 {
                 continue;
             }
@@ -587,13 +389,11 @@ fn verify_ed25519_signature(
                 continue;
             }
 
-            // Extract offsets (little-endian u16)
             let signature_offset = u16::from_le_bytes([ix.data[2], ix.data[3]]) as usize;
             let pubkey_offset = u16::from_le_bytes([ix.data[6], ix.data[7]]) as usize;
             let message_offset = u16::from_le_bytes([ix.data[10], ix.data[11]]) as usize;
             let message_size = u16::from_le_bytes([ix.data[12], ix.data[13]]) as usize;
 
-            // Validate bounds
             if pubkey_offset + 32 > ix.data.len()
                 || message_offset + message_size > ix.data.len()
                 || signature_offset + 64 > ix.data.len()
@@ -601,7 +401,6 @@ fn verify_ed25519_signature(
                 continue;
             }
 
-            // Extract and verify public key
             let pubkey_bytes: [u8; 32] = ix.data[pubkey_offset..pubkey_offset + 32]
                 .try_into()
                 .unwrap();
@@ -611,14 +410,12 @@ fn verify_ed25519_signature(
                 continue;
             }
 
-            // Extract and verify message
             let message = &ix.data[message_offset..message_offset + message_size];
 
             if message != expected_message {
                 continue;
             }
 
-            // Ed25519Program verifies the signature, we just checked the params match
             return Ok(());
         }
     }
@@ -626,11 +423,7 @@ fn verify_ed25519_signature(
     Err(RegistryError::MissingSignatureVerification.into())
 }
 
-/// Create Core asset via CPI in separate stack frame
-///
-/// Using #[inline(never)] to force a separate stack frame for mpl-core CPI.
-/// Note: mpl-core v0.11.1 has an internal stack overflow warning in
-/// registry_records_to_plugin_list - this is in the library, not our code.
+/// Create Core asset via CPI
 #[inline(never)]
 fn create_core_asset_cpi<'info>(
     mpl_core_program: &AccountInfo<'info>,
@@ -657,7 +450,7 @@ fn create_core_asset_cpi<'info>(
     Ok(())
 }
 
-/// Update Core asset URI via CPI in separate stack frame
+/// Update Core asset URI via CPI
 #[inline(never)]
 fn update_core_asset_uri_cpi<'info>(
     mpl_core_program: &AccountInfo<'info>,
@@ -683,26 +476,16 @@ fn update_core_asset_uri_cpi<'info>(
 /// Verify that the signer owns the Core asset
 fn verify_core_owner(asset_info: &AccountInfo, expected_owner: &Pubkey) -> Result<()> {
     let actual_owner = get_core_owner(asset_info)?;
-    require!(
-        actual_owner == *expected_owner,
-        RegistryError::Unauthorized
-    );
+    require!(actual_owner == *expected_owner, RegistryError::Unauthorized);
     Ok(())
 }
 
 /// Get owner from Core asset account data
-/// Uses official mpl-core deserialization (no manual byte parsing)
 fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
-    // F-06: Verify this is actually a Metaplex Core asset
-    require!(
-        *asset_info.owner == mpl_core::ID,
-        RegistryError::InvalidAsset
-    );
+    require!(*asset_info.owner == mpl_core::ID, RegistryError::InvalidAsset);
 
-    // Use official mpl-core deserialization
     let data = asset_info.try_borrow_data()?;
-    let asset = BaseAssetV1::from_bytes(&data)
-        .map_err(|_| RegistryError::InvalidAsset)?;
+    let asset = BaseAssetV1::from_bytes(&data).map_err(|_| RegistryError::InvalidAsset)?;
 
     Ok(asset.owner)
 }
@@ -711,12 +494,8 @@ fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
 // Scalability: Multi-Collection Sharding Instructions
 // ============================================================================
 
-/// Initialize the root config and first base registry
-///
-/// Creates RootConfig (global pointer) and first RegistryConfig (base #0).
-/// Sets up the first Metaplex Core collection for agent registration.
-/// Only upgrade authority can call this (prevents front-running).
-pub fn initialize_root(ctx: Context<InitializeRoot>) -> Result<()> {
+/// Initialize the registry with root config and first base registry
+pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
     let root = &mut ctx.accounts.root_config;
     let registry = &mut ctx.accounts.registry_config;
 
@@ -729,19 +508,17 @@ pub fn initialize_root(ctx: Context<InitializeRoot>) -> Result<()> {
     registry.collection = ctx.accounts.collection.key();
     registry.registry_type = RegistryType::Base;
     registry.authority = ctx.accounts.authority.key();
-    registry.next_agent_id = 0;
-    registry.total_agents = 0;
     registry.base_index = 0;
     registry.bump = ctx.bumps.registry_config;
 
-    // Set current_base_registry to this registry's PDA
+    // Set current_base_registry
     let (registry_pda, _) = Pubkey::find_program_address(
         &[b"registry_config", ctx.accounts.collection.key().as_ref()],
         &crate::ID,
     );
     root.current_base_registry = registry_pda;
 
-    // Create Metaplex Core Collection with registry config PDA as update_authority
+    // Create Metaplex Core Collection
     CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
         .collection(&ctx.accounts.collection.to_account_info())
         .payer(&ctx.accounts.authority.to_account_info())
@@ -762,18 +539,12 @@ pub fn initialize_root(ctx: Context<InitializeRoot>) -> Result<()> {
         created_by: ctx.accounts.authority.key(),
     });
 
-    msg!(
-        "Root config initialized with base registry #0: {}",
-        registry_pda
-    );
+    msg!("Root config initialized with base registry #0: {}", registry_pda);
 
     Ok(())
 }
 
 /// Create a new base registry (authority only)
-///
-/// Creates a new Metaplex Core collection and RegistryConfig.
-/// Does NOT automatically rotate - use rotate_base_registry for that.
 pub fn create_base_registry(ctx: Context<CreateBaseRegistry>) -> Result<()> {
     let root = &mut ctx.accounts.root_config;
     let registry = &mut ctx.accounts.registry_config;
@@ -784,8 +555,6 @@ pub fn create_base_registry(ctx: Context<CreateBaseRegistry>) -> Result<()> {
     registry.collection = ctx.accounts.collection.key();
     registry.registry_type = RegistryType::Base;
     registry.authority = ctx.accounts.authority.key();
-    registry.next_agent_id = 0;
-    registry.total_agents = 0;
     registry.base_index = new_base_index;
     registry.bump = ctx.bumps.registry_config;
 
@@ -795,7 +564,7 @@ pub fn create_base_registry(ctx: Context<CreateBaseRegistry>) -> Result<()> {
         .checked_add(1)
         .ok_or(RegistryError::Overflow)?;
 
-    // Create Metaplex Core Collection with registry config PDA as update_authority
+    // Create Metaplex Core Collection
     CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
         .collection(&ctx.accounts.collection.to_account_info())
         .payer(&ctx.accounts.authority.to_account_info())
@@ -821,19 +590,12 @@ pub fn create_base_registry(ctx: Context<CreateBaseRegistry>) -> Result<()> {
         created_by: ctx.accounts.authority.key(),
     });
 
-    msg!(
-        "Base registry #{} created: {}",
-        new_base_index,
-        registry_pda
-    );
+    msg!("Base registry #{} created: {}", new_base_index, registry_pda);
 
     Ok(())
 }
 
 /// Rotate to a new base registry (authority only)
-///
-/// Updates RootConfig.current_base_registry to point to a new registry.
-/// The new registry must already exist and be of type Base.
 pub fn rotate_base_registry(ctx: Context<RotateBaseRegistry>) -> Result<()> {
     let root = &mut ctx.accounts.root_config;
 
@@ -854,11 +616,7 @@ pub fn rotate_base_registry(ctx: Context<RotateBaseRegistry>) -> Result<()> {
         rotated_by: ctx.accounts.authority.key(),
     });
 
-    msg!(
-        "Base registry rotated: {} -> {}",
-        old_registry,
-        new_registry_pda
-    );
+    msg!("Base registry rotated: {} -> {}", old_registry, new_registry_pda);
 
     Ok(())
 }
@@ -867,29 +625,20 @@ pub fn rotate_base_registry(ctx: Context<RotateBaseRegistry>) -> Result<()> {
 // User Registry Instructions
 // ============================================================================
 
-/// Maximum collection name length
 const MAX_COLLECTION_NAME_LENGTH: usize = 32;
-
-/// Maximum collection URI length
 const MAX_COLLECTION_URI_LENGTH: usize = 200;
 
 /// Create a user registry (anyone can create their own shard)
-///
-/// The program PDA is the collection authority, not the user.
-/// This prevents users from directly modifying/deleting assets.
-/// Users can update collection metadata via update_user_registry_metadata.
 pub fn create_user_registry(
     ctx: Context<CreateUserRegistry>,
     collection_name: String,
     collection_uri: String,
 ) -> Result<()> {
-    // Validate collection name length
     require!(
         collection_name.len() <= MAX_COLLECTION_NAME_LENGTH,
         RegistryError::CollectionNameTooLong
     );
 
-    // Validate collection URI length
     require!(
         collection_uri.len() <= MAX_COLLECTION_URI_LENGTH,
         RegistryError::CollectionUriTooLong
@@ -897,17 +646,12 @@ pub fn create_user_registry(
 
     let registry = &mut ctx.accounts.registry_config;
 
-    // Initialize user registry config
     registry.collection = ctx.accounts.collection.key();
     registry.registry_type = RegistryType::User;
-    registry.authority = ctx.accounts.owner.key(); // User is registry owner
-    registry.next_agent_id = 0;
-    registry.total_agents = 0;
-    registry.base_index = 0; // Not used for user registries
+    registry.authority = ctx.accounts.owner.key();
+    registry.base_index = 0;
     registry.bump = ctx.bumps.registry_config;
 
-    // Create Metaplex Core Collection with program PDA as authority
-    // This prevents users from directly modifying the collection
     CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
         .collection(&ctx.accounts.collection.to_account_info())
         .payer(&ctx.accounts.owner.to_account_info())
@@ -931,25 +675,17 @@ pub fn create_user_registry(
         owner: ctx.accounts.owner.key(),
     });
 
-    msg!(
-        "User registry created: {} by {}",
-        registry_pda,
-        ctx.accounts.owner.key()
-    );
+    msg!("User registry created: {} by {}", registry_pda, ctx.accounts.owner.key());
 
     Ok(())
 }
 
 /// Update user registry collection metadata (owner only)
-///
-/// Allows the registry owner to update collection name and/or URI.
-/// Program PDA signs as collection authority.
 pub fn update_user_registry_metadata(
     ctx: Context<UpdateUserRegistryMetadata>,
     new_name: Option<String>,
     new_uri: Option<String>,
 ) -> Result<()> {
-    // Validate new name length if provided
     if let Some(ref name) = new_name {
         require!(
             name.len() <= MAX_COLLECTION_NAME_LENGTH,
@@ -957,7 +693,6 @@ pub fn update_user_registry_metadata(
         );
     }
 
-    // Validate new URI length if provided
     if let Some(ref uri) = new_uri {
         require!(
             uri.len() <= MAX_COLLECTION_URI_LENGTH,
@@ -965,8 +700,6 @@ pub fn update_user_registry_metadata(
         );
     }
 
-    // Update collection via Metaplex Core (use UpdateCollectionV1, not UpdateV1)
-    // Use let bindings to extend lifetimes of AccountInfo temporaries
     let mpl_core_info = ctx.accounts.mpl_core_program.to_account_info();
     let collection_info = ctx.accounts.collection.to_account_info();
     let owner_info = ctx.accounts.owner.to_account_info();
@@ -1002,28 +735,18 @@ pub fn update_user_registry_metadata(
 }
 
 /// Register agent in a specific registry (base or user)
-///
-/// For base registries: registry_config PDA is the collection authority
-/// For user registries: user_collection_authority PDA is the collection authority
-pub fn register_agent_in_registry(
-    ctx: Context<RegisterAgentInRegistry>,
-    agent_uri: String,
-) -> Result<()> {
-    // Validate URI length
+pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
     require!(
         agent_uri.len() <= AgentAccount::MAX_URI_LENGTH,
         RegistryError::UriTooLong
     );
 
-    let registry = &mut ctx.accounts.registry_config;
-    let agent_id = registry.next_agent_id;
-
-    // Determine which authority to use based on registry type
+    let registry = &ctx.accounts.registry_config;
     let is_user_registry = registry.registry_type == RegistryType::User;
+    let asset = ctx.accounts.asset.key();
 
     // Create Core asset with appropriate authority
     if is_user_registry {
-        // User registry: use user_collection_authority PDA
         let user_auth = ctx
             .accounts
             .user_collection_authority
@@ -1038,7 +761,7 @@ pub fn register_agent_in_registry(
             &ctx.accounts.owner.to_account_info(),
             &user_auth.to_account_info(),
             &ctx.accounts.system_program.to_account_info(),
-            format!("Agent #{}", agent_id),
+            format!("Agent"),
             if agent_uri.is_empty() {
                 String::new()
             } else {
@@ -1050,7 +773,6 @@ pub fn register_agent_in_registry(
             ]],
         )?;
     } else {
-        // Base registry: use registry_config PDA as authority
         create_core_asset_cpi(
             &ctx.accounts.mpl_core_program.to_account_info(),
             &ctx.accounts.asset.to_account_info(),
@@ -1059,7 +781,7 @@ pub fn register_agent_in_registry(
             &ctx.accounts.owner.to_account_info(),
             &registry.to_account_info(),
             &ctx.accounts.system_program.to_account_info(),
-            format!("Agent #{}", agent_id),
+            format!("Agent"),
             if agent_uri.is_empty() {
                 String::new()
             } else {
@@ -1073,26 +795,12 @@ pub fn register_agent_in_registry(
         )?;
     }
 
-    // Increment counters
-    registry.next_agent_id = registry
-        .next_agent_id
-        .checked_add(1)
-        .ok_or(RegistryError::Overflow)?;
-
-    registry.total_agents = registry
-        .total_agents
-        .checked_add(1)
-        .ok_or(RegistryError::Overflow)?;
-
     // Initialize agent account
     let agent = &mut ctx.accounts.agent_account;
-    agent.agent_id = agent_id;
     agent.owner = ctx.accounts.owner.key();
-    agent.asset = ctx.accounts.asset.key();
+    agent.asset = asset;
     agent.agent_uri = agent_uri;
-    agent.nft_name = format!("Agent #{}", agent_id);
-    agent.nft_symbol = String::new();
-    agent.created_at = Clock::get()?.unix_timestamp;
+    agent.nft_name = "Agent".to_string();
     agent.bump = ctx.bumps.agent_account;
 
     let (registry_pda, _) = Pubkey::find_program_address(
@@ -1101,16 +809,14 @@ pub fn register_agent_in_registry(
     );
 
     emit!(AgentRegisteredInRegistry {
-        asset: ctx.accounts.asset.key(),
+        asset,
         registry: registry_pda,
         collection: ctx.accounts.collection.key(),
-        local_agent_id: agent_id,
         owner: ctx.accounts.owner.key(),
     });
 
     msg!(
-        "Agent {} registered in registry {} (collection {})",
-        agent_id,
+        "Agent registered in registry {} (collection {})",
         registry_pda,
         ctx.accounts.collection.key()
     );
