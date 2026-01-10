@@ -2,12 +2,24 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program, BN } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
 import { expect } from "chai";
-import { Keypair, PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+
+import {
+  MPL_CORE_PROGRAM_ID,
+  getRootConfigPda,
+  getAgentPda,
+  getAgentReputationPda,
+  getFeedbackPda,
+  getValidationRequestPda,
+  randomHash,
+  uniqueNonce,
+} from "./utils/helpers";
 
 /**
- * Anti-Gaming Security Tests
+ * Anti-Gaming Security Tests v0.3.0
  *
  * Tests the self-feedback and self-validation prevention mechanisms.
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id as identifier
  */
 describe("Anti-Gaming Security", () => {
   const provider = anchor.AnchorProvider.env();
@@ -15,143 +27,98 @@ describe("Anti-Gaming Security", () => {
 
   const program = anchor.workspace.AgentRegistry8004 as Program<AgentRegistry8004>;
 
-  const MPL_CORE_ID = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
-
-  // PDAs
-  let userCollectionAuthorityPda: PublicKey;
+  let rootConfigPda: PublicKey;
+  let registryConfigPda: PublicKey;
+  let collectionPubkey: PublicKey;
 
   // Test wallets
-  let agentOwner: Keypair;
   let otherUser: Keypair;
 
   // Test data
-  let testCollection: Keypair;
-  let testRegistryPda: PublicKey;
   let testAgentAsset: Keypair;
   let testAgentPda: PublicKey;
+  let testAgentReputationPda: PublicKey;
 
   before(async () => {
-    console.log("\n📋 Anti-Gaming Test Setup");
+    console.log("\n📋 Anti-Gaming Test Setup (v0.3.0)");
     console.log(`   Program ID: ${program.programId.toString()}`);
 
-    // Derive PDA
-    [userCollectionAuthorityPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("user_collection_authority")],
-      program.programId
-    );
+    // Get root config
+    [rootConfigPda] = getRootConfigPda(program.programId);
+    const rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
+    const rootConfig = program.coder.accounts.decode("rootConfig", rootAccountInfo!.data);
 
-    // Create test wallets
-    agentOwner = provider.wallet.payer as Keypair;
+    registryConfigPda = rootConfig.currentBaseRegistry;
+    const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
+    const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo!.data);
+    collectionPubkey = registryConfig.collection;
 
-    // Generate other user - we'll use provider as payer for their txs
+    // Generate other user for non-owner operations
     otherUser = Keypair.generate();
-
-    console.log(`   Agent Owner: ${agentOwner.publicKey.toString().slice(0, 16)}...`);
+    console.log(`   Agent Owner: ${provider.wallet.publicKey.toString().slice(0, 16)}...`);
     console.log(`   Other User: ${otherUser.publicKey.toString().slice(0, 16)}...`);
 
-    // Create a user registry and agent for testing
-    testCollection = Keypair.generate();
-    [testRegistryPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("registry_config"), testCollection.publicKey.toBuffer()],
-      program.programId
-    );
-
-    await program.methods
-      .createUserRegistry("Anti-Gaming Test Registry", "https://test.com")
-      .accounts({
-        collectionAuthority: userCollectionAuthorityPda,
-        registryConfig: testRegistryPda,
-        collection: testCollection.publicKey,
-        owner: agentOwner.publicKey,
-        systemProgram: SystemProgram.programId,
-        mplCoreProgram: MPL_CORE_ID,
-      })
-      .signers([testCollection])
-      .rpc();
-
-    // Create an agent owned by agentOwner
+    // Create an agent owned by provider.wallet
     testAgentAsset = Keypair.generate();
-    [testAgentPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("agent"), testAgentAsset.publicKey.toBuffer()],
-      program.programId
-    );
+    [testAgentPda] = getAgentPda(testAgentAsset.publicKey, program.programId);
+    [testAgentReputationPda] = getAgentReputationPda(testAgentAsset.publicKey, program.programId);
 
     await program.methods
-      .registerAgentInRegistry("https://test.com/agent")
-      .accountsPartial({
-        registryConfig: testRegistryPda,
+      .register("https://test.com/anti-gaming-agent")
+      .accounts({
+        rootConfig: rootConfigPda,
+        registryConfig: registryConfigPda,
         agentAccount: testAgentPda,
         asset: testAgentAsset.publicKey,
-        collection: testCollection.publicKey,
-        userCollectionAuthority: userCollectionAuthorityPda,
-        owner: agentOwner.publicKey,
+        collection: collectionPubkey,
+        owner: provider.wallet.publicKey,
+        payer: provider.wallet.publicKey,
         systemProgram: SystemProgram.programId,
-        mplCoreProgram: MPL_CORE_ID,
+        mplCoreProgram: MPL_CORE_PROGRAM_ID,
       })
       .signers([testAgentAsset])
       .rpc();
 
     // Verify agent created
     const agent = await program.account.agentAccount.fetch(testAgentPda);
-    console.log(`   Test Agent ID: ${agent.agentId.toString()}`);
+    console.log(`   Test Agent Asset: ${testAgentAsset.publicKey.toString().slice(0, 16)}...`);
     console.log(`   Test Agent Owner: ${agent.owner.toString().slice(0, 16)}...`);
   });
 
-  describe("Self-Feedback Prevention", () => {
-    // Helper to get next available feedback index
-    async function getNextFeedbackIndex(agentId: BN): Promise<BN> {
-      const [agentReputationPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_reputation"), agentId.toArrayLike(Buffer, "le", 8)],
-        program.programId
-      );
-      try {
-        const reputation = await program.account.agentReputationMetadata.fetch(agentReputationPda);
-        return new BN(reputation.nextFeedbackIndex);
-      } catch {
-        // Account doesn't exist yet, so next index is 0
-        return new BN(0);
-      }
+  // Helper to get next available feedback index
+  async function getNextFeedbackIndex(): Promise<BN> {
+    try {
+      const reputation = await program.account.agentReputationMetadata.fetch(testAgentReputationPda);
+      return new BN(reputation.nextFeedbackIndex);
+    } catch {
+      // Account doesn't exist yet, so next index is 0
+      return new BN(0);
     }
+  }
 
-    it("give_feedback() FAILS when client is agent owner (self-feedback)", async () => {
-      const agent = await program.account.agentAccount.fetch(testAgentPda);
-      const agentId = new BN(agent.agentId);
-
-      // Get next available feedback index
-      const feedbackIndex = await getNextFeedbackIndex(agentId);
-      const [feedbackPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("feedback"),
-          agentId.toArrayLike(Buffer, "le", 8),
-          feedbackIndex.toArrayLike(Buffer, "le", 8),
-        ],
-        program.programId
-      );
-
-      const [agentReputationPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_reputation"), agentId.toArrayLike(Buffer, "le", 8)],
-        program.programId
-      );
+  describe("Self-Feedback Prevention", () => {
+    it("giveFeedback() FAILS when client is agent owner (self-feedback)", async () => {
+      const feedbackIndex = await getNextFeedbackIndex();
+      const [feedbackPda] = getFeedbackPda(testAgentAsset.publicKey, feedbackIndex, program.programId);
 
       try {
         await program.methods
           .giveFeedback(
-            agentId,
             100, // score
             "great", // tag1
             "service", // tag2
             "/api/test", // endpoint
             "https://feedback.uri", // feedback_uri
-            Array(32).fill(0) as any, // feedback_hash
+            Array.from(randomHash()), // feedback_hash
             feedbackIndex
           )
           .accounts({
-            client: agentOwner.publicKey, // SAME as agent owner - should fail
-            payer: agentOwner.publicKey,
+            client: provider.wallet.publicKey, // SAME as agent owner - should fail
+            payer: provider.wallet.publicKey,
             asset: testAgentAsset.publicKey,
             agentAccount: testAgentPda,
             feedbackAccount: feedbackPda,
-            agentReputation: agentReputationPda,
+            agentReputation: testAgentReputationPda,
             systemProgram: SystemProgram.programId,
           })
           .rpc();
@@ -159,53 +126,34 @@ describe("Anti-Gaming Security", () => {
         expect.fail("Should have failed with SelfFeedbackNotAllowed");
       } catch (err: any) {
         const errStr = err.toString();
-        // Accept either the specific error or a constraint error (which includes it)
-        const hasSelfFeedbackError = errStr.includes("SelfFeedbackNotAllowed") ||
-                                      errStr.includes("6300");
+        const hasSelfFeedbackError = errStr.includes("SelfFeedbackNotAllowed") || errStr.includes("6300");
         expect(hasSelfFeedbackError, `Expected SelfFeedbackNotAllowed error, got: ${errStr.slice(0, 200)}`).to.be.true;
         console.log("   ✅ Correctly rejected self-feedback");
       }
     });
 
-    it("give_feedback() SUCCEEDS when client is different from owner", async () => {
-      const agent = await program.account.agentAccount.fetch(testAgentPda);
-      const agentId = new BN(agent.agentId);
-
-      // Get next available feedback index (should be same as before since self-feedback failed)
-      const feedbackIndex = await getNextFeedbackIndex(agentId);
-      const [feedbackPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("feedback"),
-          agentId.toArrayLike(Buffer, "le", 8),
-          feedbackIndex.toArrayLike(Buffer, "le", 8),
-        ],
-        program.programId
-      );
-
-      const [agentReputationPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_reputation"), agentId.toArrayLike(Buffer, "le", 8)],
-        program.programId
-      );
+    it("giveFeedback() SUCCEEDS when client is different from owner", async () => {
+      const feedbackIndex = await getNextFeedbackIndex();
+      const [feedbackPda] = getFeedbackPda(testAgentAsset.publicKey, feedbackIndex, program.programId);
 
       // Use otherUser as client (different from agent owner)
       const sig = await program.methods
         .giveFeedback(
-          agentId,
           85, // score
           "helpful", // tag1
           "fast", // tag2
           "/api/test", // endpoint
           "https://feedback.uri", // feedback_uri
-          Array(32).fill(1) as any, // feedback_hash
+          Array.from(randomHash()), // feedback_hash
           feedbackIndex
         )
         .accounts({
           client: otherUser.publicKey, // Different from agent owner
-          payer: agentOwner.publicKey, // Payer can be anyone
+          payer: provider.wallet.publicKey, // Payer can be anyone
           asset: testAgentAsset.publicKey,
           agentAccount: testAgentPda,
           feedbackAccount: feedbackPda,
-          agentReputation: agentReputationPda,
+          agentReputation: testAgentReputationPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([otherUser])
@@ -221,39 +169,26 @@ describe("Anti-Gaming Security", () => {
   });
 
   describe("Self-Validation Prevention", () => {
-    it("request_validation() FAILS when validator_address is agent owner", async () => {
-      const agent = await program.account.agentAccount.fetch(testAgentPda);
-      const agentId = agent.agentId;
-
-      const nonce = 1;
-      const [validationRequestPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("validation"),
-          agentId.toArrayLike(Buffer, "le", 8),
-          agentOwner.publicKey.toBuffer(), // validator = owner
-          new BN(nonce).toArrayLike(Buffer, "le", 4),
-        ],
-        program.programId
-      );
-
-      const [validationStatsPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("validation_config")],
+    it("requestValidation() FAILS when validator_address is agent owner", async () => {
+      const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        testAgentAsset.publicKey,
+        provider.wallet.publicKey, // validator = owner
+        nonce,
         program.programId
       );
 
       try {
         await program.methods
           .requestValidation(
-            agentId,
-            agentOwner.publicKey, // validator = agent owner - should fail
+            provider.wallet.publicKey, // validator = agent owner - should fail
             nonce,
             "https://request.uri",
-            Array(32).fill(0) as any
+            Array.from(randomHash())
           )
           .accounts({
-            validationStats: validationStatsPda,
-            requester: agentOwner.publicKey,
-            payer: agentOwner.publicKey,
+            requester: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
             asset: testAgentAsset.publicKey,
             agentAccount: testAgentPda,
             validationRequest: validationRequestPda,
@@ -268,38 +203,25 @@ describe("Anti-Gaming Security", () => {
       }
     });
 
-    it("request_validation() SUCCEEDS when validator is different from owner", async () => {
-      const agent = await program.account.agentAccount.fetch(testAgentPda);
-      const agentId = agent.agentId;
-
-      const nonce = 2;
-      const [validationRequestPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("validation"),
-          agentId.toArrayLike(Buffer, "le", 8),
-          otherUser.publicKey.toBuffer(), // validator = other user
-          new BN(nonce).toArrayLike(Buffer, "le", 4),
-        ],
-        program.programId
-      );
-
-      const [validationStatsPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("validation_config")],
+    it("requestValidation() SUCCEEDS when validator is different from owner", async () => {
+      const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        testAgentAsset.publicKey,
+        otherUser.publicKey, // validator = other user
+        nonce,
         program.programId
       );
 
       const sig = await program.methods
         .requestValidation(
-          agentId,
           otherUser.publicKey, // Different from owner
           nonce,
           "https://request.uri",
-          Array(32).fill(2) as any
+          Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
-          requester: agentOwner.publicKey,
-          payer: agentOwner.publicKey,
+          requester: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           asset: testAgentAsset.publicKey,
           agentAccount: testAgentPda,
           validationRequest: validationRequestPda,
@@ -314,41 +236,47 @@ describe("Anti-Gaming Security", () => {
       expect(request.validatorAddress.toString()).to.equal(otherUser.publicKey.toString());
     });
 
-    it("respond_to_validation() SUCCEEDS when validator is not agent owner", async () => {
-      // The otherUser can respond because they are the designated validator
-      // and they are NOT the current agent owner
-      const agent = await program.account.agentAccount.fetch(testAgentPda);
-      const agentId = agent.agentId;
-
-      const nonce = 2; // Use the request we created above
-      const [validationRequestPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("validation"),
-          agentId.toArrayLike(Buffer, "le", 8),
-          otherUser.publicKey.toBuffer(),
-          new BN(nonce).toArrayLike(Buffer, "le", 4),
-        ],
+    it("respondToValidation() SUCCEEDS when validator is not agent owner", async () => {
+      // Create a fresh request for this test
+      const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        testAgentAsset.publicKey,
+        otherUser.publicKey,
+        nonce,
         program.programId
       );
 
-      const [validationStatsPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("validation_config")],
-        program.programId
-      );
+      // First create the request
+      await program.methods
+        .requestValidation(
+          otherUser.publicKey,
+          nonce,
+          "https://request.uri",
+          Array.from(randomHash())
+        )
+        .accounts({
+          requester: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          asset: testAgentAsset.publicKey,
+          agentAccount: testAgentPda,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
 
+      // Now respond as otherUser (the validator, who is NOT the owner)
       const sig = await program.methods
         .respondToValidation(
           80, // response
           "https://response.uri",
-          Array(32).fill(3) as any,
+          Array.from(randomHash()),
           "approved"
         )
         .accounts({
-          validationStats: validationStatsPda,
           validator: otherUser.publicKey,
-          validationRequest: validationRequestPda,
           asset: testAgentAsset.publicKey,
           agentAccount: testAgentPda,
+          validationRequest: validationRequestPda,
         })
         .signers([otherUser])
         .rpc();
@@ -358,56 +286,68 @@ describe("Anti-Gaming Security", () => {
       // Verify response was recorded
       const request = await program.account.validationRequest.fetch(validationRequestPda);
       expect(request.response).to.equal(80);
+      expect(request.hasResponse).to.be.true;
     });
   });
 
   describe("Edge Cases", () => {
     it("Different user can give multiple feedbacks", async () => {
-      const agent = await program.account.agentAccount.fetch(testAgentPda);
-      const agentId = agent.agentId;
-
-      const [agentReputationPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_reputation"), agentId.toArrayLike(Buffer, "le", 8)],
-        program.programId
-      );
-
-      // Get current feedback index from reputation metadata
-      const reputation = await program.account.agentReputationMetadata.fetch(agentReputationPda);
-      const feedbackIndex = reputation.nextFeedbackIndex;
-
-      const [feedbackPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("feedback"),
-          agentId.toArrayLike(Buffer, "le", 8),
-          feedbackIndex.toArrayLike(Buffer, "le", 8),
-        ],
-        program.programId
-      );
+      const feedbackIndex = await getNextFeedbackIndex();
+      const [feedbackPda] = getFeedbackPda(testAgentAsset.publicKey, feedbackIndex, program.programId);
 
       await program.methods
         .giveFeedback(
-          agentId,
           90,
           "excellent",
           "reliable",
           "/api/v2",
           "https://feedback2.uri",
-          Array(32).fill(4) as any,
+          Array.from(randomHash()),
           feedbackIndex
         )
         .accounts({
           client: otherUser.publicKey,
-          payer: agentOwner.publicKey,
+          payer: provider.wallet.publicKey,
           asset: testAgentAsset.publicKey,
           agentAccount: testAgentPda,
           feedbackAccount: feedbackPda,
-          agentReputation: agentReputationPda,
+          agentReputation: testAgentReputationPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([otherUser])
         .rpc();
 
       console.log("   ✅ Multiple feedbacks from same user allowed");
+    });
+
+    it("Owner as payer but different client succeeds", async () => {
+      const feedbackIndex = await getNextFeedbackIndex();
+      const [feedbackPda] = getFeedbackPda(testAgentAsset.publicKey, feedbackIndex, program.programId);
+
+      // Owner pays (sponsors) but different user gives feedback
+      await program.methods
+        .giveFeedback(
+          75,
+          "good",
+          "sponsored",
+          "/api/v3",
+          "https://feedback3.uri",
+          Array.from(randomHash()),
+          feedbackIndex
+        )
+        .accounts({
+          client: otherUser.publicKey, // Client is different
+          payer: provider.wallet.publicKey, // Owner sponsors the tx
+          asset: testAgentAsset.publicKey,
+          agentAccount: testAgentPda,
+          feedbackAccount: feedbackPda,
+          agentReputation: testAgentReputationPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([otherUser])
+        .rpc();
+
+      console.log("   ✅ Owner as payer with different client allowed (sponsorship)");
     });
   });
 });
