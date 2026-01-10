@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-agent_registry_8004 = "ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v"
+agent_registry_8004 = "GjNgGJCZYRwzHtXU2iqzTbtbtPKB8STMZCuzaEDhcNjk"
 
 [programs.devnet]
-agent_registry_8004 = "ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v"
+agent_registry_8004 = "GjNgGJCZYRwzHtXU2iqzTbtbtPKB8STMZCuzaEDhcNjk"
 
 [registry]
 url = "https://api.apr.dev"
@@ -19,7 +19,7 @@ cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/e2e-scalability.ts"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts"
 
 # Test validator configuration
 [test.validator]
