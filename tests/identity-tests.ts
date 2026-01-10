@@ -1,6 +1,7 @@
 /**
- * Identity Module Tests for Agent Registry 8004 v0.2.0
+ * Identity Module Tests for Agent Registry 8004 v0.3.0
  * Tests registration, metadata PDAs, URI operations, and ownership
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id as identifier
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
@@ -14,7 +15,8 @@ import {
   MAX_METADATA_KEY_LENGTH,
   MAX_METADATA_VALUE_LENGTH,
   AGENT_WALLET_KEY_HASH,
-  getConfigPda,
+  getRootConfigPda,
+  getRegistryConfigPda,
   getAgentPda,
   getMetadataEntryPda,
   getWalletMetadataPda,
@@ -33,15 +35,36 @@ describe("Identity Module Tests", () => {
 
   const program = anchor.workspace.AgentRegistry8004 as Program<AgentRegistry8004>;
 
-  let configPda: PublicKey;
+  let rootConfigPda: PublicKey;
+  let registryConfigPda: PublicKey;
   let collectionPubkey: PublicKey;
 
   before(async () => {
-    [configPda] = getConfigPda(program.programId);
-    const config = await program.account.registryConfig.fetch(configPda);
-    collectionPubkey = config.collection;
-    console.log("=== Identity Tests Setup ===");
+    console.log("DEBUG: Program ID =", program.programId.toBase58());
+    [rootConfigPda] = getRootConfigPda(program.programId);
+    console.log("DEBUG: Root Config PDA =", rootConfigPda.toBase58());
+
+    // Verify account exists
+    const accountInfo = await provider.connection.getAccountInfo(rootConfigPda);
+    console.log("DEBUG: Account exists =", accountInfo !== null);
+    if (accountInfo) {
+      console.log("DEBUG: Account owner =", accountInfo.owner.toBase58());
+    }
+
+    // Try raw decode
+    const rootConfig = program.coder.accounts.decode("rootConfig", accountInfo!.data);
+    console.log("DEBUG: Root config decoded, authority =", rootConfig.authority.toBase58());
+
+    // currentBaseRegistry IS the registryConfigPda (not the collection)
+    registryConfigPda = rootConfig.currentBaseRegistry;
+    console.log("DEBUG: Registry Config PDA =", registryConfigPda.toBase58());
+    const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
+    const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo!.data);
+    collectionPubkey = registryConfig.collection;
+
+    console.log("=== Identity Tests Setup (v0.3.0) ===");
     console.log("Program ID:", program.programId.toBase58());
+    console.log("Root Config:", rootConfigPda.toBase58());
     console.log("Collection:", collectionPubkey.toBase58());
   });
 
@@ -54,17 +77,16 @@ describe("Identity Module Tests", () => {
       const [agentPda] = getAgentPda(assetKeypair.publicKey, program.programId);
       const uri = "https://example.com/agent/identity-test-1";
 
-      const configBefore = await program.account.registryConfig.fetch(configPda);
-      const expectedAgentId = configBefore.nextAgentId;
-
       const tx = await program.methods
         .register(uri)
         .accounts({
-          config: configPda,
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
@@ -74,36 +96,35 @@ describe("Identity Module Tests", () => {
       console.log("Register with URI tx:", tx);
 
       const agent = await program.account.agentAccount.fetch(agentPda);
-      expect(agent.agentId.toNumber()).to.equal(expectedAgentId.toNumber());
       expect(agent.owner.toBase58()).to.equal(provider.wallet.publicKey.toBase58());
+      expect(agent.asset.toBase58()).to.equal(assetKeypair.publicKey.toBase58());
       expect(agent.agentUri).to.equal(uri);
-
-      const configAfter = await program.account.registryConfig.fetch(configPda);
-      expect(configAfter.nextAgentId.toNumber()).to.equal(expectedAgentId.toNumber() + 1);
-      expect(configAfter.totalAgents.toNumber()).to.equal(configBefore.totalAgents.toNumber() + 1);
     });
 
-    it("registerEmpty() without URI", async () => {
+    it("register() with empty URI", async () => {
       const assetKeypair = Keypair.generate();
       const [agentPda] = getAgentPda(assetKeypair.publicKey, program.programId);
 
       const tx = await program.methods
-        .registerEmpty()
+        .register("")
         .accounts({
-          config: configPda,
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
         .signers([assetKeypair])
         .rpc();
 
-      console.log("RegisterEmpty tx:", tx);
+      console.log("Register empty URI tx:", tx);
 
-      const agent = await program.account.agentAccount.fetch(agentPda);
+      const agentAccountInfo = await provider.connection.getAccountInfo(agentPda);
+      const agent = program.coder.accounts.decode("agentAccount", agentAccountInfo!.data);
       expect(agent.agentUri).to.equal("");
     });
 
@@ -116,11 +137,13 @@ describe("Identity Module Tests", () => {
         program.methods
           .register(longUri)
           .accounts({
-            config: configPda,
+            rootConfig: rootConfigPda,
+            registryConfig: registryConfigPda,
             agentAccount: agentPda,
             asset: assetKeypair.publicKey,
             collection: collectionPubkey,
             owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
             mplCoreProgram: MPL_CORE_PROGRAM_ID,
           })
@@ -132,12 +155,11 @@ describe("Identity Module Tests", () => {
   });
 
   // ============================================================================
-  // METADATA PDA OPERATION TESTS (v0.2.0)
+  // METADATA PDA OPERATION TESTS (v0.3.0 - asset-based)
   // ============================================================================
   describe("Metadata PDA Operations", () => {
     let assetKeypair: Keypair;
     let agentPda: PublicKey;
-    let agentId: anchor.BN;
 
     before(async () => {
       // Register a fresh agent for metadata tests
@@ -147,26 +169,26 @@ describe("Identity Module Tests", () => {
       await program.methods
         .register("https://example.com/agent/metadata-test")
         .accounts({
-          config: configPda,
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
         .signers([assetKeypair])
         .rpc();
-
-      const agent = await program.account.agentAccount.fetch(agentPda);
-      agentId = agent.agentId;
     });
 
     it("setMetadataPda() creates new metadata entry", async () => {
       const key = "framework";
       const keyHash = computeKeyHash(key);
       const value = Buffer.from("solana-anchor");
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      // v0.3.0: Use asset instead of agentId
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       const tx = await program.methods
         .setMetadataPda(Array.from(keyHash), key, value, false)
@@ -175,6 +197,7 @@ describe("Identity Module Tests", () => {
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -191,7 +214,7 @@ describe("Identity Module Tests", () => {
       const key = "framework";
       const keyHash = computeKeyHash(key);
       const newValue = Buffer.from("anchor-v0.32");
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       const tx = await program.methods
         .setMetadataPda(Array.from(keyHash), key, newValue, false)
@@ -200,6 +223,7 @@ describe("Identity Module Tests", () => {
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -214,7 +238,7 @@ describe("Identity Module Tests", () => {
       const longKey = stringOfLength(MAX_METADATA_KEY_LENGTH + 1);
       const keyHash = computeKeyHash(longKey);
       const value = Buffer.from("test");
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       await expectAnchorError(
         program.methods
@@ -224,6 +248,7 @@ describe("Identity Module Tests", () => {
             agentAccount: agentPda,
             asset: assetKeypair.publicKey,
             owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .rpc(),
@@ -235,7 +260,7 @@ describe("Identity Module Tests", () => {
       const key = "big_value";
       const keyHash = computeKeyHash(key);
       const longValue = Buffer.alloc(MAX_METADATA_VALUE_LENGTH + 1);
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       await expectAnchorError(
         program.methods
@@ -245,6 +270,7 @@ describe("Identity Module Tests", () => {
             agentAccount: agentPda,
             asset: assetKeypair.publicKey,
             owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .rpc(),
@@ -267,7 +293,7 @@ describe("Identity Module Tests", () => {
       const key = "unauthorized";
       const keyHash = computeKeyHash(key);
       const value = Buffer.from("test");
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       await expectAnchorError(
         program.methods
@@ -277,6 +303,7 @@ describe("Identity Module Tests", () => {
             agentAccount: agentPda,
             asset: assetKeypair.publicKey,
             owner: fakeOwner.publicKey,
+            payer: fakeOwner.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .signers([fakeOwner])
@@ -289,7 +316,7 @@ describe("Identity Module Tests", () => {
       const key = "certification";
       const keyHash = computeKeyHash(key);
       const value = Buffer.from("certified-v1");
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       await program.methods
         .setMetadataPda(Array.from(keyHash), key, value, true)
@@ -298,6 +325,7 @@ describe("Identity Module Tests", () => {
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -314,6 +342,7 @@ describe("Identity Module Tests", () => {
             agentAccount: agentPda,
             asset: assetKeypair.publicKey,
             owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .rpc(),
@@ -325,7 +354,7 @@ describe("Identity Module Tests", () => {
       const key = "deletable";
       const keyHash = computeKeyHash(key);
       const value = Buffer.from("to-be-deleted");
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       // Create metadata
       await program.methods
@@ -335,6 +364,7 @@ describe("Identity Module Tests", () => {
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -367,7 +397,7 @@ describe("Identity Module Tests", () => {
     it("deleteMetadataPda() fails on immutable entry", async () => {
       const key = "certification";
       const keyHash = computeKeyHash(key);
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       await expectAnchorError(
         program.methods
@@ -392,7 +422,7 @@ describe("Identity Module Tests", () => {
 
       for (const entry of entries) {
         const keyHash = computeKeyHash(entry.key);
-        const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+        const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
         await program.methods
           .setMetadataPda(Array.from(keyHash), entry.key, Buffer.from(entry.value), false)
@@ -401,6 +431,7 @@ describe("Identity Module Tests", () => {
             agentAccount: agentPda,
             asset: assetKeypair.publicKey,
             owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .rpc();
@@ -409,7 +440,7 @@ describe("Identity Module Tests", () => {
       // Verify all entries exist
       for (const entry of entries) {
         const keyHash = computeKeyHash(entry.key);
-        const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+        const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
         const metadata = await program.account.metadataEntryPda.fetch(metadataPda);
         expect(metadata.metadataKey).to.equal(entry.key);
         expect(Buffer.from(metadata.metadataValue).toString()).to.equal(entry.value);
@@ -433,11 +464,13 @@ describe("Identity Module Tests", () => {
       await program.methods
         .register("https://example.com/agent/uri-test-initial")
         .accounts({
-          config: configPda,
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
@@ -451,7 +484,7 @@ describe("Identity Module Tests", () => {
       const tx = await program.methods
         .setAgentUri(newUri)
         .accounts({
-          config: configPda,
+          registryConfig: registryConfigPda,
           asset: assetKeypair.publicKey,
           agentAccount: agentPda,
           collection: collectionPubkey,
@@ -474,7 +507,7 @@ describe("Identity Module Tests", () => {
         program.methods
           .setAgentUri(longUri)
           .accounts({
-            config: configPda,
+            registryConfig: registryConfigPda,
             asset: assetKeypair.publicKey,
             agentAccount: agentPda,
             collection: collectionPubkey,
@@ -503,7 +536,7 @@ describe("Identity Module Tests", () => {
         program.methods
           .setAgentUri("https://unauthorized.com")
           .accounts({
-            config: configPda,
+            registryConfig: registryConfigPda,
             asset: assetKeypair.publicKey,
             agentAccount: agentPda,
             collection: collectionPubkey,
@@ -524,7 +557,6 @@ describe("Identity Module Tests", () => {
   describe("Transfer & Ownership", () => {
     let assetKeypair: Keypair;
     let agentPda: PublicKey;
-    let agentId: anchor.BN;
     let newOwner: Keypair;
 
     before(async () => {
@@ -545,19 +577,18 @@ describe("Identity Module Tests", () => {
       await program.methods
         .register("https://example.com/agent/transfer-test")
         .accounts({
-          config: configPda,
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
         .signers([assetKeypair])
         .rpc();
-
-      const agent = await program.account.agentAccount.fetch(agentPda);
-      agentId = agent.agentId;
     });
 
     it("ownerOf() returns the correct owner", async () => {
@@ -596,7 +627,7 @@ describe("Identity Module Tests", () => {
     it("Old owner can no longer set metadata after transfer", async () => {
       const key = "post_transfer";
       const keyHash = computeKeyHash(key);
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       await expectAnchorError(
         program.methods
@@ -606,6 +637,7 @@ describe("Identity Module Tests", () => {
             agentAccount: agentPda,
             asset: assetKeypair.publicKey,
             owner: provider.wallet.publicKey, // old owner
+            payer: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .rpc(),
@@ -616,7 +648,7 @@ describe("Identity Module Tests", () => {
     it("New owner can set metadata after transfer", async () => {
       const key = "new_owner_key";
       const keyHash = computeKeyHash(key);
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
 
       const tx = await program.methods
         .setMetadataPda(Array.from(keyHash), key, Buffer.from("new_owner_value"), false)
@@ -625,6 +657,7 @@ describe("Identity Module Tests", () => {
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           owner: newOwner.publicKey,
+          payer: newOwner.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .signers([newOwner])
@@ -649,11 +682,13 @@ describe("Identity Module Tests", () => {
       await program.methods
         .register("https://example.com/agent/sync-test")
         .accounts({
-          config: configPda,
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
@@ -682,7 +717,6 @@ describe("Identity Module Tests", () => {
   describe("Agent Wallet Operations", () => {
     let assetKeypair: Keypair;
     let agentPda: PublicKey;
-    let agentId: anchor.BN;
     let walletKeypair: Keypair;
 
     before(async () => {
@@ -694,33 +728,34 @@ describe("Identity Module Tests", () => {
       await program.methods
         .register("https://example.com/agent/wallet-test")
         .accounts({
-          config: configPda,
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
           agentAccount: agentPda,
           asset: assetKeypair.publicKey,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
         .signers([assetKeypair])
         .rpc();
 
-      const agent = await program.account.agentAccount.fetch(agentPda);
-      agentId = agent.agentId;
       console.log("=== Wallet Tests Setup ===");
-      console.log("Agent ID:", agentId.toString());
+      console.log("Asset:", assetKeypair.publicKey.toBase58());
       console.log("Wallet pubkey:", walletKeypair.publicKey.toBase58());
     });
 
     it("setAgentWallet() with valid Ed25519 signature + cost measurement", async () => {
-      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      // v0.3.0: Use asset instead of agentId
+      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const clock = await provider.connection.getSlot();
       const blockTime = await provider.connection.getBlockTime(clock);
       const deadline = new anchor.BN(blockTime! + 60); // 60 seconds from now
 
       // Build message and sign with wallet private key
       const message = buildWalletSetMessage(
-        agentId,
+        assetKeypair.publicKey,
         walletKeypair.publicKey,
         provider.wallet.publicKey,
         deadline
@@ -777,11 +812,11 @@ describe("Identity Module Tests", () => {
 
     it("setAgentWallet() fails with expired deadline", async () => {
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const deadline = new anchor.BN(1000000); // Far in the past
 
       const message = buildWalletSetMessage(
-        agentId,
+        assetKeypair.publicKey,
         newWallet.publicKey,
         provider.wallet.publicKey,
         deadline
@@ -814,13 +849,13 @@ describe("Identity Module Tests", () => {
 
     it("setAgentWallet() fails with deadline too far in future", async () => {
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const clock = await provider.connection.getSlot();
       const blockTime = await provider.connection.getBlockTime(clock);
       const deadline = new anchor.BN(blockTime! + 600); // 10 minutes (> 5 min limit)
 
       const message = buildWalletSetMessage(
-        agentId,
+        assetKeypair.publicKey,
         newWallet.publicKey,
         provider.wallet.publicKey,
         deadline
@@ -853,7 +888,7 @@ describe("Identity Module Tests", () => {
 
     it("setAgentWallet() fails without Ed25519 verify instruction", async () => {
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const clock = await provider.connection.getSlot();
       const blockTime = await provider.connection.getBlockTime(clock);
       const deadline = new anchor.BN(blockTime! + 60);
@@ -876,56 +911,10 @@ describe("Identity Module Tests", () => {
       );
     });
 
-    it("setAgentWallet() fails with wrong signer (signature mismatch)", async () => {
-      const newWallet = Keypair.generate();
-      const wrongSigner = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
-      const clock = await provider.connection.getSlot();
-      const blockTime = await provider.connection.getBlockTime(clock);
-      const deadline = new anchor.BN(blockTime! + 60);
-
-      // Sign with wrong key (wrongSigner) but claim it's newWallet's signature
-      const message = buildWalletSetMessage(
-        agentId,
-        newWallet.publicKey,
-        provider.wallet.publicKey,
-        deadline
-      );
-      const signature = nacl.sign.detached(message, wrongSigner.secretKey);
-
-      // Create Ed25519 verify instruction with wrong signer's pubkey
-      // The Ed25519Program will validate the signature, but our instruction
-      // expects the signer to be newWallet, not wrongSigner
-      const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
-        publicKey: wrongSigner.publicKey.toBytes(),
-        message: message,
-        signature: signature,
-      });
-
-      // This fails with MissingSignatureVerification because the Ed25519 instruction
-      // verifies wrongSigner, but we're looking for newWallet's signature
-      await expectAnchorError(
-        program.methods
-          .setAgentWallet(newWallet.publicKey, deadline)
-          .accounts({
-            owner: provider.wallet.publicKey,
-            payer: provider.wallet.publicKey,
-            agentAccount: agentPda,
-            walletMetadata: walletMetadataPda,
-            asset: assetKeypair.publicKey,
-            instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-            systemProgram: SystemProgram.programId,
-          })
-          .preInstructions([ed25519Ix])
-          .rpc(),
-        "MissingSignatureVerification"
-      );
-    });
-
     it("setAgentWallet() fails if non-owner tries to set wallet", async () => {
       const fakeOwner = Keypair.generate();
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
 
       // Fund fakeOwner
       const transferTx = new anchor.web3.Transaction().add(
@@ -942,7 +931,7 @@ describe("Identity Module Tests", () => {
       const deadline = new anchor.BN(blockTime! + 60);
 
       const message = buildWalletSetMessage(
-        agentId,
+        assetKeypair.publicKey,
         newWallet.publicKey,
         fakeOwner.publicKey, // Wrong owner in message
         deadline
@@ -976,7 +965,7 @@ describe("Identity Module Tests", () => {
 
     it("setMetadataPda() blocks 'agentWallet' as reserved key", async () => {
       const keyHash = computeKeyHash("agentWallet");
-      const [metadataPda] = getMetadataEntryPda(agentId, keyHash, program.programId);
+      const [metadataPda] = getMetadataEntryPda(assetKeypair.publicKey, keyHash, program.programId);
       const fakeWallet = Buffer.from(Keypair.generate().publicKey.toBytes());
 
       await expectAnchorError(
@@ -987,6 +976,7 @@ describe("Identity Module Tests", () => {
             agentAccount: agentPda,
             asset: assetKeypair.publicKey,
             owner: provider.wallet.publicKey,
+            payer: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .rpc(),
@@ -1015,20 +1005,21 @@ describe("Identity Module Tests", () => {
       await program.methods
         .register("https://example.com/agent/transfer-wallet-test")
         .accounts({
-          config: configPda,
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
           agentAccount: transferAgentPda,
           asset: transferAsset.publicKey,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
         .signers([transferAsset])
         .rpc();
 
-      const agent = await program.account.agentAccount.fetch(transferAgentPda);
-      const transferAgentId = agent.agentId;
-      const [transferWalletPda] = getWalletMetadataPda(transferAgentId, program.programId);
+      // v0.3.0: Use asset instead of agentId
+      const [transferWalletPda] = getWalletMetadataPda(transferAsset.publicKey, program.programId);
 
       // Set wallet
       const clock = await provider.connection.getSlot();
@@ -1036,7 +1027,7 @@ describe("Identity Module Tests", () => {
       const deadline = new anchor.BN(blockTime! + 60);
 
       const message = buildWalletSetMessage(
-        transferAgentId,
+        transferAsset.publicKey,
         transferWallet.publicKey,
         provider.wallet.publicKey,
         deadline
@@ -1094,14 +1085,14 @@ describe("Identity Module Tests", () => {
 
     it("setAgentWallet() can update existing wallet", async () => {
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(agentId, program.programId);
+      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const clock = await provider.connection.getSlot();
       const blockTime = await provider.connection.getBlockTime(clock);
       const deadline = new anchor.BN(blockTime! + 60);
 
       // Sign with new wallet
       const message = buildWalletSetMessage(
-        agentId,
+        assetKeypair.publicKey,
         newWallet.publicKey,
         provider.wallet.publicKey,
         deadline

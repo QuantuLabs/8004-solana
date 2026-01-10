@@ -29,6 +29,30 @@ export const AGENT_WALLET_KEY_HASH: Uint8Array = new Uint8Array([
 // ============================================================================
 
 /**
+ * Derive root config PDA: ["root_config"]
+ */
+export function getRootConfigPda(programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("root_config")],
+    programId
+  );
+}
+
+/**
+ * Derive registry config PDA: ["registry_config", collection]
+ */
+export function getRegistryConfigPda(
+  collection: PublicKey,
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("registry_config"), collection.toBuffer()],
+    programId
+  );
+}
+
+/**
+ * @deprecated Use getRootConfigPda and getRegistryConfigPda instead
  * Derive config PDA: ["config"]
  */
 export function getConfigPda(programId: PublicKey): [PublicKey, number] {
@@ -39,7 +63,7 @@ export function getConfigPda(programId: PublicKey): [PublicKey, number] {
 }
 
 /**
- * Derive validation stats PDA: ["validation_config"]
+ * @deprecated ValidationStats removed in v0.3.0 - counters computed off-chain
  */
 export function getValidationStatsPda(programId: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
@@ -62,33 +86,32 @@ export function getAgentPda(
 }
 
 /**
- * Derive agent reputation PDA: ["agent_reputation", agent_id (u64 LE)]
+ * Derive agent reputation PDA: ["agent_reputation", asset.key()]
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id
  */
 export function getAgentReputationPda(
-  agentId: anchor.BN,
+  asset: PublicKey,
   programId: PublicKey
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("agent_reputation"),
-      agentId.toArrayLike(Buffer, "le", 8),
-    ],
+    [Buffer.from("agent_reputation"), asset.toBuffer()],
     programId
   );
 }
 
 /**
- * Derive feedback PDA: ["feedback", agent_id (u64 LE), feedback_index (u64 LE)]
+ * Derive feedback PDA: ["feedback", asset.key(), feedback_index (u64 LE)]
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id
  */
 export function getFeedbackPda(
-  agentId: anchor.BN,
+  asset: PublicKey,
   feedbackIndex: anchor.BN,
   programId: PublicKey
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [
       Buffer.from("feedback"),
-      agentId.toArrayLike(Buffer, "le", 8),
+      asset.toBuffer(),
       feedbackIndex.toArrayLike(Buffer, "le", 8),
     ],
     programId
@@ -96,18 +119,19 @@ export function getFeedbackPda(
 }
 
 /**
- * Derive feedback tags PDA: ["feedback_tags", agent_id (u64 LE), feedback_index (u64 LE)]
+ * Derive feedback tags PDA: ["feedback_tags", asset.key(), feedback_index (u64 LE)]
  * Optional PDA created only when tags are set via setFeedbackTags
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id
  */
 export function getFeedbackTagsPda(
-  agentId: anchor.BN,
+  asset: PublicKey,
   feedbackIndex: anchor.BN,
   programId: PublicKey
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [
       Buffer.from("feedback_tags"),
-      agentId.toArrayLike(Buffer, "le", 8),
+      asset.toBuffer(),
       feedbackIndex.toArrayLike(Buffer, "le", 8),
     ],
     programId
@@ -115,17 +139,18 @@ export function getFeedbackTagsPda(
 }
 
 /**
- * Derive response index PDA: ["response_index", agent_id, feedback_index]
+ * Derive response index PDA: ["response_index", asset.key(), feedback_index]
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id
  */
 export function getResponseIndexPda(
-  agentId: anchor.BN,
+  asset: PublicKey,
   feedbackIndex: anchor.BN,
   programId: PublicKey
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [
       Buffer.from("response_index"),
-      agentId.toArrayLike(Buffer, "le", 8),
+      asset.toBuffer(),
       feedbackIndex.toArrayLike(Buffer, "le", 8),
     ],
     programId
@@ -133,10 +158,11 @@ export function getResponseIndexPda(
 }
 
 /**
- * Derive response PDA: ["response", agent_id, feedback_index, response_index]
+ * Derive response PDA: ["response", asset.key(), feedback_index, response_index]
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id
  */
 export function getResponsePda(
-  agentId: anchor.BN,
+  asset: PublicKey,
   feedbackIndex: anchor.BN,
   responseIndex: anchor.BN,
   programId: PublicKey
@@ -144,7 +170,7 @@ export function getResponsePda(
   return PublicKey.findProgramAddressSync(
     [
       Buffer.from("response"),
-      agentId.toArrayLike(Buffer, "le", 8),
+      asset.toBuffer(),
       feedbackIndex.toArrayLike(Buffer, "le", 8),
       responseIndex.toArrayLike(Buffer, "le", 8),
     ],
@@ -153,10 +179,11 @@ export function getResponsePda(
 }
 
 /**
- * Derive validation request PDA: ["validation", agent_id, validator, nonce (u32 LE)]
+ * Derive validation request PDA: ["validation", asset.key(), validator, nonce (u32 LE)]
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id
  */
 export function getValidationRequestPda(
-  agentId: anchor.BN,
+  asset: PublicKey,
   validator: PublicKey,
   nonce: number,
   programId: PublicKey
@@ -164,7 +191,7 @@ export function getValidationRequestPda(
   return PublicKey.findProgramAddressSync(
     [
       Buffer.from("validation"),
-      agentId.toArrayLike(Buffer, "le", 8),
+      asset.toBuffer(),
       validator.toBuffer(),
       new anchor.BN(nonce).toArrayLike(Buffer, "le", 4),
     ],
@@ -173,18 +200,18 @@ export function getValidationRequestPda(
 }
 
 /**
- * Derive metadata entry PDA: ["agent_meta", agent_id (u64 LE), key_hash (8 bytes)]
- * v0.2.0: Individual PDA per metadata key
+ * Derive metadata entry PDA: ["agent_meta", asset.key(), key_hash (8 bytes)]
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id
  */
 export function getMetadataEntryPda(
-  agentId: anchor.BN,
+  asset: PublicKey,
   keyHash: Uint8Array,
   programId: PublicKey
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [
       Buffer.from("agent_meta"),
-      agentId.toArrayLike(Buffer, "le", 8),
+      asset.toBuffer(),
       Buffer.from(keyHash.slice(0, 8)),
     ],
     programId
@@ -192,29 +219,31 @@ export function getMetadataEntryPda(
 }
 
 /**
- * Derive wallet metadata PDA: ["agent_meta", agent_id (u64 LE), AGENT_WALLET_KEY_HASH]
+ * Derive wallet metadata PDA: ["agent_meta", asset.key(), AGENT_WALLET_KEY_HASH]
  * Used by setAgentWallet instruction
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id
  */
 export function getWalletMetadataPda(
-  agentId: anchor.BN,
+  asset: PublicKey,
   programId: PublicKey
 ): [PublicKey, number] {
-  return getMetadataEntryPda(agentId, AGENT_WALLET_KEY_HASH, programId);
+  return getMetadataEntryPda(asset, AGENT_WALLET_KEY_HASH, programId);
 }
 
 /**
  * Build the wallet set message for Ed25519 signature verification
- * Format: "8004_WALLET_SET:" || agent_id (8 bytes LE) || new_wallet (32 bytes) || owner (32 bytes) || deadline (8 bytes LE)
+ * Format: "8004_WALLET_SET:" || asset (32 bytes) || new_wallet (32 bytes) || owner (32 bytes) || deadline (8 bytes LE)
+ * v0.3.0: Uses asset instead of agent_id
  */
 export function buildWalletSetMessage(
-  agentId: anchor.BN,
+  asset: PublicKey,
   newWallet: PublicKey,
   owner: PublicKey,
   deadline: anchor.BN
 ): Buffer {
   return Buffer.concat([
     Buffer.from("8004_WALLET_SET:"),
-    agentId.toArrayLike(Buffer, "le", 8),
+    asset.toBuffer(),
     newWallet.toBuffer(),
     owner.toBuffer(),
     deadline.toArrayLike(Buffer, "le", 8),

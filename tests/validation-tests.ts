@@ -1,6 +1,8 @@
 /**
- * Validation Module Tests for Agent Registry 8004
+ * Validation Module Tests for Agent Registry 8004 v0.3.0
  * Tests validation request, response, update, and closure
+ * v0.3.0: Uses asset (Pubkey) instead of agent_id as identifier
+ * ValidationStats removed - counters are now off-chain via indexer
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
@@ -12,16 +14,15 @@ import {
   MPL_CORE_PROGRAM_ID,
   MAX_URI_LENGTH,
   MAX_TAG_LENGTH,
-  getConfigPda,
+  getRootConfigPda,
+  getRegistryConfigPda,
   getAgentPda,
-  getValidationStatsPda,
   getValidationRequestPda,
   randomHash,
   uriOfLength,
   stringOfLength,
   uniqueNonce,
   expectAnchorError,
-  getBalanceSOL,
 } from "./utils/helpers";
 
 describe("Validation Module Tests", () => {
@@ -30,44 +31,56 @@ describe("Validation Module Tests", () => {
 
   const program = anchor.workspace.AgentRegistry8004 as Program<AgentRegistry8004>;
 
-  let configPda: PublicKey;
+  let rootConfigPda: PublicKey;
+  let registryConfigPda: PublicKey;
   let collectionPubkey: PublicKey;
-  let validationStatsPda: PublicKey;
 
   // Agent for validation tests
   let agentAsset: Keypair;
   let agentPda: PublicKey;
-  let agentId: anchor.BN;
+
+  // Separate validator keypair (anti-gaming: owner cannot validate their own agent)
+  let validatorKeypair: Keypair;
 
   before(async () => {
-    [configPda] = getConfigPda(program.programId);
-    [validationStatsPda] = getValidationStatsPda(program.programId);
+    [rootConfigPda] = getRootConfigPda(program.programId);
+    const rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
+    const rootConfig = program.coder.accounts.decode("rootConfig", rootAccountInfo!.data);
 
-    const config = await program.account.registryConfig.fetch(configPda);
-    collectionPubkey = config.collection;
-    agentId = config.nextAgentId;
+    // currentBaseRegistry IS the registryConfigPda (not the collection)
+    registryConfigPda = rootConfig.currentBaseRegistry;
+    const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
+    const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo!.data);
+    collectionPubkey = registryConfig.collection;
 
-    // Register agent for validation tests
+    // Create a separate validator keypair (different from agent owner)
+    // Anti-gaming rule: agent owner cannot validate their own agent
+    validatorKeypair = Keypair.generate();
+
+    // Register agent for validation tests (owner = provider.wallet)
     agentAsset = Keypair.generate();
     [agentPda] = getAgentPda(agentAsset.publicKey, program.programId);
 
     await program.methods
       .register("https://example.com/agent/validation-test")
       .accounts({
-        config: configPda,
+        rootConfig: rootConfigPda,
+        registryConfig: registryConfigPda,
         agentAccount: agentPda,
         asset: agentAsset.publicKey,
         collection: collectionPubkey,
         owner: provider.wallet.publicKey,
+        payer: provider.wallet.publicKey,
         systemProgram: SystemProgram.programId,
         mplCoreProgram: MPL_CORE_PROGRAM_ID,
       })
       .signers([agentAsset])
       .rpc();
 
-    console.log("=== Validation Tests Setup ===");
+    console.log("=== Validation Tests Setup (v0.3.0) ===");
     console.log("Program ID:", program.programId.toBase58());
-    console.log("Agent ID:", agentId.toNumber());
+    console.log("Agent Asset:", agentAsset.publicKey.toBase58());
+    console.log("Validator (separate from owner):", validatorKeypair.publicKey.toBase58());
   });
 
   // ============================================================================
@@ -76,27 +89,22 @@ describe("Validation Module Tests", () => {
   describe("Validation Request", () => {
     it("requestValidation() creates request with nonce", async () => {
       const nonce = uniqueNonce();
-      const validator = provider.wallet.publicKey;
+      // v0.3.0: Use separate validator (anti-gaming: owner cannot validate own agent)
       const [validationRequestPda] = getValidationRequestPda(
-        agentId,
-        validator,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         nonce,
         program.programId
       );
 
-      // Stats may not exist yet on fresh deployment (init_if_needed)
-      const statsBefore = await program.account.validationStats.fetchNullable(validationStatsPda);
-
       const tx = await program.methods
         .requestValidation(
-          agentId,
-          validator,
+          validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/request",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -109,37 +117,32 @@ describe("Validation Module Tests", () => {
       console.log("RequestValidation tx:", tx);
 
       const request = await program.account.validationRequest.fetch(validationRequestPda);
-      expect(request.agentId.toNumber()).to.equal(agentId.toNumber());
-      expect(request.validatorAddress.toBase58()).to.equal(validator.toBase58());
+      // v0.3.0: asset instead of agentId
+      expect(request.asset.toBase58()).to.equal(agentAsset.publicKey.toBase58());
+      expect(request.validatorAddress.toBase58()).to.equal(validatorKeypair.publicKey.toBase58());
       expect(request.nonce).to.equal(nonce);
       expect(request.response).to.equal(0); // Not responded yet
-      expect(request.respondedAt.toNumber()).to.equal(0);
-
-      const statsAfter = await program.account.validationStats.fetch(validationStatsPda);
-      const expectedRequests = (statsBefore?.totalRequests.toNumber() ?? 0) + 1;
-      expect(statsAfter.totalRequests.toNumber()).to.equal(expectedRequests);
+      // v0.3.0: hasResponse instead of respondedAt
+      expect(request.hasResponse).to.equal(false);
     });
 
     it("requestValidation() with empty URI (allowed)", async () => {
       const nonce = uniqueNonce();
-      const validator = provider.wallet.publicKey;
       const [validationRequestPda] = getValidationRequestPda(
-        agentId,
-        validator,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         nonce,
         program.programId
       );
 
       const tx = await program.methods
         .requestValidation(
-          agentId,
-          validator,
+          validatorKeypair.publicKey,
           nonce,
           "", // Empty URI
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -153,15 +156,14 @@ describe("Validation Module Tests", () => {
 
       // Note: URI is not stored on-chain, only in events
       const request = await program.account.validationRequest.fetch(validationRequestPda);
-      expect(request.agentId.toNumber()).to.equal(agentId.toNumber());
+      expect(request.asset.toBase58()).to.equal(agentAsset.publicKey.toBase58());
     });
 
     it("requestValidation() fails with URI > 200 bytes", async () => {
       const nonce = uniqueNonce();
-      const validator = provider.wallet.publicKey;
       const [validationRequestPda] = getValidationRequestPda(
-        agentId,
-        validator,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         nonce,
         program.programId
       );
@@ -170,14 +172,12 @@ describe("Validation Module Tests", () => {
       await expectAnchorError(
         program.methods
           .requestValidation(
-            agentId,
-            validator,
+            validatorKeypair.publicKey,
             nonce,
             longUri,
             Array.from(randomHash())
           )
           .accounts({
-            validationStats: validationStatsPda,
             requester: provider.wallet.publicKey,
             payer: provider.wallet.publicKey,
             asset: agentAsset.publicKey,
@@ -194,7 +194,7 @@ describe("Validation Module Tests", () => {
       const validator2 = Keypair.generate();
       const nonce = uniqueNonce();
       const [validationRequestPda] = getValidationRequestPda(
-        agentId,
+        agentAsset.publicKey,
         validator2.publicKey,
         nonce,
         program.programId
@@ -202,14 +202,12 @@ describe("Validation Module Tests", () => {
 
       const tx = await program.methods
         .requestValidation(
-          agentId,
           validator2.publicKey,
           nonce,
           "https://example.com/validation/multi-validator",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -226,23 +224,20 @@ describe("Validation Module Tests", () => {
     });
 
     it("Multiple validations same validator, different nonces", async () => {
-      const validator = provider.wallet.publicKey;
       const nonce1 = uniqueNonce();
       const nonce2 = uniqueNonce() + 1;
 
-      const [pda1] = getValidationRequestPda(agentId, validator, nonce1, program.programId);
-      const [pda2] = getValidationRequestPda(agentId, validator, nonce2, program.programId);
+      const [pda1] = getValidationRequestPda(agentAsset.publicKey, validatorKeypair.publicKey, nonce1, program.programId);
+      const [pda2] = getValidationRequestPda(agentAsset.publicKey, validatorKeypair.publicKey, nonce2, program.programId);
 
       await program.methods
         .requestValidation(
-          agentId,
-          validator,
+          validatorKeypair.publicKey,
           nonce1,
           "https://example.com/validation/nonce1",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -254,14 +249,12 @@ describe("Validation Module Tests", () => {
 
       await program.methods
         .requestValidation(
-          agentId,
-          validator,
+          validatorKeypair.publicKey,
           nonce2,
           "https://example.com/validation/nonce2",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -286,25 +279,23 @@ describe("Validation Module Tests", () => {
     let responseRequestPda: PublicKey;
 
     before(async () => {
-      // Create a validation request to respond to
+      // Create a validation request to respond to (using separate validator)
       responseNonce = uniqueNonce();
       [responseRequestPda] = getValidationRequestPda(
-        agentId,
-        provider.wallet.publicKey,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         responseNonce,
         program.programId
       );
 
       await program.methods
         .requestValidation(
-          agentId,
-          provider.wallet.publicKey,
+          validatorKeypair.publicKey,
           responseNonce,
           "https://example.com/validation/to-respond",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -316,8 +307,6 @@ describe("Validation Module Tests", () => {
     });
 
     it("respondToValidation() with response=1 (passed)", async () => {
-      const statsBefore = await program.account.validationStats.fetch(validationStatsPda);
-
       const tx = await program.methods
         .respondToValidation(
           1, // Passed
@@ -326,45 +315,41 @@ describe("Validation Module Tests", () => {
           "verified"
         )
         .accounts({
-          validationStats: validationStatsPda,
-          validator: provider.wallet.publicKey,
+          validator: validatorKeypair.publicKey,
+          asset: agentAsset.publicKey,
+          agentAccount: agentPda,
           validationRequest: responseRequestPda,
         })
+        .signers([validatorKeypair])
         .rpc();
 
       console.log("RespondToValidation tx:", tx);
 
       const request = await program.account.validationRequest.fetch(responseRequestPda);
       expect(request.response).to.equal(1);
-      expect(request.respondedAt.toNumber()).to.be.greaterThan(0);
-      // Note: responseTag is stored in events only, not on-chain
-
-      const statsAfter = await program.account.validationStats.fetch(validationStatsPda);
-      expect(statsAfter.totalResponses.toNumber()).to.equal(
-        statsBefore.totalResponses.toNumber() + 1
-      );
+      // v0.3.0: hasResponse + lastUpdate instead of respondedAt
+      expect(request.hasResponse).to.equal(true);
+      expect(request.lastUpdate.toNumber()).to.be.greaterThan(0);
     });
 
     it("respondToValidation() with response=0 (failed)", async () => {
       // Create a new request for this test
       const nonce = uniqueNonce();
       const [requestPda] = getValidationRequestPda(
-        agentId,
-        provider.wallet.publicKey,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         nonce,
         program.programId
       );
 
       await program.methods
         .requestValidation(
-          agentId,
-          provider.wallet.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/will-fail",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -382,37 +367,38 @@ describe("Validation Module Tests", () => {
           "rejected"
         )
         .accounts({
-          validationStats: validationStatsPda,
-          validator: provider.wallet.publicKey,
+          validator: validatorKeypair.publicKey,
+          asset: agentAsset.publicKey,
+          agentAccount: agentPda,
           validationRequest: requestPda,
         })
+        .signers([validatorKeypair])
         .rpc();
 
       console.log("Response with 0 tx:", tx);
 
       const request = await program.account.validationRequest.fetch(requestPda);
       expect(request.response).to.equal(0);
+      expect(request.hasResponse).to.equal(true);
     });
 
     it("respondToValidation() with response=100 (max)", async () => {
       const nonce = uniqueNonce();
       const [requestPda] = getValidationRequestPda(
-        agentId,
-        provider.wallet.publicKey,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         nonce,
         program.programId
       );
 
       await program.methods
         .requestValidation(
-          agentId,
-          provider.wallet.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/max-response",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -430,10 +416,12 @@ describe("Validation Module Tests", () => {
           "perfect"
         )
         .accounts({
-          validationStats: validationStatsPda,
-          validator: provider.wallet.publicKey,
+          validator: validatorKeypair.publicKey,
+          asset: agentAsset.publicKey,
+          agentAccount: agentPda,
           validationRequest: requestPda,
         })
+        .signers([validatorKeypair])
         .rpc();
 
       console.log("Response with 100 tx:", tx);
@@ -445,22 +433,20 @@ describe("Validation Module Tests", () => {
     it("respondToValidation() with partial response (50)", async () => {
       const nonce = uniqueNonce();
       const [requestPda] = getValidationRequestPda(
-        agentId,
-        provider.wallet.publicKey,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         nonce,
         program.programId
       );
 
       await program.methods
         .requestValidation(
-          agentId,
-          provider.wallet.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/partial",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -478,10 +464,12 @@ describe("Validation Module Tests", () => {
           "partial"
         )
         .accounts({
-          validationStats: validationStatsPda,
-          validator: provider.wallet.publicKey,
+          validator: validatorKeypair.publicKey,
+          asset: agentAsset.publicKey,
+          agentAccount: agentPda,
           validationRequest: requestPda,
         })
+        .signers([validatorKeypair])
         .rpc();
 
       console.log("Partial response tx:", tx);
@@ -494,22 +482,20 @@ describe("Validation Module Tests", () => {
       const fakeValidator = Keypair.generate();
       const nonce = uniqueNonce();
       const [requestPda] = getValidationRequestPda(
-        agentId,
-        provider.wallet.publicKey, // Real validator
+        agentAsset.publicKey,
+        validatorKeypair.publicKey, // Real validator
         nonce,
         program.programId
       );
 
       await program.methods
         .requestValidation(
-          agentId,
-          provider.wallet.publicKey, // Real validator
+          validatorKeypair.publicKey, // Real validator
           nonce,
           "https://example.com/validation/fake-validator",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -528,8 +514,9 @@ describe("Validation Module Tests", () => {
             "fake"
           )
           .accounts({
-            validationStats: validationStatsPda,
             validator: fakeValidator.publicKey, // Wrong validator
+            asset: agentAsset.publicKey,
+            agentAccount: agentPda,
             validationRequest: requestPda,
           })
           .signers([fakeValidator])
@@ -548,10 +535,12 @@ describe("Validation Module Tests", () => {
           "updated"
         )
         .accounts({
-          validationStats: validationStatsPda,
-          validator: provider.wallet.publicKey,
+          validator: validatorKeypair.publicKey,
+          asset: agentAsset.publicKey,
+          agentAccount: agentPda,
           validationRequest: responseRequestPda,
         })
+        .signers([validatorKeypair])
         .rpc();
 
       console.log("UpdateValidation tx:", tx);
@@ -567,25 +556,23 @@ describe("Validation Module Tests", () => {
   // ============================================================================
   describe("Validation Closure", () => {
     it("closeValidation() recovers rent (by owner)", async () => {
-      // Create and respond to a validation request
+      // Create and respond to a validation request (using separate validator)
       const nonce = uniqueNonce();
       const [requestPda] = getValidationRequestPda(
-        agentId,
-        provider.wallet.publicKey,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         nonce,
         program.programId
       );
 
       await program.methods
         .requestValidation(
-          agentId,
-          provider.wallet.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/to-close",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -603,10 +590,12 @@ describe("Validation Module Tests", () => {
           "done"
         )
         .accounts({
-          validationStats: validationStatsPda,
-          validator: provider.wallet.publicKey,
+          validator: validatorKeypair.publicKey,
+          asset: agentAsset.publicKey,
+          agentAccount: agentPda,
           validationRequest: requestPda,
         })
+        .signers([validatorKeypair])
         .rpc();
 
       const balanceBefore = await provider.connection.getBalance(provider.wallet.publicKey);
@@ -614,7 +603,7 @@ describe("Validation Module Tests", () => {
       const tx = await program.methods
         .closeValidation()
         .accounts({
-          config: configPda,
+          rootConfig: rootConfigPda,
           closer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
           agentAccount: agentPda,
@@ -634,26 +623,25 @@ describe("Validation Module Tests", () => {
       expect(accountInfo).to.be.null;
     });
 
-    it("closeValidation() to different rent receiver", async () => {
-      const rentReceiver = Keypair.generate();
+    it("closeValidation() fails with different rent receiver", async () => {
+      // Program requires rentReceiver = agent owner (security constraint)
+      const otherReceiver = Keypair.generate();
       const nonce = uniqueNonce();
       const [requestPda] = getValidationRequestPda(
-        agentId,
-        provider.wallet.publicKey,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         nonce,
         program.programId
       );
 
       await program.methods
         .requestValidation(
-          agentId,
-          provider.wallet.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/close-to-other",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -671,52 +659,49 @@ describe("Validation Module Tests", () => {
           "done"
         )
         .accounts({
-          validationStats: validationStatsPda,
-          validator: provider.wallet.publicKey,
-          validationRequest: requestPda,
-        })
-        .rpc();
-
-      const tx = await program.methods
-        .closeValidation()
-        .accounts({
-          config: configPda,
-          closer: provider.wallet.publicKey,
+          validator: validatorKeypair.publicKey,
           asset: agentAsset.publicKey,
           agentAccount: agentPda,
           validationRequest: requestPda,
-          rentReceiver: rentReceiver.publicKey, // Different receiver
         })
+        .signers([validatorKeypair])
         .rpc();
 
-      console.log("Close to different receiver tx:", tx);
-
-      // Verify rent receiver got the SOL
-      const receiverBalance = await provider.connection.getBalance(rentReceiver.publicKey);
-      expect(receiverBalance).to.be.greaterThan(0);
-      console.log("Rent receiver got:", receiverBalance / 1e9, "SOL");
+      // Should fail because rentReceiver must be agent owner
+      await expectAnchorError(
+        program.methods
+          .closeValidation()
+          .accounts({
+            rootConfig: rootConfigPda,
+            closer: provider.wallet.publicKey,
+            asset: agentAsset.publicKey,
+            agentAccount: agentPda,
+            validationRequest: requestPda,
+            rentReceiver: otherReceiver.publicKey, // Not owner - should fail
+          })
+          .rpc(),
+        "InvalidRentReceiver"
+      );
     });
 
     it("closeValidation() fails if non-owner/non-authority", async () => {
       const nonOwner = Keypair.generate();
       const nonce = uniqueNonce();
       const [requestPda] = getValidationRequestPda(
-        agentId,
-        provider.wallet.publicKey,
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
         nonce,
         program.programId
       );
 
       await program.methods
         .requestValidation(
-          agentId,
-          provider.wallet.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/no-close",
           Array.from(randomHash())
         )
         .accounts({
-          validationStats: validationStatsPda,
           requester: provider.wallet.publicKey,
           payer: provider.wallet.publicKey,
           asset: agentAsset.publicKey,
@@ -734,17 +719,19 @@ describe("Validation Module Tests", () => {
           "done"
         )
         .accounts({
-          validationStats: validationStatsPda,
-          validator: provider.wallet.publicKey,
+          validator: validatorKeypair.publicKey,
+          asset: agentAsset.publicKey,
+          agentAccount: agentPda,
           validationRequest: requestPda,
         })
+        .signers([validatorKeypair])
         .rpc();
 
       await expectAnchorError(
         program.methods
           .closeValidation()
           .accounts({
-            config: configPda,
+            rootConfig: rootConfigPda,
             closer: nonOwner.publicKey, // Not owner
             asset: agentAsset.publicKey,
             agentAccount: agentPda,
