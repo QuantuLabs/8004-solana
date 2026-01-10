@@ -346,19 +346,19 @@
         <header>
             <div class="version-tabs" style="margin-bottom: 1rem;">
                 <a href="v0.1.0.html" style="color: var(--text-secondary); margin-right: 1rem; text-decoration: none;">v0.1.0</a>
-                <a href="v0.2.0.html" style="color: var(--text-secondary); margin-right: 1rem; text-decoration: none;">v0.2.0</a>
-                <a href="index.html" style="color: var(--accent-purple); font-weight: bold; text-decoration: none; border-bottom: 2px solid var(--accent-purple); padding-bottom: 2px;">v0.3.0</a>
+                <a href="v0.2.0.html" style="color: var(--accent-purple); font-weight: bold; text-decoration: none; border-bottom: 2px solid var(--accent-purple); padding-bottom: 2px;">v0.2.0</a>
+                <a href="index.html" style="color: var(--text-secondary); margin-left: 1rem; text-decoration: none;">v0.3.0 (latest)</a>
             </div>
             <h1>8004 on Solana</h1>
             <p class="subtitle">Technical Documentation for AI Agent Identity & Reputation Registry</p>
             <div class="program-ids">
                 <div class="program-id identity" style="border-left: 3px solid var(--accent-blue);">
                     <span class="label">AgentRegistry8004 (Devnet)</span>
-                    ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v
+                    HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
                 </div>
             </div>
             <p style="color: var(--text-secondary); margin-top: 1rem; font-size: 0.9rem;">
-                Single program with Identity, Reputation & Validation modules | Metaplex Core | 118 tests | Asset-based IDs
+                Single program with Identity, Reputation & Validation modules | Metaplex Core | 89 tests
             </p>
         </header>
 
@@ -377,67 +377,47 @@
 
         <!-- CHANGELOG SECTION -->
         <section id="changelog">
-            <h2>v0.3.0 Changelog</h2>
+            <h2>v0.2.0 Changelog</h2>
 
-            <div class="warning">
-                <strong>Breaking Changes:</strong> This version replaces <code>agent_id</code> (u64) with <code>asset</code> (Pubkey) as the unique identifier. All PDA seeds and API parameters have changed.
-            </div>
-
-            <h3>C-01 Security Fix: Asset-Based Identification</h3>
+            <h3>Architecture</h3>
             <ul>
-                <li><strong>Asset = Unique Identifier</strong> — Core NFT address (Pubkey) replaces sequential agent_id (u64)</li>
-                <li><strong>Globally Unique</strong> — No more ID collision between registries</li>
-                <li><strong>Direct PDA Derivation</strong> — Simpler seeds, no collection prefix needed</li>
+                <li><strong>Program Consolidation</strong> — 3 separate programs (identity, reputation, validation) merged into 1 unified <code>agent_registry_8004</code> program</li>
+                <li><strong>Metaplex Core Migration</strong> — Migrated from SPL Token + Token Metadata to Metaplex Core (6x cheaper NFT operations, simpler ownership model)</li>
+                <li><strong>Global Feedback Index</strong> — Simplified PDA derivation (client removed from seeds)</li>
             </ul>
 
-            <h3>Storage Optimization (-18%)</h3>
+            <h3>New Features</h3>
             <ul>
-                <li><strong>AgentReputationMetadata:</strong> 50 → 17 bytes (<strong>-66%</strong>) — aggregates moved off-chain</li>
-                <li><strong>ResponseAccount:</strong> 73 → 41 bytes (<strong>-44%</strong>) — minimal (responder + bump)</li>
-                <li><strong>ResponseIndexAccount:</strong> 33 → 17 bytes (<strong>-48%</strong>)</li>
-                <li><strong>FeedbackAccount:</strong> 99 → 83 bytes (<strong>-16%</strong>)</li>
-                <li><strong>ValidationRequest:</strong> 166 → 151 bytes (<strong>-9%</strong>)</li>
-                <li><strong>AgentAccount:</strong> 343 → 313 bytes (<strong>-9%</strong>)</li>
+                <li><strong>Metadata PDAs</strong> — Individual PDA per key (replaces Vec), unlimited entries</li>
+                <li><strong>Immutable Metadata</strong> — Lock metadata permanently for certifications</li>
+                <li><strong>Delete Metadata</strong> — Recover rent by deleting mutable entries</li>
+                <li><strong>Hash-Only Storage</strong> — URIs in events, hashes on-chain</li>
+                <li><strong>Optional Tags PDA</strong> — FeedbackTagsPda for -42% cost when tags not used</li>
             </ul>
 
-            <h3>Removed (Off-chain via Indexer)</h3>
+            <h3>Account Size Optimizations</h3>
             <ul>
-                <li><strong>ValidationStats</strong> — Account deleted (counters off-chain)</li>
-                <li><strong>agent_id</strong> — Removed everywhere (use asset)</li>
-                <li><strong>collection</strong> — Removed from FeedbackAccount, ValidationRequest</li>
-                <li><strong>created_at</strong> — Removed (use blockTime)</li>
-                <li><strong>total_feedbacks, total_score_sum, average_score</strong> — Off-chain aggregation</li>
-                <li><strong>nft_symbol</strong> — Removed from AgentAccount (read from Metaplex)</li>
-                <li><strong>next_agent_id, total_agents</strong> — Removed from RegistryConfig</li>
+                <li><strong>FeedbackAccount:</strong> 375 → 99 bytes (<strong>-74%</strong>) — tags moved to optional PDA</li>
+                <li><strong>ResponseAccount:</strong> 309 → 105 bytes (<strong>-66%</strong>)</li>
+                <li><strong>AgentAccount:</strong> 661 → ~365 bytes (<strong>-45%</strong>)</li>
             </ul>
 
-            <h3>API Changes</h3>
+            <h3>Breaking Changes</h3>
             <ul>
-                <li><code>give_feedback</code>: removed <code>agent_id</code> parameter</li>
-                <li><code>revoke_feedback</code>: removed <code>agent_id</code> parameter</li>
-                <li><code>append_response</code>: removed <code>agent_id</code> parameter</li>
-                <li><code>set_feedback_tags</code>: removed <code>agent_id</code> parameter</li>
-                <li><code>request_validation</code>: removed <code>agent_id</code> parameter</li>
-                <li>All events use <code>asset: Pubkey</code> instead of <code>agent_id: u64</code></li>
+                <li>3 programs → 1 unified <code>agent_registry_8004</code></li>
+                <li>SPL Token NFTs → Metaplex Core assets</li>
+                <li><code>file_uri</code> / <code>response_uri</code> removed from accounts (events only)</li>
+                <li><code>tag1</code> / <code>tag2</code> moved to optional <code>FeedbackTagsPda</code></li>
+                <li><code>set_metadata</code> → <code>set_metadata_pda(key_hash, key, value, immutable)</code></li>
+                <li><code>Vec&lt;MetadataEntry&gt;</code> removed from AgentAccount</li>
+                <li>MetadataExtension removed (use PDAs instead)</li>
             </ul>
-
-            <h3>PDA Seeds Changes</h3>
-            <table>
-                <tr><th>PDA</th><th>v0.2.0</th><th>v0.3.0</th></tr>
-                <tr><td>FeedbackAccount</td><td><code>["feedback", agent_id, index]</code></td><td><code>["feedback", asset, index]</code></td></tr>
-                <tr><td>FeedbackTagsPda</td><td><code>["feedback_tags", agent_id, index]</code></td><td><code>["feedback_tags", asset, index]</code></td></tr>
-                <tr><td>ResponseAccount</td><td><code>["response", agent_id, fb_idx, resp_idx]</code></td><td><code>["response", asset, fb_idx, resp_idx]</code></td></tr>
-                <tr><td>ResponseIndexAccount</td><td><code>["response_index", agent_id, fb_idx]</code></td><td><code>["response_index", asset, fb_idx]</code></td></tr>
-                <tr><td>AgentReputationMetadata</td><td><code>["agent_reputation", agent_id]</code></td><td><code>["agent_reputation", asset]</code></td></tr>
-                <tr><td>ValidationRequest</td><td><code>["validation", agent_id, validator, nonce]</code></td><td><code>["validation", asset, validator, nonce]</code></td></tr>
-                <tr><td>MetadataEntryPda</td><td><code>["agent_meta", agent_id, key_hash]</code></td><td><code>["agent_meta", asset, key_hash]</code></td></tr>
-            </table>
         </section>
 
         <!-- OVERVIEW SECTION -->
         <section id="overview">
             <h2>Overview</h2>
-            <p>8004 is a standard for on-chain AI agent registries. This Solana implementation (v0.3.0) uses <strong>asset (Pubkey)</strong> as unique identifier instead of sequential agent_id:</p>
+            <p>8004 is a standard for on-chain AI agent registries. This Solana implementation (v0.2.0) provides a single program with three modules:</p>
 
             <div class="grid" style="margin-top: 1.5rem;">
                 <div class="card">
@@ -445,14 +425,14 @@
                         <div class="icon purple">ID</div>
                         <h4 style="margin: 0;">Identity Module</h4>
                     </div>
-                    <p>NFT-based agent registration with <strong>Metaplex Core</strong>. Each agent's Core asset address is its unique identifier.</p>
+                    <p>NFT-based agent registration with <strong>Metaplex Core</strong>. Each agent gets a unique Core asset as its on-chain identity.</p>
                 </div>
                 <div class="card">
                     <div class="card-header">
                         <div class="icon green">★</div>
                         <h4 style="margin: 0;">Reputation Module</h4>
                     </div>
-                    <p>Feedback system with scores (0-100), tags, and responses. Aggregates computed off-chain via indexer.</p>
+                    <p>Feedback system with global index, scores (0-100), tags, and responses. Cached aggregates enable O(1) queries.</p>
                 </div>
                 <div class="card">
                     <div class="card-header">
@@ -465,16 +445,16 @@
 
             <div class="flex-row" style="margin-top: 2rem;">
                 <div class="stat-card">
-                    <div class="value">0.0058</div>
+                    <div class="value">0.00650</div>
                     <div class="label">SOL per Agent Registration</div>
                 </div>
                 <div class="stat-card">
-                    <div class="value">0.0014</div>
-                    <div class="label">SOL per Feedback</div>
+                    <div class="value">0.00158</div>
+                    <div class="label">SOL per Feedback (2nd+)</div>
                 </div>
                 <div class="stat-card">
-                    <div class="value">-18%</div>
-                    <div class="label">Storage vs v0.2.0</div>
+                    <div class="value">-74%</div>
+                    <div class="label">FeedbackAccount Size</div>
                 </div>
                 <div class="stat-card">
                     <div class="value">∞</div>
@@ -490,7 +470,7 @@
             <div class="architecture-diagram">
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                     AgentRegistry8004 (Devnet)                               │
-│              <span class="highlight">ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v</span>                  │
+│              <span class="highlight">HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp</span>                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  ┌────────────────────┐ ┌──────────────────┐ ┌────────────────────────────┐ │
 │  │   Identity Module  │ │ Reputation Module│ │    Validation Module       │ │
@@ -617,17 +597,17 @@
 
                 <p><strong>Flow:</strong></p>
                 <ol>
+                    <li>Increment <code>config.next_agent_id</code> (sequential u64)</li>
                     <li>Create Metaplex Core asset with collection plugin</li>
                     <li><strong>Add to collection via Config PDA signature</strong></li>
-                    <li>Initialize AgentAccount PDA keyed by Core asset address</li>
-                    <li><strong>Asset address = unique identifier</strong> (no sequential counter)</li>
+                    <li>Initialize AgentAccount PDA keyed by Core asset</li>
                 </ol>
 
                 <div class="pda-seed">
                     <strong>Agent PDA:</strong> seeds = ["agent", asset.key()]
                 </div>
 
-                <p><strong>Events:</strong> <code>Registered { asset, owner, agent_uri }</code></p>
+                <p><strong>Events:</strong> <code>Registered</code></p>
             </div>
 
             <!-- set_metadata_pda -->
@@ -645,7 +625,7 @@
                 </table>
 
                 <div class="pda-seed">
-                    <strong>Metadata PDA:</strong> seeds = ["agent_meta", asset.key(), key_hash[0..8]]
+                    <strong>Metadata PDA:</strong> seeds = ["agent_meta", agent_id, key_hash[0..8]]
                 </div>
 
                 <div class="warning">
@@ -685,44 +665,50 @@
             <h3>Account Structures</h3>
 
             <div class="card">
-                <h4>RegistryConfig (78 bytes)</h4>
-                <pre><code>pub struct RegistryConfig {
-    pub collection: Pubkey,             // 32 bytes (Core Collection)
-    pub registry_type: RegistryType,    // 1 byte
+                <h4>Config</h4>
+                <pre><code>pub struct Config {
     pub authority: Pubkey,              // 32 bytes
-    pub base_index: u32,                // 4 bytes
+    pub next_agent_id: u64,             // 8 bytes (sequential counter)
+    pub total_agents: u64,              // 8 bytes
+    pub collection: Pubkey,             // 32 bytes (Core Collection)
     pub bump: u8,                       // 1 byte
-}
-// Removed: next_agent_id, total_agents (off-chain via indexer)</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["root_config"]</div>
+}</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["config"]</div>
             </div>
 
             <div class="card">
-                <h4>AgentAccount (313 bytes)</h4>
+                <h4>AgentAccount (~365 bytes)</h4>
                 <pre><code>pub struct AgentAccount {
-    pub owner: Pubkey,                  // 32 bytes (cached, synced on transfer)
-    pub asset: Pubkey,                  // 32 bytes (Core asset = unique ID)
-    pub bump: u8,                       // 1 byte
+    pub agent_id: u64,                  // 8 bytes
+    pub owner: Pubkey,                  // 32 bytes (cached)
+    pub asset: Pubkey,                  // 32 bytes (Core asset)
     pub agent_uri: String,              // 4 + 200 = 204 bytes
     pub nft_name: String,               // 4 + 32 = 36 bytes ("Agent #X")
+    pub nft_symbol: String,             // 4 + 10 = 14 bytes
     // Metadata moved to individual PDAs (v0.2.0)
+    pub created_at: i64,                // 8 bytes
+    pub bump: u8,                       // 1 byte
 }
-// Removed: agent_id, created_at, nft_symbol
-// Use blockTime for timestamps, Metaplex for symbol</code></pre>
+
+// Constants
+MAX_URI_LENGTH: 200</code></pre>
                 <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent", asset.key()]</div>
             </div>
 
             <div class="card">
-                <h4>MetadataEntryPda (~306 bytes)</h4>
+                <h4>MetadataEntryPda (~330 bytes) - NEW in v0.2.0</h4>
                 <pre><code>pub struct MetadataEntryPda {
+    pub agent_id: u64,              // 8 bytes
     pub metadata_key: String,       // 4 + 32 = 36 bytes
     pub metadata_value: Vec&lt;u8&gt;,    // 4 + 256 = 260 bytes
     pub immutable: bool,            // 1 byte (if true, locked forever)
+    pub created_at: i64,            // 8 bytes
     pub bump: u8,                   // 1 byte
 }
-// Removed: agent_id, created_at
-// Delete to recover rent (~0.0029 SOL)</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_meta", asset.key(), key_hash[0..8]]</div>
+
+// Unlimited metadata per agent via individual PDAs
+// Delete to recover rent (~0.0031 SOL)</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_meta", agent_id (LE), key_hash[0..8]]</div>
             </div>
 
             <h3>Error Codes</h3>
@@ -740,87 +726,74 @@
             <h3>Events</h3>
             <table>
                 <tr><th>Event</th><th>Fields</th><th>Emitted</th></tr>
-                <tr><td>Registered</td><td><strong>asset</strong>, agent_uri, owner</td><td>register()</td></tr>
-                <tr><td>MetadataSet</td><td><strong>asset</strong>, indexed_key, key, value, immutable</td><td>set_metadata_pda()</td></tr>
-                <tr><td>MetadataDeleted</td><td><strong>asset</strong>, key</td><td>delete_metadata_pda()</td></tr>
-                <tr><td>UriUpdated</td><td><strong>asset</strong>, new_uri, updated_by</td><td>set_agent_uri()</td></tr>
-                <tr><td>AgentOwnerSynced</td><td><strong>asset</strong>, old_owner, new_owner</td><td>transfer_agent()</td></tr>
+                <tr><td>Registered</td><td>agent_id, agent_uri, owner, agent_mint</td><td>register()</td></tr>
+                <tr><td>MetadataSet</td><td>agent_id, indexed_key, key, value, <strong>immutable</strong></td><td>set_metadata_pda()</td></tr>
+                <tr><td>MetadataDeleted</td><td>agent_id, key</td><td>delete_metadata_pda()</td></tr>
+                <tr><td>UriUpdated</td><td>agent_id, new_uri, updated_by</td><td>set_agent_uri()</td></tr>
+                <tr><td>AgentOwnerSynced</td><td>agent_id, old_owner, new_owner, agent_mint</td><td>sync_owner(), transfer_agent()</td></tr>
             </table>
-            <div class="info" style="margin-top: 0.5rem;">
-                <strong>v0.3.0:</strong> All events use <code>asset: Pubkey</code> instead of <code>agent_id: u64</code>.
-            </div>
         </section>
 
         <!-- REPUTATION MODULE SECTION -->
         <section id="reputation">
             <h2>Reputation Module</h2>
-            <p>Manages feedback and responses for agents. Uses <strong>asset</strong> (Pubkey) as identifier.</p>
+            <p>Manages feedback, responses, and cached reputation aggregates for agents.</p>
 
-            <h3>Key Design: Off-chain Aggregation</h3>
-            <div class="info">
-                <strong>v0.3.0:</strong> Aggregates (total_feedbacks, average_score) computed off-chain via indexer. <code>AgentReputationMetadata</code> only stores <code>next_feedback_index</code> for sequencing.
+            <h3>Key Design: Cached Aggregates</h3>
+            <div class="success">
+                <strong>O(1) Reputation Queries:</strong> The <code>AgentReputationMetadata</code> account stores pre-calculated aggregates (total_feedbacks, total_score_sum, average_score). Updated atomically on every give/revoke.
             </div>
 
             <h3>Instructions</h3>
 
             <!-- give_feedback -->
             <div class="card">
-                <h4>give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)</h4>
-                <p>Create feedback for an agent. Asset passed via account context.</p>
+                <h4>give_feedback(agent_id, score, tag1, tag2, file_uri, file_hash)</h4>
+                <p>Create feedback for an agent. Updates cached reputation stats.</p>
 
                 <p><strong>Parameters:</strong></p>
                 <table>
                     <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
+                    <tr><td>agent_id</td><td>u64</td><td>Must exist (validated internally)</td></tr>
                     <tr><td>score</td><td>u8</td><td>0-100 (validated on-chain)</td></tr>
-                    <tr><td>tag1, tag2</td><td>String</td><td>Max 32 bytes each (in event)</td></tr>
-                    <tr><td>endpoint</td><td>String</td><td>Max 200 bytes (in event)</td></tr>
-                    <tr><td>feedback_uri</td><td>String</td><td>Max 200 bytes (in event)</td></tr>
-                    <tr><td>feedback_hash</td><td>[u8; 32]</td><td>SHA-256 hash</td></tr>
-                    <tr><td>feedback_index</td><td>u64</td><td>Must match next_feedback_index</td></tr>
+                    <tr><td>tag1, tag2</td><td>String</td><td>Max 32 bytes each</td></tr>
+                    <tr><td>file_uri</td><td>String</td><td>Max 200 bytes</td></tr>
+                    <tr><td>file_hash</td><td>[u8; 32]</td><td>SHA-256 hash</td></tr>
                 </table>
 
                 <p><strong>Global Feedback Index:</strong></p>
-                <pre><code>// Index verified and incremented from AgentReputationMetadata
-require!(feedback_index == agent_reputation.next_feedback_index);
+                <pre><code>// Index auto-incremented from AgentReputationMetadata
+let feedback_index = agent_reputation.next_feedback_index;
 agent_reputation.next_feedback_index += 1;</code></pre>
 
+                <p><strong>Aggregate Update:</strong></p>
+                <pre><code>agent_reputation.total_feedbacks += 1;
+agent_reputation.total_score_sum += score as u64;
+agent_reputation.average_score = min(total_score_sum / total_feedbacks, 100);</code></pre>
+
                 <div class="pda-seed">
-                    <strong>Feedback PDA:</strong> seeds = ["feedback", asset.key(), feedback_index (LE)]
+                    <strong>Feedback PDA:</strong> seeds = ["feedback", agent_id (LE), feedback_index (LE)]
                 </div>
             </div>
 
             <!-- revoke_feedback -->
             <div class="card">
-                <h4>revoke_feedback(feedback_index)</h4>
+                <h4>revoke_feedback(agent_id, feedback_index)</h4>
                 <p>Mark feedback as revoked (preserves audit trail). Only original author can revoke.</p>
-
-                <p><strong>Parameters:</strong></p>
-                <table>
-                    <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
-                    <tr><td>feedback_index</td><td>u64</td><td>Index of feedback to revoke</td></tr>
-                </table>
 
                 <p><strong>State Changes:</strong></p>
                 <ul>
                     <li><code>feedback.is_revoked = true</code></li>
+                    <li><code>agent_reputation.total_feedbacks -= 1</code></li>
+                    <li><code>agent_reputation.total_score_sum -= feedback.score</code></li>
+                    <li>Recalculates average_score</li>
                 </ul>
-                <div class="info" style="margin-top: 0.5rem;">
-                    <strong>v0.3.0:</strong> No aggregate updates on-chain. Indexer recalculates totals.
-                </div>
             </div>
 
             <!-- append_response -->
             <div class="card">
-                <h4>append_response(feedback_index, response_uri, response_hash)</h4>
+                <h4>append_response(agent_id, feedback_index, response_uri, response_hash)</h4>
                 <p>Append response to existing feedback. <strong>Anyone can respond</strong> (permissionless).</p>
-
-                <p><strong>Parameters:</strong></p>
-                <table>
-                    <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
-                    <tr><td>feedback_index</td><td>u64</td><td>Index of feedback to respond to</td></tr>
-                    <tr><td>response_uri</td><td>String</td><td>Max 200 bytes (in event)</td></tr>
-                    <tr><td>response_hash</td><td>[u8; 32]</td><td>SHA-256 hash (in event)</td></tr>
-                </table>
 
                 <p><strong>Use Cases:</strong></p>
                 <ul>
@@ -830,7 +803,7 @@ agent_reputation.next_feedback_index += 1;</code></pre>
                 </ul>
 
                 <div class="pda-seed">
-                    <strong>Response PDA:</strong> seeds = ["response", asset.key(), feedback_index (LE), response_index (LE)]
+                    <strong>Response PDA:</strong> seeds = ["response", agent_id (LE), feedback_index (LE), response_index (LE)]
                 </div>
                 <p><em>Unlimited responses per feedback via ResponseIndexAccount tracking.</em></p>
             </div>
@@ -838,30 +811,37 @@ agent_reputation.next_feedback_index += 1;</code></pre>
             <h3>Account Structures</h3>
 
             <div class="card">
-                <h4>FeedbackAccount (83 bytes)</h4>
+                <h4>FeedbackAccount (99 bytes) - Optimized in v0.2.0</h4>
                 <pre><code>pub struct FeedbackAccount {
-    pub asset: Pubkey,           // 32 bytes (unique identifier)
+    pub agent_id: u64,           // 8 bytes
     pub client_address: Pubkey,  // 32 bytes (who gave feedback)
     pub feedback_index: u64,     // 8 bytes (global index)
     pub score: u8,               // 1 byte (0-100)
+    // tag1/tag2 moved to FeedbackTagsPda (optional)
+    // file_uri removed - stored in NewFeedback event only
+    pub file_hash: [u8; 32],     // 32 bytes
     pub is_revoked: bool,        // 1 byte
+    pub created_at: i64,         // 8 bytes
     pub bump: u8,                // 1 byte
 }
-// Removed: agent_id, collection, created_at, file_hash
-// Tags in optional FeedbackTagsPda, URIs/hash in events</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback", asset.key(), feedback_index (LE)]</div>
+// -74% size reduction vs v0.1.0 (was 375 bytes)</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback", agent_id (LE), feedback_index (LE)]</div>
+                <div class="info" style="margin-top: 0.5rem;">
+                    Tags in optional FeedbackTagsPda for <code>getProgramAccounts</code> filtering. URIs in events.
+                </div>
             </div>
 
             <div class="card">
-                <h4>FeedbackTagsPda (81 bytes) - Optional</h4>
+                <h4>FeedbackTagsPda (97 bytes) - Optional</h4>
                 <pre><code>pub struct FeedbackTagsPda {
-    pub bump: u8,                // 1 byte
+    pub agent_id: u64,           // 8 bytes
+    pub feedback_index: u64,     // 8 bytes
     pub tag1: String,            // 4 + 32 = 36 bytes
     pub tag2: String,            // 4 + 32 = 36 bytes
+    pub bump: u8,                // 1 byte
 }
-// Removed: agent_id, feedback_index (implicit via PDA)
 // Created only when tags are set via setFeedbackTags</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback_tags", asset.key(), feedback_index (LE)]</div>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback_tags", agent_id (LE), feedback_index (LE)]</div>
                 <div class="info" style="margin-top: 0.5rem;">
                     Use <code>setFeedbackTags</code> after <code>giveFeedback</code> to add tags on-chain.
                     Tags always included in NewFeedback event for indexers.
@@ -869,35 +849,39 @@ agent_reputation.next_feedback_index += 1;</code></pre>
             </div>
 
             <div class="card">
-                <h4>AgentReputationMetadata (17 bytes) - Sequencer Only</h4>
+                <h4>AgentReputationMetadata - Cached Stats</h4>
                 <pre><code>pub struct AgentReputationMetadata {
+    pub agent_id: u64,              // 8 bytes
+    pub total_feedbacks: u64,       // 8 bytes (non-revoked count)
+    pub total_score_sum: u64,       // 8 bytes (for precise average)
+    pub average_score: u8,          // 1 byte (0-100, pre-calculated)
     pub next_feedback_index: u64,   // 8 bytes (global counter)
+    pub last_updated: i64,          // 8 bytes
     pub bump: u8,                   // 1 byte
-}
-// Removed: agent_id, total_feedbacks, total_score_sum, average_score, last_updated
-// Aggregates computed off-chain via indexer</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_reputation", asset.key()]</div>
+}</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_reputation", agent_id (LE)]</div>
             </div>
 
             <div class="card">
-                <h4>ResponseAccount (41 bytes) - Minimal</h4>
+                <h4>ResponseAccount (105 bytes) - Optimized in v0.2.0</h4>
                 <pre><code>pub struct ResponseAccount {
-    pub responder: Pubkey,       // 32 bytes (who responded)
+    pub agent_id: u64,           // 8 bytes
+    pub feedback_index: u64,     // 8 bytes
+    pub response_index: u64,     // 8 bytes
+    pub responder: Pubkey,       // 32 bytes
+    // response_uri removed - stored in ResponseAppended event only (v0.2.0)
+    pub response_hash: [u8; 32], // 32 bytes
+    pub created_at: i64,         // 8 bytes
     pub bump: u8,                // 1 byte
 }
-// Removed: agent_id, feedback_index, response_index, response_hash, created_at
-// All content stored in ResponseAppended event</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response", asset.key(), feedback_index (LE), response_index (LE)]</div>
+// -66% size reduction vs v0.1.0 (was 309 bytes)</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response", agent_id (LE), feedback_index (LE), response_index (LE)]</div>
             </div>
 
             <div class="card">
-                <h4>ResponseIndexAccount (17 bytes)</h4>
-                <pre><code>pub struct ResponseIndexAccount {
-    pub next_index: u64,         // 8 bytes
-    pub bump: u8,                // 1 byte
-}
-// Removed: agent_id, feedback_index (implicit via PDA)</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response_index", asset.key(), feedback_index (LE)]</div>
+                <h4>ResponseIndexAccount</h4>
+                <p>Tracks next response index per feedback. Enables unlimited responses.</p>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response_index", agent_id (LE), feedback_index (LE)]</div>
             </div>
 
             <h3>Error Codes</h3>
@@ -912,38 +896,39 @@ agent_reputation.next_feedback_index += 1;</code></pre>
                 <tr><td>InvalidIdentityRegistry</td><td>"!IdReg"</td><td>Wrong Identity Registry program</td></tr>
             </table>
 
-            <h3>Events</h3>
+            <h3>Events (Store URIs in v0.2.0)</h3>
             <table>
                 <tr><th>Event</th><th>Fields</th></tr>
-                <tr><td>NewFeedback</td><td><strong>asset</strong>, client_address, feedback_index, score, tag1, tag2, endpoint, feedback_uri, feedback_hash</td></tr>
-                <tr><td>FeedbackRevoked</td><td><strong>asset</strong>, client_address, feedback_index</td></tr>
-                <tr><td>ResponseAppended</td><td><strong>asset</strong>, feedback_index, responder, response_uri, response_hash</td></tr>
+                <tr><td>NewFeedback</td><td>agent_id, client_address, feedback_index, score, tag1, tag2, <strong>file_uri</strong>, file_hash</td></tr>
+                <tr><td>FeedbackRevoked</td><td>agent_id, client_address, feedback_index</td></tr>
+                <tr><td>ResponseAppended</td><td>agent_id, client_address, feedback_index, response_index, responder, <strong>response_uri</strong>, response_hash</td></tr>
             </table>
             <div class="info" style="margin-top: 0.5rem;">
-                <strong>v0.3.0:</strong> All events use <code>asset: Pubkey</code>. URIs/hashes stored in events only.
+                <strong>v0.2.0:</strong> URIs stored in events only (not on-chain). Parse transaction logs to retrieve URIs.
             </div>
         </section>
 
         <!-- VALIDATION MODULE SECTION -->
         <section id="validation">
             <h2>Validation Module</h2>
-            <p>Third-party validation and attestation system. Uses <strong>asset</strong> (Pubkey) as identifier.</p>
+            <p>Third-party validation and attestation system. Validators can provide scores with progressive updates.</p>
 
             <h3>Key Design: Cost-Optimized Storage</h3>
             <div class="success">
-                <strong>v0.3.0:</strong> ValidationRequest is 151 bytes. URIs stored in events only. <code>ValidationStats</code> removed (counters off-chain).
+                <strong>75% Cost Savings:</strong> URIs stored in events only (not on-chain). ValidationRequest is only 126 bytes vs ~590 bytes with URIs.
             </div>
 
             <h3>Instructions</h3>
 
             <!-- request_validation -->
             <div class="card">
-                <h4>request_validation(validator_address, nonce, request_uri, request_hash)</h4>
-                <p>Request validation for an agent. Only NFT holder can request. Asset passed via account context.</p>
+                <h4>request_validation(agent_id, validator_address, nonce, request_uri, request_hash)</h4>
+                <p>Request validation for an agent. Only NFT holder can request.</p>
 
                 <p><strong>Parameters:</strong></p>
                 <table>
                     <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+                    <tr><td>agent_id</td><td>u64</td><td>Agent to validate</td></tr>
                     <tr><td>validator_address</td><td>Pubkey</td><td>Who can respond</td></tr>
                     <tr><td>nonce</td><td>u32</td><td>Sequence number (enables multiple validations from same validator)</td></tr>
                     <tr><td>request_uri</td><td>String</td><td>Max 200 bytes (stored in event only)</td></tr>
@@ -951,7 +936,7 @@ agent_reputation.next_feedback_index += 1;</code></pre>
                 </table>
 
                 <div class="pda-seed">
-                    <strong>ValidationRequest PDA:</strong> seeds = ["validation", asset.key(), validator_address, nonce (LE)]
+                    <strong>ValidationRequest PDA:</strong> seeds = ["validation", agent_id (LE), validator_address, nonce (LE)]
                 </div>
             </div>
 
@@ -985,25 +970,34 @@ agent_reputation.next_feedback_index += 1;</code></pre>
             <h3>Account Structures</h3>
 
             <div class="card">
-                <h4>ValidationRequest (151 bytes)</h4>
+                <h4>ValidationConfig (81 bytes)</h4>
+                <pre><code>pub struct ValidationConfig {
+    pub authority: Pubkey,           // 32 bytes
+    pub identity_registry: Pubkey,   // 32 bytes
+    pub total_requests: u64,         // 8 bytes
+    pub total_responses: u64,        // 8 bytes
+    pub bump: u8,                    // 1 byte
+}</code></pre>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["config"]</div>
+            </div>
+
+            <div class="card">
+                <h4>ValidationRequest (126 bytes) - Cost Optimized</h4>
                 <pre><code>pub struct ValidationRequest {
-    pub asset: Pubkey,               // 32 bytes (unique identifier)
+    pub agent_id: u64,               // 8 bytes
     pub validator_address: Pubkey,   // 32 bytes
     pub nonce: u32,                  // 4 bytes
     pub request_hash: [u8; 32],      // 32 bytes
     pub response_hash: [u8; 32],     // 32 bytes (empty until response)
     pub response: u8,                // 1 byte (0-100)
-    pub last_update: i64,            // 8 bytes (timestamp of last update)
-    pub has_response: bool,          // 1 byte (explicit flag)
+    pub created_at: i64,             // 8 bytes
+    pub responded_at: i64,           // 8 bytes (0 if pending)
     pub bump: u8,                    // 1 byte
 }
-// Removed: agent_id, collection, created_at, responded_at
-// Uses last_update + has_response instead</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["validation", asset.key(), validator_address, nonce (LE)]</div>
-            </div>
 
-            <div class="warning">
-                <strong>Removed:</strong> <code>ValidationStats</code> account entirely. Total requests/responses computed off-chain via indexer.
+// Helper methods
+pub fn has_response(&self) -> bool { self.responded_at > 0 }
+pub fn is_pending(&self) -> bool { self.responded_at == 0 }</code></pre>
             </div>
 
             <h3>Error Codes</h3>
@@ -1021,12 +1015,9 @@ agent_reputation.next_feedback_index += 1;</code></pre>
             <h3>Events</h3>
             <table>
                 <tr><th>Event</th><th>Fields</th></tr>
-                <tr><td>ValidationRequested</td><td><strong>asset</strong>, validator_address, nonce, request_uri, request_hash, requester</td></tr>
-                <tr><td>ValidationResponded</td><td><strong>asset</strong>, validator_address, nonce, response, response_uri, response_hash, tag</td></tr>
+                <tr><td>ValidationRequested</td><td>agent_id, validator_address, nonce, request_uri, request_hash, requester, created_at</td></tr>
+                <tr><td>ValidationResponded</td><td>agent_id, validator_address, nonce, response, response_uri, response_hash, tag, responded_at</td></tr>
             </table>
-            <div class="info" style="margin-top: 0.5rem;">
-                <strong>v0.3.0:</strong> All events use <code>asset: Pubkey</code>. Timestamps via blockTime.
-            </div>
         </section>
 
         <!-- SECURITY SECTION -->
@@ -1037,10 +1028,11 @@ agent_reputation.next_feedback_index += 1;</code></pre>
             <div class="card">
                 <h4>Agent Existence Verification</h4>
                 <p>Reputation and Validation modules verify agent existence internally by checking the AgentAccount PDA exists before processing.</p>
-                <pre><code>// Agent PDA must exist (asset = unique identifier)
+                <pre><code>// Agent PDA must exist and match agent_id
 #[account(
     seeds = [b"agent", asset.key().as_ref()],
     bump = agent_account.bump,
+    constraint = agent_account.agent_id == agent_id
 )]
 pub agent_account: Account&lt;'info, AgentAccount&gt;,</code></pre>
             </div>
@@ -1070,106 +1062,110 @@ constraint = asset.owner == owner.key()</code></pre>
 
         <!-- COSTS SECTION -->
         <section id="costs">
-            <h2>Cost Analysis (v0.3.0)</h2>
+            <h2>Cost Analysis (v0.2.0)</h2>
 
-            <h3>Operation Costs (Estimated)</h3>
+            <h3>Operation Costs (Measured on Devnet)</h3>
             <table>
-                <tr><th>Operation</th><th>Cost (SOL)</th><th>Notes</th></tr>
-                <tr><td>Register Agent</td><td><strong>~0.0058</strong></td><td>Core asset + AgentAccount (smaller)</td></tr>
-                <tr><td>Set Metadata</td><td>~0.0032</td><td>MetadataEntryPda</td></tr>
-                <tr><td>Give Feedback</td><td>~0.0014</td><td>FeedbackAccount (optimized)</td></tr>
-                <tr><td>Append Response</td><td>~0.0012</td><td>ResponseAccount (minimal)</td></tr>
-                <tr><td>Request Validation</td><td>~0.0017</td><td>ValidationRequest</td></tr>
+                <tr><th>Operation</th><th>Cost (SOL)</th><th>Lamports</th><th>Notes</th></tr>
+                <tr><td>Register Agent</td><td><strong>0.00650</strong></td><td>6,500,320</td><td>Core asset + AgentAccount</td></tr>
+                <tr><td>Set Metadata (1st)</td><td><strong>0.00319</strong></td><td>3,192,680</td><td>+MetadataEntryPda</td></tr>
+                <tr><td>Set Metadata (update)</td><td>0.000005</td><td>5,000</td><td>TX fee only</td></tr>
+                <tr><td>Give Feedback (1st)</td><td>0.00282</td><td>2,823,800</td><td>+AgentReputation init</td></tr>
+                <tr><td>Give Feedback (2nd+)</td><td>0.00158</td><td>1,584,920</td><td>FeedbackAccount only</td></tr>
+                <tr><td>Append Response (1st)</td><td>0.00275</td><td>2,747,240</td><td>+ResponseIndex init</td></tr>
+                <tr><td>Append Response (2nd+)</td><td>0.00163</td><td>1,626,680</td><td>ResponseAccount only</td></tr>
+                <tr><td>Revoke Feedback</td><td>0.000005</td><td>5,000</td><td>TX fee only</td></tr>
+                <tr><td>Request Validation</td><td>0.00183</td><td>1,828,520</td><td>ValidationRequest</td></tr>
+                <tr><td>Respond Validation</td><td>0.000005</td><td>5,000</td><td>TX fee only</td></tr>
+                <tr><td><strong>Full Lifecycle</strong></td><td><strong>0.0235</strong></td><td>23,511,840</td><td>Complete test cycle</td></tr>
             </table>
 
-            <h3>v0.3.0 Account Size Optimizations</h3>
+            <h3>First vs Subsequent Savings</h3>
             <table>
-                <tr><th>Account</th><th>v0.2.0</th><th>v0.3.0</th><th>Savings</th></tr>
-                <tr><td>AgentReputationMetadata</td><td>50 bytes</td><td>17 bytes</td><td class="highlight"><strong>-66%</strong></td></tr>
-                <tr><td>ResponseAccount</td><td>73 bytes</td><td>41 bytes</td><td class="highlight"><strong>-44%</strong></td></tr>
-                <tr><td>ResponseIndexAccount</td><td>33 bytes</td><td>17 bytes</td><td class="highlight"><strong>-48%</strong></td></tr>
-                <tr><td>FeedbackAccount</td><td>99 bytes</td><td>83 bytes</td><td>-16%</td></tr>
-                <tr><td>FeedbackTagsPda</td><td>97 bytes</td><td>81 bytes</td><td>-16%</td></tr>
-                <tr><td>ValidationRequest</td><td>166 bytes</td><td>151 bytes</td><td>-9%</td></tr>
-                <tr><td>AgentAccount</td><td>343 bytes</td><td>313 bytes</td><td>-9%</td></tr>
-                <tr><td>RegistryConfig</td><td>94 bytes</td><td>78 bytes</td><td>-17%</td></tr>
+                <tr><th>Operation</th><th>1st Call</th><th>2nd+ Calls</th><th>Savings</th></tr>
+                <tr><td>Set Metadata</td><td>0.00319 SOL</td><td>0.000005 SOL</td><td class="highlight"><strong>-99%</strong></td></tr>
+                <tr><td>Give Feedback</td><td>0.00282 SOL</td><td>0.00158 SOL</td><td class="highlight"><strong>-44%</strong></td></tr>
+                <tr><td>Append Response</td><td>0.00275 SOL</td><td>0.00163 SOL</td><td class="highlight"><strong>-41%</strong></td></tr>
             </table>
-            <p><strong>Per agent (1 feedback, 1 response, 1 validation): -158 bytes (-18%), ~0.14 SOL savings</strong></p>
 
-            <h3>What Was Removed</h3>
+            <h3>v0.2.0 Account Size Optimizations</h3>
+            <table>
+                <tr><th>Account</th><th>v0.1.0</th><th>v0.2.0</th><th>Savings</th></tr>
+                <tr><td>FeedbackAccount</td><td>375 bytes</td><td>99 bytes</td><td class="highlight"><strong>-74%</strong></td></tr>
+                <tr><td>ResponseAccount</td><td>309 bytes</td><td>105 bytes</td><td class="highlight"><strong>-66%</strong></td></tr>
+                <tr><td>AgentAccount</td><td>661 bytes</td><td>~365 bytes</td><td class="highlight"><strong>-45%</strong></td></tr>
+            </table>
+            <p><small>URIs in events only. Tags moved to optional FeedbackTagsPda (97 bytes).</small></p>
+
+            <h3>Cost Optimizations in v0.2.0</h3>
 
             <div class="card">
-                <h4>1. ValidationStats Account</h4>
-                <p><strong>Removed entirely.</strong> Total requests/responses computed off-chain via indexer.</p>
-            </div>
-
-            <div class="card">
-                <h4>2. On-chain Aggregates</h4>
-                <p>From AgentReputationMetadata:</p>
+                <h4>1. PDA-based Metadata (Unlimited + Deletable)</h4>
+                <p><strong>Before:</strong> Vec&lt;MetadataEntry&gt; in AgentAccount (max 1, extensions for more)</p>
+                <p><strong>After:</strong> Individual MetadataEntryPda per key (~330 bytes each)</p>
+                <p><strong>Benefits:</strong></p>
                 <ul>
-                    <li><code>total_feedbacks</code>, <code>total_score_sum</code>, <code>average_score</code>, <code>last_updated</code></li>
-                </ul>
-                <p>Now computed off-chain. Only <code>next_feedback_index</code> remains for sequencing.</p>
-            </div>
-
-            <div class="card">
-                <h4>3. Redundant Fields</h4>
-                <ul>
-                    <li><code>agent_id</code> everywhere (replaced by <code>asset</code>)</li>
-                    <li><code>collection</code> from FeedbackAccount, ValidationRequest</li>
-                    <li><code>created_at</code> from all accounts (use blockTime)</li>
-                    <li><code>nft_symbol</code> from AgentAccount (read from Metaplex)</li>
-                    <li><code>response_hash</code>, indices from ResponseAccount (in events)</li>
+                    <li>Unlimited metadata entries per agent</li>
+                    <li>Delete to recover rent (~0.0031 SOL)</li>
+                    <li>Optional immutable flag for certifications</li>
                 </ul>
             </div>
 
             <div class="card">
-                <h4>4. Rent Recovery</h4>
+                <h4>2. Hash-Only Storage + Optional Tags (-74% to -66%)</h4>
+                <p><strong>file_uri / response_uri:</strong> Removed from accounts, stored in events only</p>
+                <p><strong>tag1 / tag2:</strong> Moved to optional FeedbackTagsPda (97 bytes)</p>
+                <p><strong>Savings:</strong></p>
+                <ul>
+                    <li>FeedbackAccount: 375 → 99 bytes (-74%)</li>
+                    <li>ResponseAccount: 309 → 105 bytes (-66%)</li>
+                </ul>
+                <p>Use <code>setFeedbackTags</code> after <code>giveFeedback</code> to add tags on-chain for <code>getProgramAccounts</code> filtering.</p>
+            </div>
+
+            <div class="card">
+                <h4>3. Rent Recovery</h4>
                 <p>Accounts can be closed to recover rent:</p>
                 <ul>
-                    <li><code>delete_metadata_pda()</code> - Returns ~0.0029 SOL per entry</li>
-                    <li><code>close_validation()</code> - Returns rent to current Core asset owner</li>
+                    <li><code>delete_metadata_pda()</code> - Returns ~0.0031 SOL per entry</li>
+                    <li><code>close_validation()</code> - Returns rent to agent owner</li>
+                    <li>Effectively "free" storage for temporary data</li>
                 </ul>
             </div>
         </section>
 
         <!-- PDA REFERENCE SECTION -->
         <section id="pda-reference">
-            <h2>PDA Reference (v0.3.0)</h2>
-
-            <div class="info">
-                <strong>v0.3.0:</strong> All PDAs now use <code>asset.key()</code> instead of <code>agent_id</code>. The Core NFT address is the unique identifier.
-            </div>
+            <h2>PDA Reference</h2>
 
             <h3>Identity Module PDAs</h3>
             <table>
                 <tr><th>Account</th><th>Seeds</th></tr>
-                <tr><td>RootConfig</td><td><code>["root_config"]</code></td></tr>
+                <tr><td>Config</td><td><code>["config"]</code></td></tr>
                 <tr><td>Agent</td><td><code>["agent", asset.key()]</code></td></tr>
-                <tr><td>Metadata Entry</td><td><code>["agent_meta", asset.key(), key_hash[0..8]]</code></td></tr>
+                <tr><td>Metadata Entry (v0.2.0)</td><td><code>["agent_meta", agent_id (LE), key_hash[0..8]]</code></td></tr>
             </table>
 
             <h3>Reputation Module PDAs</h3>
             <table>
                 <tr><th>Account</th><th>Seeds</th></tr>
-                <tr><td>Agent Reputation</td><td><code>["agent_reputation", asset.key()]</code></td></tr>
-                <tr><td>Feedback</td><td><code>["feedback", asset.key(), feedback_index (LE)]</code></td></tr>
-                <tr><td>Feedback Tags</td><td><code>["feedback_tags", asset.key(), feedback_index (LE)]</code></td></tr>
-                <tr><td>Response</td><td><code>["response", asset.key(), feedback_index (LE), response_index (LE)]</code></td></tr>
-                <tr><td>Response Index</td><td><code>["response_index", asset.key(), feedback_index (LE)]</code></td></tr>
+                <tr><td>Agent Reputation</td><td><code>["agent_reputation", agent_id (LE)]</code></td></tr>
+                <tr><td>Feedback</td><td><code>["feedback", agent_id (LE), feedback_index (LE)]</code></td></tr>
+                <tr><td>Response</td><td><code>["response", agent_id (LE), feedback_index (LE), response_index (LE)]</code></td></tr>
+                <tr><td>Response Index</td><td><code>["response_index", agent_id (LE), feedback_index (LE)]</code></td></tr>
             </table>
 
             <h3>Validation Module PDAs</h3>
             <table>
                 <tr><th>Account</th><th>Seeds</th></tr>
-                <tr><td>Validation Request</td><td><code>["validation", asset.key(), validator_address, nonce (LE)]</code></td></tr>
+                <tr><td>Validation Request</td><td><code>["validation", agent_id (LE), validator_address, nonce (LE)]</code></td></tr>
             </table>
 
             <h3>Metaplex Core (External)</h3>
             <table>
                 <tr><th>Account</th><th>Description</th></tr>
-                <tr><td>Collection</td><td>Core Collection asset (stored in root_config.collection)</td></tr>
-                <tr><td>Asset</td><td>Core Asset for each agent = <strong>unique identifier</strong></td></tr>
+                <tr><td>Collection</td><td>Core Collection asset (stored in config.collection)</td></tr>
+                <tr><td>Asset</td><td>Core Asset for each agent (stored in agent.asset)</td></tr>
             </table>
         </section>
 
