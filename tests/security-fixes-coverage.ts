@@ -1,6 +1,7 @@
 /**
- * Security Fixes Coverage Tests - v0.2.2
+ * Security Fixes Coverage Tests - v0.3.0
  * 100% coverage for all security changes with edge cases and simulations
+ * @deprecated Use identity-security-tests.ts, reputation-security-tests.ts, validation-security-tests.ts instead
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
@@ -26,7 +27,7 @@ import {
   expectAnchorError,
 } from "./utils/helpers";
 
-describe("Security Fixes Coverage Tests v0.2.2", () => {
+describe("Security Fixes Coverage Tests v0.3.0", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
