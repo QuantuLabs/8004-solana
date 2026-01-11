@@ -75,6 +75,10 @@ pub struct AgentAccount {
     /// PDA bump seed (static field - fixed offset)
     pub bump: u8,
 
+    /// Agent's operational wallet (set via Ed25519 signature verification)
+    /// None = no wallet set, Some = wallet address
+    pub agent_wallet: Option<Pubkey>,
+
     /// Agent URI (IPFS/Arweave/HTTP link, max 200 bytes)
     #[max_len(200)]
     pub agent_uri: String,
@@ -125,3 +129,4 @@ impl MetadataEntryPda {
     /// Maximum value length in bytes (used for validation)
     pub const MAX_VALUE_LENGTH: usize = 256;
 }
+

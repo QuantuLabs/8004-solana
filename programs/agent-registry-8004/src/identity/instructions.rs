@@ -59,25 +59,23 @@ pub fn set_metadata_pda(
         RegistryError::ValueTooLong
     );
 
-    let entry = &mut ctx.accounts.metadata_entry;
     let asset = ctx.accounts.asset.key();
+    let is_new = ctx.accounts.metadata_entry.asset == Pubkey::default();
 
-    // Check for key_hash collision (different keys with same hash)
-    // If entry exists (has asset set), stored key must match provided key
-    if entry.asset != Pubkey::default() {
+    // Check for key_hash collision and immutability (existing entries only)
+    if !is_new {
         require!(
-            entry.metadata_key == key,
+            ctx.accounts.metadata_entry.metadata_key == key,
             RegistryError::KeyHashCollision
         );
 
-        // Check if immutable (only after collision check)
-        if entry.immutable {
+        if ctx.accounts.metadata_entry.immutable {
             return Err(RegistryError::MetadataImmutable.into());
         }
     }
 
     // Set or update entry
-    let is_new = entry.asset == Pubkey::default();
+    let entry = &mut ctx.accounts.metadata_entry;
     entry.asset = asset;
     entry.metadata_key = key.clone();
     entry.metadata_value = value.clone();
@@ -224,6 +222,7 @@ pub fn owner_of(ctx: Context<OwnerOf>) -> Result<Pubkey> {
 }
 
 /// Transfer agent with automatic owner sync
+/// Automatically resets agent_wallet to None on transfer for security
 pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
     // Verify current ownership
     verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
@@ -247,28 +246,21 @@ pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
         .new_owner(&ctx.accounts.new_owner.to_account_info())
         .invoke()?;
 
-    // Update cached owner
+    // Update cached owner and reset wallet
     let agent = &mut ctx.accounts.agent_account;
+    let old_wallet = agent.agent_wallet;
     agent.owner = new_owner;
+    agent.agent_wallet = None; // Security: reset wallet on transfer
 
-    // If wallet_metadata was provided, emit event
-    if ctx.accounts.wallet_metadata.is_some() {
-        let old_wallet = ctx.accounts.wallet_metadata.as_ref().and_then(|pda| {
-            if pda.metadata_value.len() == 32 {
-                Some(Pubkey::try_from(&pda.metadata_value[..]).unwrap())
-            } else {
-                None
-            }
-        });
-
+    // Emit wallet reset event if there was a wallet
+    if old_wallet.is_some() {
         emit!(WalletUpdated {
             asset,
             old_wallet,
             new_wallet: Pubkey::default(),
             updated_by: old_owner,
         });
-
-        msg!("Agent wallet reset on transfer (PDA closed, rent returned to {})", old_owner);
+        msg!("Agent wallet reset on transfer");
     }
 
     emit!(AgentOwnerSynced {
@@ -285,6 +277,7 @@ pub fn transfer_agent(ctx: Context<TransferAgent>) -> Result<()> {
 /// Set agent wallet with Ed25519 signature verification
 ///
 /// Message format: "8004_WALLET_SET:" || asset (32 bytes) || new_wallet (32 bytes) || owner (32 bytes) || deadline (8 bytes LE)
+/// Wallet is stored directly in AgentAccount (no separate PDA = no rent cost)
 pub fn set_agent_wallet(
     ctx: Context<SetAgentWallet>,
     new_wallet: Pubkey,
@@ -317,22 +310,10 @@ pub fn set_agent_wallet(
         &expected_message,
     )?;
 
-    // 5. Store wallet in MetadataEntryPda
-    let wallet_pda = &mut ctx.accounts.wallet_metadata;
-    let old_wallet = if wallet_pda.metadata_value.len() == 32 {
-        Some(Pubkey::try_from(&wallet_pda.metadata_value[..]).unwrap())
-    } else {
-        None
-    };
-
-    let is_new = wallet_pda.asset == Pubkey::default();
-    wallet_pda.asset = asset;
-    wallet_pda.metadata_key = "agentWallet".to_string();
-    wallet_pda.metadata_value = new_wallet.to_bytes().to_vec();
-    wallet_pda.immutable = false;
-    if is_new {
-        wallet_pda.bump = ctx.bumps.wallet_metadata;
-    }
+    // 5. Store wallet directly in AgentAccount (no rent cost!)
+    let agent = &mut ctx.accounts.agent_account;
+    let old_wallet = agent.agent_wallet;
+    agent.agent_wallet = Some(new_wallet);
 
     emit!(WalletUpdated {
         asset,
@@ -367,6 +348,7 @@ fn build_wallet_set_message(
 }
 
 /// Verify Ed25519 signature via sysvar introspection
+/// SECURITY: Ed25519 instruction MUST be immediately before this instruction (current_index - 1)
 fn verify_ed25519_signature(
     instructions_sysvar: &AccountInfo,
     expected_signer: Pubkey,
@@ -375,52 +357,68 @@ fn verify_ed25519_signature(
     let current_idx = load_current_index_checked(instructions_sysvar)
         .map_err(|_| RegistryError::MissingSignatureVerification)?;
 
-    for idx in 0..current_idx {
-        let ix = load_instruction_at_checked(idx as usize, instructions_sysvar)
-            .map_err(|_| RegistryError::MissingSignatureVerification)?;
+    // SECURITY FIX: Ed25519 instruction MUST be at index (current_index - 1)
+    // This prevents signature reuse attacks where an attacker places a valid
+    // signature earlier in the transaction for a different purpose
+    require!(current_idx >= 1, RegistryError::MissingSignatureVerification);
+    let ed25519_idx = (current_idx - 1) as usize;
 
-        if ix.program_id == ed25519_program::ID {
-            if ix.data.len() < 16 {
-                continue;
-            }
+    let ix = load_instruction_at_checked(ed25519_idx, instructions_sysvar)
+        .map_err(|_| RegistryError::MissingSignatureVerification)?;
 
-            let num_signatures = ix.data[0];
-            if num_signatures != 1 {
-                continue;
-            }
+    // Must be Ed25519 program
+    require!(
+        ix.program_id == ed25519_program::ID,
+        RegistryError::MissingSignatureVerification
+    );
 
-            let signature_offset = u16::from_le_bytes([ix.data[2], ix.data[3]]) as usize;
-            let pubkey_offset = u16::from_le_bytes([ix.data[6], ix.data[7]]) as usize;
-            let message_offset = u16::from_le_bytes([ix.data[10], ix.data[11]]) as usize;
-            let message_size = u16::from_le_bytes([ix.data[12], ix.data[13]]) as usize;
+    // Validate instruction data length (header is 16 bytes minimum)
+    require!(ix.data.len() >= 16, RegistryError::InvalidSignature);
 
-            if pubkey_offset + 32 > ix.data.len()
-                || message_offset + message_size > ix.data.len()
-                || signature_offset + 64 > ix.data.len()
-            {
-                continue;
-            }
+    let num_signatures = ix.data[0];
+    require!(num_signatures == 1, RegistryError::InvalidSignature);
 
-            let pubkey_bytes: [u8; 32] = ix.data[pubkey_offset..pubkey_offset + 32]
-                .try_into()
-                .unwrap();
-            let signer = Pubkey::from(pubkey_bytes);
+    // SECURITY FIX: Verify all instruction indices are u16::MAX (0xFFFF)
+    // This ensures signature, pubkey, and message are INLINE in this instruction,
+    // not referenced from another instruction in the transaction.
+    // Without this check, an attacker could craft an Ed25519 instruction that
+    // references data from a different instruction, bypassing our validation.
+    let sig_instruction_index = u16::from_le_bytes([ix.data[4], ix.data[5]]);
+    let pubkey_instruction_index = u16::from_le_bytes([ix.data[8], ix.data[9]]);
+    let msg_instruction_index = u16::from_le_bytes([ix.data[14], ix.data[15]]);
 
-            if signer != expected_signer {
-                continue;
-            }
+    require!(
+        sig_instruction_index == u16::MAX
+            && pubkey_instruction_index == u16::MAX
+            && msg_instruction_index == u16::MAX,
+        RegistryError::InvalidSignature
+    );
 
-            let message = &ix.data[message_offset..message_offset + message_size];
+    let signature_offset = u16::from_le_bytes([ix.data[2], ix.data[3]]) as usize;
+    let pubkey_offset = u16::from_le_bytes([ix.data[6], ix.data[7]]) as usize;
+    let message_offset = u16::from_le_bytes([ix.data[10], ix.data[11]]) as usize;
+    let message_size = u16::from_le_bytes([ix.data[12], ix.data[13]]) as usize;
 
-            if message != expected_message {
-                continue;
-            }
+    // Validate bounds
+    require!(
+        pubkey_offset + 32 <= ix.data.len()
+            && message_offset + message_size <= ix.data.len()
+            && signature_offset + 64 <= ix.data.len(),
+        RegistryError::InvalidSignature
+    );
 
-            return Ok(());
-        }
-    }
+    // Verify pubkey matches expected signer
+    let pubkey_bytes: [u8; 32] = ix.data[pubkey_offset..pubkey_offset + 32]
+        .try_into()
+        .map_err(|_| RegistryError::InvalidSignature)?;
+    let signer = Pubkey::from(pubkey_bytes);
+    require!(signer == expected_signer, RegistryError::InvalidSignature);
 
-    Err(RegistryError::MissingSignatureVerification.into())
+    // Verify message matches expected message
+    let message = &ix.data[message_offset..message_offset + message_size];
+    require!(message == expected_message, RegistryError::InvalidSignature);
+
+    Ok(())
 }
 
 /// Create Core asset via CPI
@@ -799,9 +797,10 @@ pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
     let agent = &mut ctx.accounts.agent_account;
     agent.owner = ctx.accounts.owner.key();
     agent.asset = asset;
+    agent.bump = ctx.bumps.agent_account;
+    agent.agent_wallet = None;
     agent.agent_uri = agent_uri;
     agent.nft_name = "Agent".to_string();
-    agent.bump = ctx.bumps.agent_account;
 
     let (registry_pda, _) = Pubkey::find_program_address(
         &[b"registry_config", ctx.accounts.collection.key().as_ref()],

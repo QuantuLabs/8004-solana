@@ -5,15 +5,12 @@ use anchor_lang::solana_program::sysvar::instructions as sysvar_instructions;
 use super::state::*;
 use crate::error::RegistryError;
 
-/// Reserved key hash for "agentWallet" metadata
-/// Computed as: sha256("agentWallet")[0..8] = 0x9554ffa5cdc8747a
-pub const AGENT_WALLET_KEY_HASH: [u8; 8] = [0x95, 0x54, 0xff, 0xa5, 0xcd, 0xc8, 0x74, 0x7a];
-
-/// Set metadata as individual PDA
+/// Set metadata as individual PDA with dynamic sizing
 /// Creates new PDA if not exists, updates if exists and not immutable
 #[derive(Accounts)]
 #[instruction(key_hash: [u8; 8], key: String, value: Vec<u8>, immutable: bool)]
 pub struct SetMetadataPda<'info> {
+    /// Uses max space for init, realloc in instruction handles actual sizing
     #[account(
         init_if_needed,
         payer = owner,
@@ -161,7 +158,7 @@ pub struct OwnerOf<'info> {
 }
 
 /// Transfer agent with automatic owner sync
-/// Optionally closes wallet metadata PDA to reset agent wallet on transfer
+/// Automatically resets agent_wallet to None on transfer
 #[derive(Accounts)]
 pub struct TransferAgent<'info> {
     #[account(
@@ -184,7 +181,7 @@ pub struct TransferAgent<'info> {
     #[account(mut)]
     pub collection: UncheckedAccount<'info>,
 
-    /// Current owner (must sign, receives rent back from wallet PDA if closed)
+    /// Current owner (must sign)
     #[account(mut)]
     pub owner: Signer<'info>,
 
@@ -196,46 +193,23 @@ pub struct TransferAgent<'info> {
     /// CHECK: Verified by address constraint
     #[account(address = mpl_core::ID)]
     pub mpl_core_program: UncheckedAccount<'info>,
-
-    /// Optional wallet metadata PDA to close on transfer
-    /// If provided, it will be closed and rent returned to owner
-    #[account(
-        mut,
-        seeds = [b"agent_meta", asset.key().as_ref(), AGENT_WALLET_KEY_HASH.as_ref()],
-        bump = wallet_metadata.bump,
-        close = owner
-    )]
-    pub wallet_metadata: Option<Account<'info, MetadataEntryPda>>,
 }
 
 /// Set agent wallet with Ed25519 signature verification
 /// Transaction must include Ed25519Program verify instruction before this one
+/// Wallet is stored directly in AgentAccount (no separate PDA = no rent cost)
 #[derive(Accounts)]
 #[instruction(new_wallet: Pubkey, deadline: i64)]
 pub struct SetAgentWallet<'info> {
     /// Agent owner (must be Core asset owner)
-    #[account(mut)]
     pub owner: Signer<'info>,
 
-    /// Payer for wallet metadata PDA (if new)
-    #[account(mut)]
-    pub payer: Signer<'info>,
-
     #[account(
+        mut,
         seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
     )]
     pub agent_account: Account<'info, AgentAccount>,
-
-    /// MetadataEntryPda for reserved "agentWallet" key
-    #[account(
-        init_if_needed,
-        payer = payer,
-        space = MetadataEntryPda::DISCRIMINATOR.len() + MetadataEntryPda::INIT_SPACE,
-        seeds = [b"agent_meta", asset.key().as_ref(), AGENT_WALLET_KEY_HASH.as_ref()],
-        bump
-    )]
-    pub wallet_metadata: Account<'info, MetadataEntryPda>,
 
     /// Core asset - ownership verified in instruction
     /// CHECK: Verified via agent_account constraint and in instruction
@@ -248,8 +222,6 @@ pub struct SetAgentWallet<'info> {
     /// CHECK: Verified by address constraint
     #[account(address = sysvar_instructions::ID)]
     pub instructions_sysvar: UncheckedAccount<'info>,
-
-    pub system_program: Program<'info, System>,
 }
 
 // ============================================================================
