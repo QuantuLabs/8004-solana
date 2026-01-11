@@ -1,7 +1,11 @@
 /**
- * E2E Cost Measurement Tests for Agent Registry 8004
- * Covers all instructions and measures SOL costs + compute units
- * Updated for multi-collection architecture
+ * E2E Cost Measurement Tests for Agent Registry 8004 v2.0.0
+ * Events-Only Architecture
+ *
+ * Measures real SOL costs for all operations:
+ * - Identity: register, setMetadataPda, setAgentUri
+ * - Reputation: giveFeedback (events-only), revokeFeedback, appendResponse
+ * - Validation: requestValidation, respondToValidation (all events-only)
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
@@ -12,15 +16,7 @@ import { expect } from "chai";
 import {
   MPL_CORE_PROGRAM_ID,
   getRootConfigPda,
-  getRegistryConfigPda,
   getAgentPda,
-  getAgentReputationPda,
-  getFeedbackPda,
-  getFeedbackTagsPda,
-  getResponseIndexPda,
-  getResponsePda,
-  getValidationStatsPda,
-  getValidationRequestPda,
   getMetadataEntryPda,
   computeKeyHash,
   randomHash,
@@ -46,12 +42,11 @@ async function measureCost(
 ): Promise<string> {
   const balanceBefore = await provider.connection.getBalance(provider.wallet.publicKey);
   const sig = await txFn();
-  await new Promise(resolve => setTimeout(resolve, 500)); // Wait for confirmation
+  await new Promise(resolve => setTimeout(resolve, 500));
   const balanceAfter = await provider.connection.getBalance(provider.wallet.publicKey);
 
   const solCost = (balanceBefore - balanceAfter) / LAMPORTS_PER_SOL;
 
-  // Get compute units from transaction
   let computeUnits = 0;
   try {
     const tx = await provider.connection.getTransaction(sig, {
@@ -61,51 +56,78 @@ async function measureCost(
     if (tx?.meta?.computeUnitsConsumed) {
       computeUnits = tx.meta.computeUnitsConsumed;
     }
-  } catch (e) {
-    // Ignore errors getting compute units
-  }
+  } catch (e) {}
 
   costs.push({ action, solCost, computeUnits, accountSize, notes });
-  console.log(`  ${action}: ${solCost.toFixed(6)} SOL, ${computeUnits} CU${accountSize ? `, ${accountSize} bytes` : ''}`);
+  console.log(`  ${action}: ${solCost.toFixed(6)} SOL, ${computeUnits} CU${accountSize ? `, ${accountSize} bytes` : ''}${notes ? ` (${notes})` : ''}`);
 
   return sig;
 }
 
 function printCostSummary() {
-  console.log("\n" + "=".repeat(80));
-  console.log("COST SUMMARY");
-  console.log("=".repeat(80));
+  console.log("\n" + "=".repeat(100));
+  console.log("v2.0.0 COST SUMMARY - Events-Only Architecture");
+  console.log("=".repeat(100));
   console.log(
-    "Action".padEnd(35) +
+    "Action".padEnd(45) +
     "SOL Cost".padStart(12) +
-    "Compute Units".padStart(15) +
-    "Account Size".padStart(14) +
-    "Notes".padStart(20)
+    "USD (~$150/SOL)".padStart(16) +
+    "CU".padStart(10) +
+    "Notes".padStart(17)
   );
-  console.log("-".repeat(96));
+  console.log("-".repeat(100));
 
   for (const record of costs) {
+    const usdCost = record.solCost * 150;
     console.log(
-      record.action.padEnd(35) +
+      record.action.padEnd(45) +
       record.solCost.toFixed(6).padStart(12) +
-      record.computeUnits.toString().padStart(15) +
-      (record.accountSize ? `${record.accountSize} bytes` : "-").padStart(14) +
-      (record.notes || "").padStart(20)
+      ("$" + usdCost.toFixed(4)).padStart(16) +
+      record.computeUnits.toString().padStart(10) +
+      (record.notes || "").padStart(17)
     );
   }
 
-  console.log("-".repeat(96));
+  console.log("-".repeat(100));
   const totalSol = costs.reduce((sum, r) => sum + r.solCost, 0);
-  const totalCU = costs.reduce((sum, r) => sum + r.computeUnits, 0);
+  const totalUsd = totalSol * 150;
   console.log(
-    "TOTAL".padEnd(35) +
+    "TOTAL".padEnd(45) +
     totalSol.toFixed(6).padStart(12) +
-    totalCU.toString().padStart(15)
+    ("$" + totalUsd.toFixed(4)).padStart(16)
   );
-  console.log("=".repeat(80));
+  console.log("=".repeat(100));
+
+  console.log("\n" + "=".repeat(100));
+  console.log("v2.0.0 EVENTS-ONLY SAVINGS");
+  console.log("=".repeat(100));
+
+  const feedback = costs.find(c => c.action.includes("giveFeedback"));
+  const response = costs.find(c => c.action.includes("appendResponse"));
+  const validation = costs.find(c => c.action.includes("requestValidation"));
+
+  if (feedback) {
+    const oldCost = 0.00150;
+    const savings = ((oldCost - feedback.solCost) / oldCost * 100);
+    console.log(`giveFeedback:       ${feedback.solCost.toFixed(6)} SOL vs ~0.00150 SOL (v0.3 PDA) = ${savings > 0 ? savings.toFixed(0) + '% savings' : 'similar'}`);
+  }
+  if (response) {
+    const oldCost = 0.00180;
+    const savings = ((oldCost - response.solCost) / oldCost * 100);
+    console.log(`appendResponse:     ${response.solCost.toFixed(6)} SOL vs ~0.00180 SOL (v0.3 PDA) = ${savings > 0 ? savings.toFixed(0) + '% savings' : 'similar'} (events-only!)`);
+  }
+  if (validation) {
+    const oldCost = 0.00200;
+    const savings = ((oldCost - validation.solCost) / oldCost * 100);
+    console.log(`requestValidation:  ${validation.solCost.toFixed(6)} SOL vs ~0.00200 SOL (v0.3 PDA) = ${savings > 0 ? savings.toFixed(0) + '% savings' : 'similar'} (events-only!)`);
+  }
+
+  console.log("\nKey insight: Events-only = TX fee only (~0.00001 SOL)");
+  console.log("No rent required for reputation/validation PDAs");
+  console.log("=".repeat(100));
 }
 
-describe("E2E Cost Measurement Tests", () => {
+describe("E2E Cost Measurement v2.0.0 (Events-Only)", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -114,71 +136,46 @@ describe("E2E Cost Measurement Tests", () => {
   let rootConfigPda: PublicKey;
   let registryConfigPda: PublicKey;
   let collectionPubkey: PublicKey;
-  let validationStatsPda: PublicKey;
 
-  // Test agents
   let agent1Asset: Keypair;
   let agent1Pda: PublicKey;
-  let agent1Id: anchor.BN;
 
-  let agent2Asset: Keypair;
-  let agent2Pda: PublicKey;
-  let agent2Id: anchor.BN;
-
-  // Third party for feedback/validation
   const thirdParty = Keypair.generate();
 
   before(async () => {
-    console.log("\n=== E2E Cost Measurement Setup ===");
+    console.log("\n=== E2E Cost Measurement v2.0.0 ===");
     console.log("Program ID:", program.programId.toBase58());
-    console.log("Provider:", provider.wallet.publicKey.toBase58());
 
     [rootConfigPda] = getRootConfigPda(program.programId);
-    [validationStatsPda] = getValidationStatsPda(program.programId);
-
-    // Fetch root config to get current base registry
     const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
-    console.log("Root Config PDA:", rootConfigPda.toBase58());
-    console.log("Current Base Registry:", rootConfig.currentBaseRegistry.toBase58());
 
-    // Fetch the registry config
-    const registryConfig = await program.account.registryConfig.fetch(rootConfig.currentBaseRegistry);
     registryConfigPda = rootConfig.currentBaseRegistry;
+    const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
     collectionPubkey = registryConfig.collection;
 
-    console.log("Registry Config PDA:", registryConfigPda.toBase58());
     console.log("Collection:", collectionPubkey.toBase58());
-    console.log("Next Agent ID:", registryConfig.nextAgentId.toNumber());
 
-    // Airdrop to third party for testing
     try {
       const sig = await provider.connection.requestAirdrop(thirdParty.publicKey, LAMPORTS_PER_SOL);
       await provider.connection.confirmTransaction(sig, "confirmed");
-    } catch (e) {
-      // May fail on devnet due to rate limits
-    }
+    } catch (e) {}
   });
 
   after(() => {
     printCostSummary();
   });
 
-  // ============================================================================
-  // IDENTITY MODULE
-  // ============================================================================
   describe("Identity Module Costs", () => {
-    it("register() - Create agent with NFT", async () => {
-      const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
-      agent1Id = registryConfig.nextAgentId;
+    it("register() - Create agent", async () => {
       agent1Asset = Keypair.generate();
       [agent1Pda] = getAgentPda(agent1Asset.publicKey, program.programId);
 
       await measureCost(
         provider,
-        "register (agent + NFT)",
+        "register (agent + Core NFT)",
         async () => {
           return program.methods
-            .register("https://example.com/agent/cost-test-1")
+            .register("https://example.com/agent/cost-test")
             .accountsPartial({
               registryConfig: registryConfigPda,
               agentAccount: agent1Pda,
@@ -193,56 +190,25 @@ describe("E2E Cost Measurement Tests", () => {
             .rpc();
         },
         undefined,
-        "NFT + PDA"
-      );
-
-      // Verify
-      const agent = await program.account.agentAccount.fetch(agent1Pda);
-      expect(agent.agentId.toNumber()).to.equal(agent1Id.toNumber());
-    });
-
-    it("register() - Second agent", async () => {
-      const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
-      agent2Id = registryConfig.nextAgentId;
-      agent2Asset = Keypair.generate();
-      [agent2Pda] = getAgentPda(agent2Asset.publicKey, program.programId);
-
-      await measureCost(
-        provider,
-        "register (2nd agent)",
-        async () => {
-          return program.methods
-            .register("https://example.com/agent/cost-test-2")
-            .accountsPartial({
-              registryConfig: registryConfigPda,
-              agentAccount: agent2Pda,
-              asset: agent2Asset.publicKey,
-              collection: collectionPubkey,
-              userCollectionAuthority: null,
-              owner: provider.wallet.publicKey,
-              systemProgram: SystemProgram.programId,
-              mplCoreProgram: MPL_CORE_PROGRAM_ID,
-            })
-            .signers([agent2Asset])
-            .rpc();
-        }
+        "NFT + AgentPDA"
       );
     });
 
-    it("setMetadataPda() - Add custom metadata", async () => {
-      const metadataKey = "website";
-      const keyHash = computeKeyHash(metadataKey);
-      const [metadataPda] = getMetadataEntryPda(agent1Id, keyHash, program.programId);
+    it("setMetadataPda() - Small value", async () => {
+      const key = "type";
+      const keyHash = computeKeyHash(key);
+      const [metadataPda] = getMetadataEntryPda(agent1Asset.publicKey, keyHash, program.programId);
+      const value = Buffer.from("assistant");
 
       await measureCost(
         provider,
-        "setMetadataPda",
+        "setMetadataPda (small: 9 bytes)",
         async () => {
           return program.methods
             .setMetadataPda(
               Array.from(keyHash),
-              metadataKey,
-              Buffer.from("https://myagent.ai"),
+              key,
+              value,
               false
             )
             .accountsPartial({
@@ -255,17 +221,83 @@ describe("E2E Cost Measurement Tests", () => {
             .rpc();
         },
         undefined,
-        "~300 bytes"
+        "Dynamic sizing"
       );
     });
 
-    it("setAgentUri() - Update agent URI", async () => {
+    it("setMetadataPda() - Large value (256 bytes)", async () => {
+      const key = "config";
+      const keyHash = computeKeyHash(key);
+      const [metadataPda] = getMetadataEntryPda(agent1Asset.publicKey, keyHash, program.programId);
+      const value = Buffer.alloc(256).fill(0x42);
+
+      await measureCost(
+        provider,
+        "setMetadataPda (large: 256 bytes)",
+        async () => {
+          return program.methods
+            .setMetadataPda(
+              Array.from(keyHash),
+              key,
+              value,
+              false
+            )
+            .accountsPartial({
+              owner: provider.wallet.publicKey,
+              asset: agent1Asset.publicKey,
+              agentAccount: agent1Pda,
+              metadataEntry: metadataPda,
+              systemProgram: SystemProgram.programId,
+            })
+            .rpc();
+        },
+        338,
+        "Max size"
+      );
+    });
+
+    it("deleteMetadataPda() - Recover rent", async () => {
+      const key = "deletable";
+      const keyHash = computeKeyHash(key);
+      const [metadataPda] = getMetadataEntryPda(agent1Asset.publicKey, keyHash, program.programId);
+
+      await program.methods
+        .setMetadataPda(Array.from(keyHash), key, Buffer.from("temp"), false)
+        .accountsPartial({
+          owner: provider.wallet.publicKey,
+          asset: agent1Asset.publicKey,
+          agentAccount: agent1Pda,
+          metadataEntry: metadataPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      await measureCost(
+        provider,
+        "deleteMetadataPda (rent back)",
+        async () => {
+          return program.methods
+            .deleteMetadataPda(Array.from(keyHash))
+            .accountsPartial({
+              owner: provider.wallet.publicKey,
+              asset: agent1Asset.publicKey,
+              agentAccount: agent1Pda,
+              metadataEntry: metadataPda,
+            })
+            .rpc();
+        },
+        undefined,
+        "Negative=refund"
+      );
+    });
+
+    it("setAgentUri()", async () => {
       await measureCost(
         provider,
         "setAgentUri",
         async () => {
           return program.methods
-            .setAgentUri("https://example.com/agent/cost-test-updated")
+            .setAgentUri("https://example.com/updated-uri")
             .accountsPartial({
               registryConfig: registryConfigPda,
               agentAccount: agent1Pda,
@@ -284,439 +316,234 @@ describe("E2E Cost Measurement Tests", () => {
     });
   });
 
-  // ============================================================================
-  // REPUTATION MODULE
-  // ============================================================================
-  describe("Reputation Module Costs", () => {
-    let feedbackIndex: anchor.BN;
-    let agentReputationPda: PublicKey;
-    let firstFeedbackIndex: anchor.BN;
-
-    before(async () => {
-      [agentReputationPda] = getAgentReputationPda(agent1Id, program.programId);
-
-      // Get the next available feedback index from reputation metadata
-      try {
-        const repMeta = await program.account.agentReputationMetadata.fetch(agentReputationPda);
-        feedbackIndex = repMeta.nextFeedbackIndex;
-      } catch {
-        // Account doesn't exist yet, start from 0
-        feedbackIndex = new anchor.BN(0);
-      }
-      firstFeedbackIndex = feedbackIndex;
-      console.log(`    Starting feedback index: ${feedbackIndex.toString()}`);
-    });
-
-    it("giveFeedback() - First feedback (creates reputation PDA)", async () => {
-      const [feedbackPda] = getFeedbackPda(agent1Id, feedbackIndex, program.programId);
+  describe("Reputation Module Costs (Events-Only)", () => {
+    it("giveFeedback() - Events only, no PDA", async () => {
+      const feedbackIndex = new anchor.BN(0);
 
       await measureCost(
         provider,
-        "giveFeedback (1st, +repPDA)",
+        "giveFeedback (events-only v2.0)",
         async () => {
           return program.methods
             .giveFeedback(
-              agent1Id,
-              85, // score
+              85,
               "quality",
               "reliable",
-              "https://agent.example.com/api",
-              "https://example.com/feedback/0",
+              "https://api.agent.example.com",
+              "https://example.com/feedback",
               Array.from(randomHash()),
               feedbackIndex
             )
-            .accountsPartial({
+            .accounts({
               client: thirdParty.publicKey,
-              payer: provider.wallet.publicKey,
               asset: agent1Asset.publicKey,
               agentAccount: agent1Pda,
-              feedbackAccount: feedbackPda,
-              agentReputation: agentReputationPda,
-              systemProgram: SystemProgram.programId,
             })
             .signers([thirdParty])
             .rpc();
         },
-        67, // FeedbackAccount size after optimization
-        "Creates 2 PDAs"
-      );
-
-      feedbackIndex = feedbackIndex.addn(1);
-    });
-
-    it("giveFeedback() - Subsequent feedback", async () => {
-      const [feedbackPda] = getFeedbackPda(agent1Id, feedbackIndex, program.programId);
-
-      await measureCost(
-        provider,
-        "giveFeedback (subsequent)",
-        async () => {
-          return program.methods
-            .giveFeedback(
-              agent1Id,
-              90,
-              "fast",
-              "accurate",
-              "https://agent.example.com/api",
-              "https://example.com/feedback/1",
-              Array.from(randomHash()),
-              feedbackIndex
-            )
-            .accountsPartial({
-              client: thirdParty.publicKey,
-              payer: provider.wallet.publicKey,
-              asset: agent1Asset.publicKey,
-              agentAccount: agent1Pda,
-              feedbackAccount: feedbackPda,
-              agentReputation: agentReputationPda,
-              systemProgram: SystemProgram.programId,
-            })
-            .signers([thirdParty])
-            .rpc();
-        },
-        67,
-        "Only feedback PDA"
+        0,
+        "TX fee only!"
       );
     });
 
-    it("setFeedbackTags() - Add tags to feedback", async () => {
-      const [feedbackPda] = getFeedbackPda(agent1Id, firstFeedbackIndex, program.programId);
-      const [feedbackTagsPda] = getFeedbackTagsPda(agent1Id, firstFeedbackIndex, program.programId);
+    it("appendResponse() - Events only", async () => {
+      const feedbackIndex = new anchor.BN(0);
 
       await measureCost(
         provider,
-        "setFeedbackTags",
-        async () => {
-          return program.methods
-            .setFeedbackTags(agent1Id, firstFeedbackIndex, "excellent", "recommended")
-            .accountsPartial({
-              client: thirdParty.publicKey,
-              payer: provider.wallet.publicKey,
-              feedbackAccount: feedbackPda,
-              feedbackTags: feedbackTagsPda,
-              systemProgram: SystemProgram.programId,
-            })
-            .signers([thirdParty])
-            .rpc();
-        },
-        97, // FeedbackTagsPda size
-        "Optional PDA"
-      );
-    });
-
-    it("appendResponse() - First response to feedback", async () => {
-      const [feedbackPda] = getFeedbackPda(agent1Id, firstFeedbackIndex, program.programId);
-      const [responseIndexPda] = getResponseIndexPda(agent1Id, firstFeedbackIndex, program.programId);
-
-      // Get the next response index
-      let responseIdx: anchor.BN;
-      try {
-        const respIndex = await program.account.responseIndexAccount.fetch(responseIndexPda);
-        responseIdx = respIndex.nextIndex;
-      } catch {
-        responseIdx = new anchor.BN(0);
-      }
-
-      const [responsePda] = getResponsePda(agent1Id, firstFeedbackIndex, responseIdx, program.programId);
-
-      await measureCost(
-        provider,
-        "appendResponse (1st)",
+        "appendResponse (events-only v2.0)",
         async () => {
           return program.methods
             .appendResponse(
-              agent1Id,
-              firstFeedbackIndex,
-              "https://example.com/response/0",
+              feedbackIndex,
+              "https://example.com/response",
               Array.from(randomHash())
             )
-            .accountsPartial({
+            .accounts({
               responder: provider.wallet.publicKey,
-              payer: provider.wallet.publicKey,
-              feedbackAccount: feedbackPda,
-              responseIndex: responseIndexPda,
-              responseAccount: responsePda,
-              systemProgram: SystemProgram.programId,
+              asset: agent1Asset.publicKey,
             })
             .rpc();
         },
-        73, // ResponseAccount size after optimization
-        "Creates 2 PDAs"
+        0,
+        "TX fee only!"
       );
     });
 
-    it("revokeFeedback() - Revoke feedback", async () => {
-      // Get current index for new feedback
-      const repMeta = await program.account.agentReputationMetadata.fetch(agentReputationPda);
-      const revokeFeedbackIndex = repMeta.nextFeedbackIndex;
-      const [feedbackPda] = getFeedbackPda(agent1Id, revokeFeedbackIndex, program.programId);
+    it("appendResponse() - Multiple responses (still cheap)", async () => {
+      const feedbackIndex = new anchor.BN(0);
 
-      // First create the feedback
+      await measureCost(
+        provider,
+        "appendResponse (2nd response)",
+        async () => {
+          return program.methods
+            .appendResponse(
+              feedbackIndex,
+              "https://example.com/response2",
+              Array.from(randomHash())
+            )
+            .accounts({
+              responder: provider.wallet.publicKey,
+              asset: agent1Asset.publicKey,
+            })
+            .rpc();
+        },
+        0,
+        "Events-only"
+      );
+    });
+
+    it("revokeFeedback() - Events only", async () => {
+      const revokeIndex = new anchor.BN(1);
+
       await program.methods
         .giveFeedback(
-          agent1Id,
           70,
           "test",
           "revoke",
-          "https://agent.example.com/api",
+          "https://api.example.com",
           "https://example.com/feedback/revoke",
           Array.from(randomHash()),
-          revokeFeedbackIndex
+          revokeIndex
         )
-        .accountsPartial({
+        .accounts({
           client: thirdParty.publicKey,
-          payer: provider.wallet.publicKey,
           asset: agent1Asset.publicKey,
           agentAccount: agent1Pda,
-          feedbackAccount: feedbackPda,
-          agentReputation: agentReputationPda,
-          systemProgram: SystemProgram.programId,
         })
         .signers([thirdParty])
         .rpc();
 
       await measureCost(
         provider,
-        "revokeFeedback",
+        "revokeFeedback (events-only)",
         async () => {
           return program.methods
-            .revokeFeedback(agent1Id, revokeFeedbackIndex)
-            .accountsPartial({
+            .revokeFeedback(revokeIndex)
+            .accounts({
               client: thirdParty.publicKey,
-              feedbackAccount: feedbackPda,
-              agentReputation: agentReputationPda,
+              asset: agent1Asset.publicKey,
             })
             .signers([thirdParty])
             .rpc();
         },
         undefined,
-        "No rent change"
+        "TX fee only"
       );
     });
   });
 
-  // ============================================================================
-  // VALIDATION MODULE
-  // ============================================================================
-  describe("Validation Module Costs", () => {
+  describe("Validation Module Costs (Events-Only)", () => {
     let validationNonce: number;
 
     before(() => {
       validationNonce = uniqueNonce();
     });
 
-    it("requestValidation() - Create validation request", async () => {
+    it("requestValidation() - Events only, no PDA", async () => {
       const validator = thirdParty.publicKey;
-      const [validationRequestPda] = getValidationRequestPda(
-        agent1Id,
-        validator,
-        validationNonce,
-        program.programId
-      );
 
       await measureCost(
         provider,
-        "requestValidation",
+        "requestValidation (events-only v2.0)",
         async () => {
           return program.methods
             .requestValidation(
-              agent1Id,
               validator,
               validationNonce,
               "https://example.com/validation/request",
               Array.from(randomHash())
             )
-            .accountsPartial({
-              validationStats: validationStatsPda,
+            .accounts({
               requester: provider.wallet.publicKey,
-              payer: provider.wallet.publicKey,
               asset: agent1Asset.publicKey,
               agentAccount: agent1Pda,
-              validationRequest: validationRequestPda,
-              systemProgram: SystemProgram.programId,
+              validator: validator,
             })
             .rpc();
         },
-        134, // ValidationRequest size
-        "Creates request PDA"
+        0,
+        "TX fee only!"
       );
     });
 
-    it("respondToValidation() - Validator responds", async () => {
+    it("respondToValidation() - Events only", async () => {
       const validator = thirdParty.publicKey;
-      const [validationRequestPda] = getValidationRequestPda(
-        agent1Id,
-        validator,
-        validationNonce,
-        program.programId
-      );
 
       await measureCost(
         provider,
-        "respondToValidation",
+        "respondToValidation (events-only v2.0)",
         async () => {
           return program.methods
             .respondToValidation(
-              95, // response score
+              validationNonce,
+              95,
               "https://example.com/validation/response",
               Array.from(randomHash()),
               "approved"
             )
-            .accountsPartial({
+            .accounts({
               validator: thirdParty.publicKey,
-              validationStats: validationStatsPda,
-              validationRequest: validationRequestPda,
               asset: agent1Asset.publicKey,
               agentAccount: agent1Pda,
             })
             .signers([thirdParty])
             .rpc();
         },
-        undefined,
-        "Updates existing"
-      );
-    });
-
-    it("closeValidation() - Close validation request", async () => {
-      // Create new validation to close
-      const closeNonce = uniqueNonce();
-      const validator = thirdParty.publicKey;
-      const [validationRequestPda] = getValidationRequestPda(
-        agent1Id,
-        validator,
-        closeNonce,
-        program.programId
-      );
-
-      // Create
-      await program.methods
-        .requestValidation(
-          agent1Id,
-          validator,
-          closeNonce,
-          "https://example.com/validation/close",
-          Array.from(randomHash())
-        )
-        .accountsPartial({
-          validationStats: validationStatsPda,
-          requester: provider.wallet.publicKey,
-          payer: provider.wallet.publicKey,
-          asset: agent1Asset.publicKey,
-          agentAccount: agent1Pda,
-          validationRequest: validationRequestPda,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-
-      // Respond first
-      await program.methods
-        .respondToValidation(
-          80,
-          "https://example.com/validation/response",
-          Array.from(randomHash()),
-          "done"
-        )
-        .accountsPartial({
-          validator: thirdParty.publicKey,
-          validationStats: validationStatsPda,
-          validationRequest: validationRequestPda,
-          asset: agent1Asset.publicKey,
-          agentAccount: agent1Pda,
-        })
-        .signers([thirdParty])
-        .rpc();
-
-      await measureCost(
-        provider,
-        "closeValidation",
-        async () => {
-          return program.methods
-            .closeValidation()
-            .accountsPartial({
-              validator: thirdParty.publicKey,
-              validationRequest: validationRequestPda,
-            })
-            .signers([thirdParty])
-            .rpc();
-        },
-        undefined,
-        "Returns rent"
+        0,
+        "TX fee only!"
       );
     });
   });
 
-  // ============================================================================
-  // ANTI-GAMING TESTS
-  // ============================================================================
   describe("Anti-Gaming Protection", () => {
-    it("REJECT: Self-feedback (owner giving feedback to own agent)", async () => {
-      const feedbackIndex = new anchor.BN(99);
-      const [feedbackPda] = getFeedbackPda(agent1Id, feedbackIndex, program.programId);
-      const [agentReputationPda] = getAgentReputationPda(agent1Id, program.programId);
-
+    it("REJECT: Self-feedback", async () => {
       try {
         await program.methods
           .giveFeedback(
-            agent1Id,
             100,
             "self",
             "feedback",
             "https://example.com",
             "https://example.com/self",
             Array.from(randomHash()),
-            feedbackIndex
+            new anchor.BN(999)
           )
-          .accountsPartial({
-            client: provider.wallet.publicKey, // Owner trying to give feedback
-            payer: provider.wallet.publicKey,
+          .accounts({
+            client: provider.wallet.publicKey,
             asset: agent1Asset.publicKey,
             agentAccount: agent1Pda,
-            feedbackAccount: feedbackPda,
-            agentReputation: agentReputationPda,
-            systemProgram: SystemProgram.programId,
           })
           .rpc();
-
-        throw new Error("Should have rejected self-feedback");
+        throw new Error("Should have rejected");
       } catch (e: any) {
         expect(e.message).to.include("SelfFeedbackNotAllowed");
-        console.log("  PASS: Self-feedback correctly rejected");
+        console.log("  PASS: Self-feedback rejected");
       }
     });
 
-    it("REJECT: Self-validation (owner validating own agent)", async () => {
-      const nonce = uniqueNonce();
-      const [validationRequestPda] = getValidationRequestPda(
-        agent1Id,
-        provider.wallet.publicKey,
-        nonce,
-        program.programId
-      );
-
+    it("REJECT: Self-validation", async () => {
       try {
         await program.methods
           .requestValidation(
-            agent1Id,
-            provider.wallet.publicKey, // Owner as validator
-            nonce,
-            "https://example.com/self-validation",
+            provider.wallet.publicKey,
+            uniqueNonce(),
+            "https://example.com/self",
             Array.from(randomHash())
           )
-          .accountsPartial({
-            validationStats: validationStatsPda,
+          .accounts({
             requester: provider.wallet.publicKey,
-            payer: provider.wallet.publicKey,
             asset: agent1Asset.publicKey,
             agentAccount: agent1Pda,
-            validationRequest: validationRequestPda,
-            systemProgram: SystemProgram.programId,
+            validator: provider.wallet.publicKey,
           })
           .rpc();
-
-        throw new Error("Should have rejected self-validation");
+        throw new Error("Should have rejected");
       } catch (e: any) {
         expect(e.message).to.include("SelfValidationNotAllowed");
-        console.log("  PASS: Self-validation correctly rejected");
+        console.log("  PASS: Self-validation rejected");
       }
     });
   });

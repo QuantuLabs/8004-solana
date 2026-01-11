@@ -218,17 +218,7 @@ export function getMetadataEntryPda(
   );
 }
 
-/**
- * Derive wallet metadata PDA: ["agent_meta", asset.key(), AGENT_WALLET_KEY_HASH]
- * Used by setAgentWallet instruction
- * v0.3.0: Uses asset (Pubkey) instead of agent_id
- */
-export function getWalletMetadataPda(
-  asset: PublicKey,
-  programId: PublicKey
-): [PublicKey, number] {
-  return getMetadataEntryPda(asset, AGENT_WALLET_KEY_HASH, programId);
-}
+// NOTE: getWalletMetadataPda removed - wallet is now stored directly in AgentAccount
 
 /**
  * Build the wallet set message for Ed25519 signature verification

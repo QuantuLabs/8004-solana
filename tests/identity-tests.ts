@@ -14,12 +14,10 @@ import {
   MAX_URI_LENGTH,
   MAX_METADATA_KEY_LENGTH,
   MAX_METADATA_VALUE_LENGTH,
-  AGENT_WALLET_KEY_HASH,
   getRootConfigPda,
   getRegistryConfigPda,
   getAgentPda,
   getMetadataEntryPda,
-  getWalletMetadataPda,
   computeKeyHash,
   buildWalletSetMessage,
   stringOfLength,
@@ -606,13 +604,12 @@ describe("Identity Module Tests", () => {
     it("transferAgent() transfers the Core asset", async () => {
       const tx = await program.methods
         .transferAgent()
-        .accountsPartial({
+        .accounts({
           asset: assetKeypair.publicKey,
           agentAccount: agentPda,
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
           newOwner: newOwner.publicKey,
-          walletMetadata: null, // No wallet set for this agent
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
         .rpc();
@@ -747,8 +744,6 @@ describe("Identity Module Tests", () => {
     });
 
     it("setAgentWallet() with valid Ed25519 signature + cost measurement", async () => {
-      // v0.3.0: Use asset instead of agentId
-      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const clock = await provider.connection.getSlot();
       const blockTime = await provider.connection.getBlockTime(clock);
       const deadline = new anchor.BN(blockTime! + 60); // 60 seconds from now
@@ -769,50 +764,44 @@ describe("Identity Module Tests", () => {
         signature: signature,
       });
 
-      // Get balance before for rent measurement
+      // Get balance before for cost measurement
       const balanceBefore = await provider.connection.getBalance(provider.wallet.publicKey);
 
       // Call setAgentWallet with Ed25519 instruction prepended
+      // NOTE: No separate PDA anymore - wallet stored in AgentAccount
       const tx = await program.methods
         .setAgentWallet(walletKeypair.publicKey, deadline)
         .accounts({
           owner: provider.wallet.publicKey,
-          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
-          walletMetadata: walletMetadataPda,
           asset: assetKeypair.publicKey,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-          systemProgram: SystemProgram.programId,
         })
         .preInstructions([ed25519Ix])
         .rpc({ commitment: "confirmed" });
 
       console.log("SetAgentWallet tx:", tx);
 
-      // Verify wallet was stored
-      const metadata = await program.account.metadataEntryPda.fetch(walletMetadataPda);
-      expect(metadata.metadataKey).to.equal("agentWallet");
-      const storedWallet = new PublicKey(metadata.metadataValue);
-      expect(storedWallet.toBase58()).to.equal(walletKeypair.publicKey.toBase58());
-      expect(metadata.immutable).to.be.false;
+      // Verify wallet was stored in AgentAccount
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      expect(agent.agentWallet).to.not.be.null;
+      expect(agent.agentWallet!.toBase58()).to.equal(walletKeypair.publicKey.toBase58());
 
-      // Cost measurement
+      // Cost measurement - should be minimal (no rent, just tx fee)
       const balanceAfter = await provider.connection.getBalance(provider.wallet.publicKey);
       const txInfo = await provider.connection.getTransaction(tx, {
         commitment: "confirmed",
         maxSupportedTransactionVersion: 0,
       });
 
-      console.log("=== setAgentWallet Cost ===");
+      console.log("=== setAgentWallet Cost (Optimized - No Rent!) ===");
       console.log("Compute Units:", txInfo?.meta?.computeUnitsConsumed);
       console.log("Transaction Fee:", txInfo?.meta?.fee, "lamports");
-      console.log("Rent paid (first time):", balanceBefore - balanceAfter - (txInfo?.meta?.fee || 0), "lamports");
       console.log("Total cost:", balanceBefore - balanceAfter, "lamports");
     });
 
     it("setAgentWallet() fails with expired deadline", async () => {
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const deadline = new anchor.BN(1000000); // Far in the past
 
       const message = buildWalletSetMessage(
@@ -834,12 +823,9 @@ describe("Identity Module Tests", () => {
           .setAgentWallet(newWallet.publicKey, deadline)
           .accounts({
             owner: provider.wallet.publicKey,
-            payer: provider.wallet.publicKey,
             agentAccount: agentPda,
-            walletMetadata: walletMetadataPda,
             asset: assetKeypair.publicKey,
             instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-            systemProgram: SystemProgram.programId,
           })
           .preInstructions([ed25519Ix])
           .rpc(),
@@ -849,7 +835,6 @@ describe("Identity Module Tests", () => {
 
     it("setAgentWallet() fails with deadline too far in future", async () => {
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const clock = await provider.connection.getSlot();
       const blockTime = await provider.connection.getBlockTime(clock);
       const deadline = new anchor.BN(blockTime! + 600); // 10 minutes (> 5 min limit)
@@ -873,12 +858,9 @@ describe("Identity Module Tests", () => {
           .setAgentWallet(newWallet.publicKey, deadline)
           .accounts({
             owner: provider.wallet.publicKey,
-            payer: provider.wallet.publicKey,
             agentAccount: agentPda,
-            walletMetadata: walletMetadataPda,
             asset: assetKeypair.publicKey,
             instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-            systemProgram: SystemProgram.programId,
           })
           .preInstructions([ed25519Ix])
           .rpc(),
@@ -888,7 +870,6 @@ describe("Identity Module Tests", () => {
 
     it("setAgentWallet() fails without Ed25519 verify instruction", async () => {
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const clock = await provider.connection.getSlot();
       const blockTime = await provider.connection.getBlockTime(clock);
       const deadline = new anchor.BN(blockTime! + 60);
@@ -899,12 +880,9 @@ describe("Identity Module Tests", () => {
           .setAgentWallet(newWallet.publicKey, deadline)
           .accounts({
             owner: provider.wallet.publicKey,
-            payer: provider.wallet.publicKey,
             agentAccount: agentPda,
-            walletMetadata: walletMetadataPda,
             asset: assetKeypair.publicKey,
             instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-            systemProgram: SystemProgram.programId,
           })
           .rpc(),
         "MissingSignatureVerification"
@@ -914,7 +892,6 @@ describe("Identity Module Tests", () => {
     it("setAgentWallet() fails if non-owner tries to set wallet", async () => {
       const fakeOwner = Keypair.generate();
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
 
       // Fund fakeOwner
       const transferTx = new anchor.web3.Transaction().add(
@@ -949,12 +926,9 @@ describe("Identity Module Tests", () => {
           .setAgentWallet(newWallet.publicKey, deadline)
           .accounts({
             owner: fakeOwner.publicKey,
-            payer: fakeOwner.publicKey,
             agentAccount: agentPda,
-            walletMetadata: walletMetadataPda,
             asset: assetKeypair.publicKey,
             instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-            systemProgram: SystemProgram.programId,
           })
           .signers([fakeOwner])
           .preInstructions([ed25519Ix])
@@ -984,7 +958,7 @@ describe("Identity Module Tests", () => {
       );
     });
 
-    it("transferAgent() resets wallet PDA (closes it)", async () => {
+    it("transferAgent() resets wallet to None", async () => {
       // Register a new agent for transfer test
       const transferAsset = Keypair.generate();
       const [transferAgentPda] = getAgentPda(transferAsset.publicKey, program.programId);
@@ -1018,9 +992,6 @@ describe("Identity Module Tests", () => {
         .signers([transferAsset])
         .rpc();
 
-      // v0.3.0: Use asset instead of agentId
-      const [transferWalletPda] = getWalletMetadataPda(transferAsset.publicKey, program.programId);
-
       // Set wallet
       const clock = await provider.connection.getSlot();
       const blockTime = await provider.connection.getBlockTime(clock);
@@ -1044,21 +1015,19 @@ describe("Identity Module Tests", () => {
         .setAgentWallet(transferWallet.publicKey, deadline)
         .accounts({
           owner: provider.wallet.publicKey,
-          payer: provider.wallet.publicKey,
           agentAccount: transferAgentPda,
-          walletMetadata: transferWalletPda,
           asset: transferAsset.publicKey,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-          systemProgram: SystemProgram.programId,
         })
         .preInstructions([ed25519Ix])
         .rpc();
 
-      // Verify wallet is set
-      let walletAccount = await provider.connection.getAccountInfo(transferWalletPda);
-      expect(walletAccount).to.not.be.null;
+      // Verify wallet is set in AgentAccount
+      let agentBefore = await program.account.agentAccount.fetch(transferAgentPda);
+      expect(agentBefore.agentWallet).to.not.be.null;
+      expect(agentBefore.agentWallet!.toBase58()).to.equal(transferWallet.publicKey.toBase58());
 
-      // Transfer agent (should close wallet PDA)
+      // Transfer agent (should reset wallet to None)
       const tx = await program.methods
         .transferAgent()
         .accounts({
@@ -1067,25 +1036,20 @@ describe("Identity Module Tests", () => {
           collection: collectionPubkey,
           owner: provider.wallet.publicKey,
           newOwner: newOwner.publicKey,
-          walletMetadata: transferWalletPda,
           mplCoreProgram: MPL_CORE_PROGRAM_ID,
         })
         .rpc();
 
       console.log("TransferAgent (with wallet reset) tx:", tx);
 
-      // Verify wallet PDA is closed
-      walletAccount = await provider.connection.getAccountInfo(transferWalletPda);
-      expect(walletAccount).to.be.null;
-
-      // Verify agent is transferred
+      // Verify agent is transferred and wallet is reset to None
       const updatedAgent = await program.account.agentAccount.fetch(transferAgentPda);
       expect(updatedAgent.owner.toBase58()).to.equal(newOwner.publicKey.toBase58());
+      expect(updatedAgent.agentWallet).to.be.null;
     });
 
     it("setAgentWallet() can update existing wallet", async () => {
       const newWallet = Keypair.generate();
-      const [walletMetadataPda] = getWalletMetadataPda(assetKeypair.publicKey, program.programId);
       const clock = await provider.connection.getSlot();
       const blockTime = await provider.connection.getBlockTime(clock);
       const deadline = new anchor.BN(blockTime! + 60);
@@ -1109,22 +1073,19 @@ describe("Identity Module Tests", () => {
         .setAgentWallet(newWallet.publicKey, deadline)
         .accounts({
           owner: provider.wallet.publicKey,
-          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
-          walletMetadata: walletMetadataPda,
           asset: assetKeypair.publicKey,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-          systemProgram: SystemProgram.programId,
         })
         .preInstructions([ed25519Ix])
         .rpc();
 
       console.log("SetAgentWallet (update) tx:", tx);
 
-      // Verify wallet was updated
-      const metadata = await program.account.metadataEntryPda.fetch(walletMetadataPda);
-      const storedWallet = new PublicKey(metadata.metadataValue);
-      expect(storedWallet.toBase58()).to.equal(newWallet.publicKey.toBase58());
+      // Verify wallet was updated in AgentAccount
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      expect(agent.agentWallet).to.not.be.null;
+      expect(agent.agentWallet!.toBase58()).to.equal(newWallet.publicKey.toBase58());
     });
   });
 });
