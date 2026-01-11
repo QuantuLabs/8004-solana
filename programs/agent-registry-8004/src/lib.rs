@@ -14,7 +14,6 @@ pub use identity::events::*;
 
 pub use reputation::contexts::*;
 pub use reputation::state::*;
-pub use reputation::stats::*;
 pub use reputation::events::*;
 
 pub use validation::contexts::*;

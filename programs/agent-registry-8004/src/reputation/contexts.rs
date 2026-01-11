@@ -2,7 +2,6 @@ use anchor_lang::prelude::*;
 
 use crate::error::RegistryError;
 use crate::identity::state::AgentAccount;
-use super::stats::ReputationStats;
 
 #[derive(Accounts)]
 #[instruction(_score: u8, _tag1: String, _tag2: String, _endpoint: String, _feedback_uri: String, _feedback_hash: [u8; 32], _feedback_index: u64)]
@@ -20,15 +19,21 @@ pub struct GiveFeedback<'info> {
     )]
     pub agent_account: Account<'info, AgentAccount>,
 
-    /// ReputationStats PDA - created on first feedback, updated on subsequent
-    #[account(
-        init_if_needed,
-        payer = client,
-        space = ReputationStats::SIZE,
-        seeds = [b"rep_stats", asset.key().as_ref()],
-        bump,
-    )]
-    pub reputation_stats: Account<'info, ReputationStats>,
+    // === CPI to atom-engine ===
+
+    /// AtomConfig PDA (owned by atom-engine)
+    /// CHECK: Validated by atom-engine program
+    pub atom_config: UncheckedAccount<'info>,
+
+    /// AtomStats PDA (owned by atom-engine, created on first feedback)
+    /// CHECK: Validated by atom-engine program
+    #[account(mut)]
+    pub atom_stats: UncheckedAccount<'info>,
+
+    /// atom-engine program
+    /// CHECK: Program ID validated below
+    #[account(constraint = atom_engine_program.key() == atom_engine::ID @ RegistryError::InvalidProgram)]
+    pub atom_engine_program: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
 }

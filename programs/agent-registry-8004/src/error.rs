@@ -105,4 +105,8 @@ pub enum RegistryError {
     SelfFeedbackNotAllowed = 6300,
     #[msg("Self-validation is not allowed - agent owner cannot validate their own agent")]
     SelfValidationNotAllowed = 6301,
+
+    // ========== CPI Errors (6400-6409) ==========
+    #[msg("Invalid program ID for CPI call")]
+    InvalidProgram = 6400,
 }

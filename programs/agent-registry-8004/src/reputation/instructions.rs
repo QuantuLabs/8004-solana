@@ -2,7 +2,6 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
 use mpl_core::accounts::BaseAssetV1;
 
-use super::compute;
 use super::contexts::*;
 use super::events::*;
 use super::state::*;
@@ -48,21 +47,24 @@ pub fn give_feedback(
         RegistryError::UriTooLong
     );
 
-    // Update on-chain reputation stats
-    let clock = Clock::get()?;
+    // Compute client hash for ATOM
     let client_hash = keccak::hash(ctx.accounts.client.key().as_ref());
 
-    // Initialize bump if this is a new account
-    if ctx.accounts.reputation_stats.feedback_count == 0 {
-        ctx.accounts.reputation_stats.bump = ctx.bumps.reputation_stats;
-    }
+    // CPI to atom-engine to update stats
+    let cpi_accounts = atom_engine::cpi::accounts::UpdateStats {
+        payer: ctx.accounts.client.to_account_info(),
+        asset: ctx.accounts.asset.to_account_info(),
+        config: ctx.accounts.atom_config.to_account_info(),
+        stats: ctx.accounts.atom_stats.to_account_info(),
+        system_program: ctx.accounts.system_program.to_account_info(),
+    };
 
-    compute::update_reputation(
-        &mut ctx.accounts.reputation_stats,
-        &client_hash.0,
-        score,
-        clock.slot,
+    let cpi_ctx = CpiContext::new(
+        ctx.accounts.atom_engine_program.to_account_info(),
+        cpi_accounts,
     );
+
+    atom_engine::cpi::update_stats(cpi_ctx, client_hash.0, score)?;
 
     let asset = ctx.accounts.asset.key();
 
