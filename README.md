@@ -9,25 +9,32 @@
 [![Tests](https://img.shields.io/badge/Tests-118%20Passing-brightgreen)]()
 [![Spec Conformity](https://img.shields.io/badge/ERC--8004-100%25%20Conformity-success)]()
 
-## v0.3.0 - Asset-Based Identification (Breaking)
+## v0.4.0 - ATOM Integration (Current)
+
+**New: ATOM Engine** - Standalone reputation scoring program
+
+- **[ATOM - Agent Trust On-chain Model](programs/atom-engine/README.md)**: Separate program for reputation computation
+- **Dual-EMA System**: Fast/slow moving averages for manipulation-resistant scoring
+- **HyperLogLog**: Probabilistic unique client counting (48 registers, ~15% error)
+- **Trust Tiers**: Platinum/Gold/Silver/Bronze/Unrated classification
+- **Tunable Parameters**: Config PDA allows parameter updates without program upgrade
+- **Recovery Support**: Checkpoints and batch replay for reindexation
+
+**Programs:**
+| Program | Address | Description |
+|---------|---------|-------------|
+| agent-registry-8004 | `3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC` | Identity, Feedback events, Validation |
+| atom-engine | `AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp` | Reputation scoring (ATOM model) |
+
+---
+
+## v0.3.0 - Asset-Based Identification
 
 **Major Changes:**
 - **C-01 Fix**: Replaced `agent_id` (u64) with `asset` (Pubkey) as unique identifier
 - **Storage Optimization**: -18% storage, -0.14 SOL per agent
 - **Removed `ValidationStats`**: Counters now computed off-chain via indexer
 - **Simplified Aggregates**: Removed cached aggregates from `AgentReputationMetadata`
-
-**API Changes:**
-- `give_feedback`, `revoke_feedback`, `append_response`, `set_feedback_tags`: removed `agent_id` parameter
-- `request_validation`: removed `agent_id` parameter
-- All events now use `asset: Pubkey` instead of `agent_id: u64`
-
-**PDA Seeds Now Asset-Based:**
-```
-["feedback", asset, index]           // was: ["feedback", collection, agent_id, index]
-["validation", asset, validator, nonce]  // was: ["validation", collection, agent_id, validator, nonce]
-["agent_reputation", asset]          // was: ["agent_reputation", collection, agent_id]
-```
 
 See [CHANGELOG.md](CHANGELOG.md) for full details and previous versions.
 
@@ -49,9 +56,11 @@ See [CHANGELOG.md](CHANGELOG.md) for full details and previous versions.
 - **giveFeedback** with score validation (0-100)
 - **revokeFeedback** with author-only access control
 - **appendResponse** with unlimited responses
-- **setFeedbackTags** creates optional tags PDA (-42% cost without tags)
-- **Hash-only storage** (URIs in events, -66% ResponseAccount)
-- **Global feedback index** for simplified PDA derivation
+- **[ATOM Engine](programs/atom-engine/README.md)** for on-chain reputation scoring:
+  - Dual-EMA trend detection (fast α=0.30, slow α=0.05)
+  - HyperLogLog unique client estimation
+  - Multi-signal risk scoring (sybil, burst, stagnation, shock)
+  - Trust tier classification (Platinum/Gold/Silver/Bronze)
 
 ### Validation Module
 
@@ -78,17 +87,35 @@ This Solana implementation leverages the platform's unique architecture:
 
 ```
 +-----------------------------------------------------------------+
-|              AgentRegistry8004 (Devnet)                          |
-|         ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v             |
+|              agent-registry-8004 (Devnet)                        |
+|         3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC            |
 +-----------------------------------------------------------------+
 |  +---------------+ +----------------+ +----------------+         |
 |  | Identity      | | Reputation     | | Validation     |         |
 |  +---------------+ +----------------+ +----------------+         |
-|  | Agent NFTs    | | Feedback (0-100)| | Validation Req |         |
+|  | Agent NFTs    | | Feedback Events| | Validation Req |         |
 |  |  (Core)       | | Revocations    | | Responses      |         |
 |  | Metadata PDAs | | Responses      | | Multi-validator|         |
-|  | Asset = ID    | | Tags PDA       | | Progressive    |         |
+|  | Asset = ID    | |                | | Progressive    |         |
+|  +---------------+ +-------+--------+ +----------------+         |
++-----------------------------------------------------------------+
+                             |
+                             | CPI (give_feedback)
+                             v
++-----------------------------------------------------------------+
+|                    atom-engine (ATOM)                            |
+|         AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp            |
++-----------------------------------------------------------------+
 |  +---------------+ +----------------+ +----------------+         |
+|  | AtomConfig    | | AtomStats      | | AtomCheckpoint |         |
+|  +---------------+ +----------------+ +----------------+         |
+|  | - authority   | | - dual EMA     | | - snapshots    |         |
+|  | - params      | | - HLL[48]      | | - recovery     |         |
+|  | - weights     | | - burst detect | |                |         |
+|  | - thresholds  | | - trust tier   | |                |         |
+|  +---------------+ +----------------+ +----------------+         |
++-----------------------------------------------------------------+
+                             |
 +-----------------------------------------------------------------+
 |                      Metaplex Core                               |
 |         (Collection + Agent Assets)                              |
@@ -97,10 +124,6 @@ This Solana implementation leverages the platform's unique architecture:
                              v
 +-----------------------------------------------------------------+
 |                TypeScript SDK (8004-solana-ts)                   |
-+-----------------------------------------------------------------+
-| PDA derivation utilities                                         |
-| Borsh serialization schemas                                      |
-| Full SDK wrapper (SolanaSDK class)                               |
 +-----------------------------------------------------------------+
 ```
 
@@ -131,13 +154,12 @@ anchor build
 anchor test
 ```
 
-## Devnet Program ID
+## Devnet Program IDs
 
-Single unified program deployed on Solana Devnet:
-
-| Program | Address |
-|---------|---------|
-| **AgentRegistry8004** | `ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v` |
+| Program | Address | Description |
+|---------|---------|-------------|
+| **agent-registry-8004** | `3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC` | Identity, Validation, Feedback events |
+| **atom-engine** | `AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp` | ATOM reputation scoring |
 
 ### Run Specific Test Suites
 
@@ -199,16 +221,24 @@ anchor test --skip-build tests/e2e-*.ts
 
 ## Roadmap
 
+### v0.4.0 - CURRENT
+- [x] ATOM Engine (separate program)
+- [x] Dual-EMA reputation scoring
+- [x] HyperLogLog unique client estimation
+- [x] Trust tier classification
+- [x] Tunable parameters via Config PDA
+- [x] Checkpoint/recovery support
+- [ ] CPI integration (agent-registry → atom-engine)
+
 ### v0.3.0 - COMPLETE
 - [x] Asset-based identification (C-01 fix)
 - [x] Storage optimization (-18%)
 - [x] Removed on-chain aggregates (off-chain indexer)
-- [x] Simplified PDA seeds
 
 ### Next
 - [ ] Mainnet deployment
-- [ ] Sub-collections extension
 - [ ] Indexer service
+- [ ] Sub-collections extension
 
 ## Contributing
 
@@ -250,6 +280,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status**: v0.3.0 Deployed on Devnet | Full ERC-8004 conformity | Security Audited
+**Status**: v0.4.0 Deployed on Devnet | Full ERC-8004 conformity | ATOM Engine
 
-**Last Updated**: 2026-01-10
+**Last Updated**: 2026-01-11
