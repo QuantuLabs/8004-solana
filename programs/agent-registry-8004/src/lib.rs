@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("GjNgGJCZYRwzHtXU2iqzTbtbtPKB8STMZCuzaEDhcNjk");
+declare_id!("3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC");
 
 pub mod error;
 pub mod identity;
@@ -14,10 +14,10 @@ pub use identity::events::*;
 
 pub use reputation::contexts::*;
 pub use reputation::state::*;
+pub use reputation::stats::*;
 pub use reputation::events::*;
 
 pub use validation::contexts::*;
-pub use validation::state::*;
 pub use validation::events::*;
 
 pub use error::RegistryError;
@@ -155,16 +155,6 @@ pub mod agent_registry_8004 {
         reputation::instructions::append_response(ctx, feedback_index, response_uri, response_hash)
     }
 
-    /// Set feedback tags (creates optional FeedbackTagsPda)
-    pub fn set_feedback_tags(
-        ctx: Context<SetFeedbackTags>,
-        feedback_index: u64,
-        tag1: String,
-        tag2: String,
-    ) -> Result<()> {
-        reputation::instructions::set_feedback_tags(ctx, feedback_index, tag1, tag2)
-    }
-
     // ============================================================================
     // Validation Instructions
     // ============================================================================
@@ -189,6 +179,7 @@ pub mod agent_registry_8004 {
     /// Validator responds to a validation request
     pub fn respond_to_validation(
         ctx: Context<RespondToValidation>,
+        nonce: u32,
         response: u8,
         response_uri: String,
         response_hash: [u8; 32],
@@ -196,26 +187,11 @@ pub mod agent_registry_8004 {
     ) -> Result<()> {
         validation::instructions::respond_to_validation(
             ctx,
+            nonce,
             response,
             response_uri,
             response_hash,
             tag,
         )
-    }
-
-    /// Update an existing validation response
-    pub fn update_validation(
-        ctx: Context<RespondToValidation>,
-        response: u8,
-        response_uri: String,
-        response_hash: [u8; 32],
-        tag: String,
-    ) -> Result<()> {
-        validation::instructions::update_validation(ctx, response, response_uri, response_hash, tag)
-    }
-
-    /// Close a validation request to recover rent
-    pub fn close_validation(ctx: Context<CloseValidation>) -> Result<()> {
-        validation::instructions::close_validation(ctx)
     }
 }

@@ -9,6 +9,12 @@
     "url": "https://github.com/QuantuLabs/8004-solana.git"
   },
   "scripts": {
+    "test": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=~/.config/solana/id.json ts-mocha -p ./tsconfig.json -t 1000000",
+    "test:identity": "npm test -- tests/identity-tests.ts",
+    "test:reputation": "npm test -- tests/reputation-tests.ts",
+    "test:validation": "npm test -- tests/validation-tests.ts",
+    "test:anti-gaming": "npm test -- tests/anti-gaming-tests.ts",
+    "test:all": "npm test -- tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts tests/anti-gaming-tests.ts",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },
