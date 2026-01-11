@@ -5,11 +5,13 @@ package_manager = "yarn"
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-agent_registry_8004 = "3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC"
-
 [programs.devnet]
 agent_registry_8004 = "3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC"
+atom_engine = "AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp"
+
+[programs.localnet]
+agent_registry_8004 = "3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC"
+atom_engine = "AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp"
 
 [registry]
 url = "https://api.apr.dev"
@@ -21,10 +23,16 @@ wallet = "~/.config/solana/id.json"
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts"
 
-# Test validator configuration
-[test.validator]
-url = "https://api.devnet.solana.com"
+[test]
+startup_wait = 5000
+shutdown_wait = 2000
+upgradeable = false
 
-# Clone Metaplex Core program for local testing
+[test.validator]
+bind_address = "0.0.0.0"
+url = "https://api.devnet.solana.com"
+ledger = ".anchor/test-ledger"
+rpc_port = 8899
+
 [[test.validator.clone]]
 address = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
