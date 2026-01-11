@@ -71,11 +71,11 @@ pub fn give_feedback(
         client_address: ctx.accounts.client.key(),
         feedback_index,
         score,
+        feedback_hash,
         tag1,
         tag2,
         endpoint,
         feedback_uri,
-        feedback_hash,
     });
 
     msg!(
@@ -125,8 +125,8 @@ pub fn append_response(
         asset,
         feedback_index,
         responder: ctx.accounts.responder.key(),
-        response_uri,
         response_hash,
+        response_uri,
     });
 
     msg!(

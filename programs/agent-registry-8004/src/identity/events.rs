@@ -1,27 +1,29 @@
 use anchor_lang::prelude::*;
 
 /// Event emitted when agent metadata is set
+/// Field order optimized for indexing: fixed-size fields first, variable-size (String/Vec) last
 #[event]
 pub struct MetadataSet {
-    pub asset: Pubkey,
-    pub key: String,
-    pub value: Vec<u8>,
-    pub immutable: bool,
+    pub asset: Pubkey,              // offset 0
+    pub immutable: bool,            // offset 32 (moved up)
+    pub key: String,                // offset 33 (variable, moved to end)
+    pub value: Vec<u8>,             // variable
 }
 
 /// Event emitted when agent metadata is deleted
 #[event]
 pub struct MetadataDeleted {
-    pub asset: Pubkey,
-    pub key: String,
+    pub asset: Pubkey,              // offset 0
+    pub key: String,                // offset 32 (only variable field, OK at end)
 }
 
 /// Event emitted when agent URI is updated
+/// Field order optimized for indexing: fixed-size fields first, variable-size (String) last
 #[event]
 pub struct UriUpdated {
-    pub asset: Pubkey,
-    pub new_uri: String,
-    pub updated_by: Pubkey,
+    pub asset: Pubkey,              // offset 0
+    pub updated_by: Pubkey,         // offset 32 (moved up)
+    pub new_uri: String,            // offset 64 (variable, moved to end)
 }
 
 /// Event emitted when agent owner is synced after transfer

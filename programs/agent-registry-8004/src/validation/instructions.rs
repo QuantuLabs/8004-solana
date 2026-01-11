@@ -53,9 +53,9 @@ pub fn request_validation(
         asset,
         validator_address,
         nonce,
-        request_uri,
-        request_hash,
         requester: ctx.accounts.requester.key(),
+        request_hash,
+        request_uri,
     });
 
     msg!(
@@ -95,8 +95,8 @@ pub fn respond_to_validation(
         validator_address: ctx.accounts.validator.key(),
         nonce,
         response,
-        response_uri,
         response_hash,
+        response_uri,
         tag,
     });
 

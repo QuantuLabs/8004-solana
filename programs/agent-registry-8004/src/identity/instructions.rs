@@ -92,9 +92,9 @@ pub fn set_metadata_pda(
     };
     emit!(MetadataSet {
         asset,
+        immutable,
         key: key.clone(),
         value: truncated_value,
-        immutable,
     });
 
     msg!("Metadata '{}' set for asset {} (immutable: {})", key, asset, immutable);
@@ -187,8 +187,8 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
 
     emit!(UriUpdated {
         asset,
-        new_uri,
         updated_by: ctx.accounts.owner.key(),
+        new_uri,
     });
 
     msg!("Agent URI updated for asset {}", asset);
