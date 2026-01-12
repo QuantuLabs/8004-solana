@@ -29,9 +29,8 @@ test-ledger/
 # SDK tests (local development only)
 tests/sdk/
 
-# Documentation (implementation notes - not for public repo)
-docs/*.md
-docs/refs/
+# Documentation archives (old versions, audits, refs)
+docs/archive/
 
 # Reference repositories (cloned for analysis only)
 agent0-ts/
