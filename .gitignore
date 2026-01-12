@@ -2,7 +2,6 @@
 .anchor
 target/
 **/*.rs.bk
-dist/
 programs/**/*.so
 
 # Archive (backup before consolidation)
@@ -15,7 +14,6 @@ idl/
 node_modules/
 dist/
 *.tsbuildinfo
-.DS_Store
 
 # Environment
 .env
@@ -31,12 +29,6 @@ tests/sdk/
 
 # Documentation archives (old versions, audits, refs)
 docs/archive/
-
-# Reference repositories (cloned for analysis only)
-agent0-ts/
-agent0-py/
-subgraph/
-refs/
 
 # IDE
 .vscode/

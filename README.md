@@ -14,11 +14,12 @@
 **New: ATOM Engine** - Standalone reputation scoring program
 
 - **[ATOM - Agent Trust On-chain Model](programs/atom-engine/README.md)**: Separate program for reputation computation
-- **Dual-EMA System**: Fast/slow moving averages for manipulation-resistant scoring
-- **HyperLogLog**: Probabilistic unique client counting (48 registers, ~15% error)
+- **Dual-EMA System**: Fast (α=0.30) / Slow (α=0.05) moving averages for manipulation-resistant scoring
+- **HyperLogLog**: 256 registers for unique client counting (~6.5% error, 128 bytes)
+- **Ring Buffer**: 24 slots with 56-bit fingerprints for burst detection and revoke support
+- **Per-Agent Salt**: Random salt prevents cross-agent HLL grinding attacks
 - **Trust Tiers**: Platinum/Gold/Silver/Bronze/Unrated classification
 - **Tunable Parameters**: Config PDA allows parameter updates without program upgrade
-- **Recovery Support**: Checkpoints and batch replay for reindexation
 
 **Programs:**
 | Program | Address | Description |
@@ -53,13 +54,14 @@ See [CHANGELOG.md](CHANGELOG.md) for full details and previous versions.
 
 ### Reputation Module
 
-- **giveFeedback** with score validation (0-100)
-- **revokeFeedback** with author-only access control
+- **giveFeedback** with score validation (0-100) → CPI to ATOM Engine
+- **revokeFeedback** with author-only access control → CPI to ATOM Engine
 - **appendResponse** with unlimited responses
 - **[ATOM Engine](programs/atom-engine/README.md)** for on-chain reputation scoring:
   - Dual-EMA trend detection (fast α=0.30, slow α=0.05)
-  - HyperLogLog unique client estimation
-  - Multi-signal risk scoring (sybil, burst, stagnation, shock)
+  - HyperLogLog (256 regs, ~6.5% error) unique client estimation
+  - Ring buffer (24 slots) for burst detection and revoke support
+  - Multi-signal risk scoring (sybil, burst, stagnation, shock, volatility)
   - Trust tier classification (Platinum/Gold/Silver/Bronze)
 
 ### Validation Module
@@ -106,14 +108,14 @@ This Solana implementation leverages the platform's unique architecture:
 |                    atom-engine (ATOM)                            |
 |         AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp            |
 +-----------------------------------------------------------------+
-|  +---------------+ +----------------+ +----------------+         |
-|  | AtomConfig    | | AtomStats      | | AtomCheckpoint |         |
-|  +---------------+ +----------------+ +----------------+         |
-|  | - authority   | | - dual EMA     | | - snapshots    |         |
-|  | - params      | | - HLL[48]      | | - recovery     |         |
-|  | - weights     | | - burst detect | |                |         |
-|  | - thresholds  | | - trust tier   | |                |         |
-|  +---------------+ +----------------+ +----------------+         |
+|  +---------------+ +------------------------------------------+ |
+|  | AtomConfig    | |              AtomStats (460 bytes)       | |
+|  +---------------+ +------------------------------------------+ |
+|  | - authority   | | - dual EMA (fast/slow)                   | |
+|  | - params      | | - HLL[256] + salt (128 bytes)            | |
+|  | - weights     | | - ring buffer[24] + cursor               | |
+|  | - thresholds  | | - quality, risk, tier, confidence        | |
+|  +---------------+ +------------------------------------------+ |
 +-----------------------------------------------------------------+
                              |
 +-----------------------------------------------------------------+
@@ -282,4 +284,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 **Status**: v0.4.0 Deployed on Devnet | Full ERC-8004 conformity | ATOM Engine
 
-**Last Updated**: 2026-01-11
+**Last Updated**: 2026-01-12
