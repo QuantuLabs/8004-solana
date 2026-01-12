@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-12
+
+### Added - ATOM Engine Integration
+
+New `atom-engine` program for advanced on-chain reputation analytics with Sybil resistance.
+
+#### New Program: atom-engine
+- **HyperLogLog (HLL)** - 256 registers (4-bit packed, 128 bytes) for unique client estimation
+- **Ring Buffer** - 24 slots with 56-bit fingerprints for burst detection and revoke support
+- **Per-Agent Salt** - 8-byte salt prevents HLL grinding attacks
+- **Round Robin Eviction** - Cursor-based eviction prevents targeted manipulation
+- **Trust Tiers** - 5 tiers (Unknown → Legendary) with hysteresis thresholds
+
+#### CPI Integration
+- `give_feedback` → CPI to `atom_engine::update_stats`
+- `revoke_feedback` → CPI to `atom_engine::revoke_stats`
+- `NewFeedback` event enriched with ATOM metrics (trust_tier, quality_score, confidence, risk_score, diversity_ratio)
+
+#### New Account: AtomStats (460 bytes/agent)
+| Field | Type | Description |
+|-------|------|-------------|
+| collection | Pubkey | Collection filter |
+| asset | Pubkey | Agent identifier |
+| feedback_count | u32 | Total feedbacks |
+| quality_score | i32 | Weighted score (EMA) |
+| hll_packed | [u8; 128] | HyperLogLog registers |
+| hll_salt | u64 | Per-agent salt |
+| recent_callers | [u64; 24] | Ring buffer fingerprints |
+| eviction_cursor | u8 | Round robin pointer |
+| trust_tier/confidence/risk_score/diversity_ratio | cached | Output cache |
+
+### Changed
+- `NewFeedback` event now includes 6 new ATOM fields
+- `FeedbackRevoked` event now includes revoke impact metrics
+
+### Storage
+- AtomStats: 460 bytes (~$0.82 rent at 150 SOL/USD)
+- Total per agent with ATOM: ~773 bytes
+
+---
+
 ## [0.3.0] - 2026-01-10
 
 ### Breaking Changes - Asset-Based Identification
