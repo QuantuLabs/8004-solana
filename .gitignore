@@ -55,3 +55,10 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Debug test files
+tests/debug-*.ts
+test-wallets-backup.json
+
+# Marketing content
+twitter-thread-*.md
