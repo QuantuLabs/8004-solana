@@ -1,45 +1,87 @@
 /**
- * Reputation Module Tests for Agent Registry 8004 v2.0.0
+ * Reputation Module Tests for Agent Registry 8004 v0.4.0
  * Tests feedback creation, revocation, and responses
- * v2.0.0: 100% Events-only architecture - no FeedbackAccount PDA
+ * v0.4.0: CPI to atom-engine for reputation stats
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
-import { Keypair, SystemProgram, PublicKey } from "@solana/web3.js";
+import { AtomEngine } from "../target/types/atom_engine";
+import { Keypair, SystemProgram, PublicKey, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
 import { expect } from "chai";
 
 import {
   MPL_CORE_PROGRAM_ID,
+  ATOM_ENGINE_PROGRAM_ID,
   MAX_URI_LENGTH,
   MAX_TAG_LENGTH,
   getRootConfigPda,
   getAgentPda,
+  getAtomConfigPda,
+  getAtomStatsPda,
   randomHash,
   uriOfLength,
   stringOfLength,
   expectAnchorError,
 } from "./utils/helpers";
 
-describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
+// Helper to fund a keypair from the provider wallet
+async function fundKeypair(
+  provider: anchor.AnchorProvider,
+  keypair: Keypair,
+  lamports: number
+): Promise<void> {
+  const tx = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: provider.wallet.publicKey,
+      toPubkey: keypair.publicKey,
+      lamports,
+    })
+  );
+  await provider.sendAndConfirm(tx);
+}
+
+describe("Reputation Module Tests (v0.4.0 CPI)", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
   const program = anchor.workspace.AgentRegistry8004 as Program<AgentRegistry8004>;
+  const atomProgram = anchor.workspace.AtomEngine as Program<AtomEngine>;
 
   let rootConfigPda: PublicKey;
   let registryConfigPda: PublicKey;
   let collectionPubkey: PublicKey;
 
+  // ATOM Engine PDAs
+  let atomConfigPda: PublicKey;
+
   // Agent for reputation tests
   let agentAsset: Keypair;
   let agentPda: PublicKey;
+  let atomStatsPda: PublicKey;
 
   // Separate client for feedback (anti-gaming: owner cannot give feedback to own agent)
   let clientKeypair: Keypair;
 
   before(async () => {
     [rootConfigPda] = getRootConfigPda(program.programId);
+    [atomConfigPda] = getAtomConfigPda();
+
+    // Check if AtomConfig exists, if not initialize it
+    const atomConfigInfo = await provider.connection.getAccountInfo(atomConfigPda);
+    if (!atomConfigInfo) {
+      console.log("Initializing AtomConfig...");
+      await atomProgram.methods
+        .initializeConfig(program.programId)
+        .accounts({
+          authority: provider.wallet.publicKey,
+          config: atomConfigPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      console.log("AtomConfig initialized:", atomConfigPda.toBase58());
+    }
+
     const rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
     const rootConfig = program.coder.accounts.decode("rootConfig", rootAccountInfo!.data);
 
@@ -50,8 +92,13 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
 
     clientKeypair = Keypair.generate();
 
+    // Fund client from provider wallet for paying AtomStats creation
+    await fundKeypair(provider, clientKeypair, 0.1 * anchor.web3.LAMPORTS_PER_SOL);
+    console.log("Funded 0.1 SOL to client:", clientKeypair.publicKey.toBase58());
+
     agentAsset = Keypair.generate();
     [agentPda] = getAgentPda(agentAsset.publicKey, program.programId);
+    [atomStatsPda] = getAtomStatsPda(agentAsset.publicKey);
 
     await program.methods
       .register("https://example.com/agent/reputation-test")
@@ -67,17 +114,19 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
       .signers([agentAsset])
       .rpc();
 
-    console.log("=== Reputation Tests Setup (v2.0.0 Events-Only) ===");
-    console.log("Program ID:", program.programId.toBase58());
+    console.log("=== Reputation Tests Setup (v0.4.0 CPI) ===");
+    console.log("Agent Registry:", program.programId.toBase58());
+    console.log("ATOM Engine:", atomProgram.programId.toBase58());
     console.log("Agent Asset:", agentAsset.publicKey.toBase58());
+    console.log("AtomStats PDA:", atomStatsPda.toBase58());
     console.log("Client (separate from owner):", clientKeypair.publicKey.toBase58());
   });
 
   // ============================================================================
-  // FEEDBACK CREATION TESTS (Events-Only)
+  // FEEDBACK CREATION TESTS (CPI to atom-engine)
   // ============================================================================
-  describe("Feedback Creation (Events-Only)", () => {
-    it("giveFeedback() emits NewFeedback event with index 0", async () => {
+  describe("Feedback Creation (CPI)", () => {
+    it("giveFeedback() emits NewFeedback event and updates AtomStats", async () => {
       const feedbackIndex = new anchor.BN(0);
       const score = 80;
 
@@ -94,13 +143,24 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
         .accounts({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: agentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
         .rpc();
 
       console.log("Feedback #0 tx:", tx);
-      // Events-only: no account to fetch, event is emitted
+
+      // Verify AtomStats was created and updated
+      const stats = await atomProgram.account.atomStats.fetch(atomStatsPda);
+      expect(stats.feedbackCount.toNumber()).to.equal(1);
+      expect(stats.trustTier).to.be.lessThanOrEqual(4);
+      console.log("AtomStats - feedbackCount:", stats.feedbackCount.toNumber());
+      console.log("AtomStats - trustTier:", stats.trustTier);
     });
 
     it("giveFeedback() with score=0 (edge case)", async () => {
@@ -120,11 +180,15 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
         .accounts({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: agentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
         .rpc();
-      // Success = event emitted
     });
 
     it("giveFeedback() with score=100 (edge case)", async () => {
@@ -144,7 +208,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
         .accounts({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: agentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
         .rpc();
@@ -167,7 +236,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
           .accounts({
             client: clientKeypair.publicKey,
             asset: agentAsset.publicKey,
+            collection: collectionPubkey,
             agentAccount: agentPda,
+            atomConfig: atomConfigPda,
+            atomStats: atomStatsPda,
+            atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .signers([clientKeypair])
           .rpc(),
@@ -191,7 +265,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
         .accounts({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: agentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
         .rpc();
@@ -215,7 +294,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
           .accounts({
             client: clientKeypair.publicKey,
             asset: agentAsset.publicKey,
+            collection: collectionPubkey,
             agentAccount: agentPda,
+            atomConfig: atomConfigPda,
+            atomStats: atomStatsPda,
+            atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .signers([clientKeypair])
           .rpc(),
@@ -241,7 +325,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
           .accounts({
             client: clientKeypair.publicKey,
             asset: agentAsset.publicKey,
+            collection: collectionPubkey,
             agentAccount: agentPda,
+            atomConfig: atomConfigPda,
+            atomStats: atomStatsPda,
+            atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .signers([clientKeypair])
           .rpc(),
@@ -249,30 +338,36 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
       );
     });
 
-    it("giveFeedback() with duplicate index emits event (no PDA constraint)", async () => {
-      // Events-only: same index can emit multiple events
-      // Indexer handles deduplication/validation
-      const feedbackIndex = new anchor.BN(0);
+    it("giveFeedback() accumulates stats correctly", async () => {
+      const feedbackIndex = new anchor.BN(4);
 
-      // This should succeed - just emits another event
       await program.methods
         .giveFeedback(
-          50,
-          "dup",
+          75,
+          "good",
           "test",
           "https://agent.example.com/api",
-          "https://example.com/feedback/duplicate",
+          "https://example.com/feedback/accumulate",
           Array.from(randomHash()),
           feedbackIndex
         )
         .accounts({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: agentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
         .rpc();
-      // Success - indexer will handle duplicate detection
+
+      // Verify stats accumulated
+      const stats = await atomProgram.account.atomStats.fetch(atomStatsPda);
+      expect(stats.feedbackCount.toNumber()).to.be.greaterThan(1);
+      console.log("AtomStats after multiple feedbacks:", stats.feedbackCount.toNumber());
     });
   });
 
@@ -298,7 +393,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
           .accounts({
             client: provider.wallet.publicKey, // Owner is client
             asset: agentAsset.publicKey,
+            collection: collectionPubkey,
             agentAccount: agentPda,
+            atomConfig: atomConfigPda,
+            atomStats: atomStatsPda,
+            atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .rpc(),
         "SelfFeedbackNotAllowed"
@@ -312,12 +412,17 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
   describe("Feedback Revocation (Events-Only)", () => {
     let revokeAgentAsset: Keypair;
     let revokeAgentPda: PublicKey;
+    let revokeAtomStatsPda: PublicKey;
     let revokeClientKeypair: Keypair;
 
     before(async () => {
       revokeAgentAsset = Keypair.generate();
       [revokeAgentPda] = getAgentPda(revokeAgentAsset.publicKey, program.programId);
+      [revokeAtomStatsPda] = getAtomStatsPda(revokeAgentAsset.publicKey);
       revokeClientKeypair = Keypair.generate();
+
+      // Fund client from provider wallet
+      await fundKeypair(provider, revokeClientKeypair, 0.1 * anchor.web3.LAMPORTS_PER_SOL);
 
       await program.methods
         .register("https://example.com/agent/revoke-test")
@@ -349,7 +454,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
         .accounts({
           client: revokeClientKeypair.publicKey,
           asset: revokeAgentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: revokeAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: revokeAtomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([revokeClientKeypair])
         .rpc();
@@ -391,7 +501,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
         .accounts({
           client: revokeClientKeypair.publicKey,
           asset: revokeAgentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: revokeAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: revokeAtomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([revokeClientKeypair])
         .rpc();
@@ -430,13 +545,18 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
   describe("Response Operations (Events-only)", () => {
     let responseAgentAsset: Keypair;
     let responseAgentPda: PublicKey;
+    let responseAtomStatsPda: PublicKey;
     let responseClientKeypair: Keypair;
     const feedbackIndex = new anchor.BN(0);
 
     before(async () => {
       responseAgentAsset = Keypair.generate();
       [responseAgentPda] = getAgentPda(responseAgentAsset.publicKey, program.programId);
+      [responseAtomStatsPda] = getAtomStatsPda(responseAgentAsset.publicKey);
       responseClientKeypair = Keypair.generate();
+
+      // Fund client from provider wallet
+      await fundKeypair(provider, responseClientKeypair, 0.1 * anchor.web3.LAMPORTS_PER_SOL);
 
       await program.methods
         .register("https://example.com/agent/response-test")
@@ -466,7 +586,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
         .accounts({
           client: responseClientKeypair.publicKey,
           asset: responseAgentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: responseAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: responseAtomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([responseClientKeypair])
         .rpc();
@@ -544,12 +669,17 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
   describe("Feedback Index Management (Events-Only)", () => {
     let idxAgentAsset: Keypair;
     let idxAgentPda: PublicKey;
+    let idxAtomStatsPda: PublicKey;
     let idxClientKeypair: Keypair;
 
     before(async () => {
       idxAgentAsset = Keypair.generate();
       [idxAgentPda] = getAgentPda(idxAgentAsset.publicKey, program.programId);
+      [idxAtomStatsPda] = getAtomStatsPda(idxAgentAsset.publicKey);
       idxClientKeypair = Keypair.generate();
+
+      // Fund client from provider wallet
+      await fundKeypair(provider, idxClientKeypair, 0.1 * anchor.web3.LAMPORTS_PER_SOL);
 
       await program.methods
         .register("https://example.com/agent/index-test")
@@ -585,7 +715,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
           .accounts({
             client: idxClientKeypair.publicKey,
             asset: idxAgentAsset.publicKey,
+            collection: collectionPubkey,
             agentAccount: idxAgentPda,
+            atomConfig: atomConfigPda,
+            atomStats: idxAtomStatsPda,
+            atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .signers([idxClientKeypair])
           .rpc();
@@ -619,7 +754,12 @@ describe("Reputation Module Tests (Events-Only v2.0.0)", () => {
         .accounts({
           client: idxClientKeypair.publicKey,
           asset: idxAgentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: idxAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: idxAtomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([idxClientKeypair])
         .rpc();

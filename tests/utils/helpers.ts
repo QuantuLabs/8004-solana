@@ -1,5 +1,5 @@
 /**
- * Test Helpers for Agent Registry 8004
+ * Test Helpers for Agent Registry 8004 + ATOM Engine
  * Shared utilities, PDA derivation, and test data generators
  */
 import * as anchor from "@coral-xyz/anchor";
@@ -11,6 +11,10 @@ import { PublicKey, Keypair } from "@solana/web3.js";
 
 export const MPL_CORE_PROGRAM_ID = new PublicKey(
   "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+);
+
+export const ATOM_ENGINE_PROGRAM_ID = new PublicKey(
+  "CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3"
 );
 
 export const MAX_URI_LENGTH = 200;
@@ -219,6 +223,37 @@ export function getMetadataEntryPda(
 }
 
 // NOTE: getWalletMetadataPda removed - wallet is now stored directly in AgentAccount
+
+// ============================================================================
+// ATOM Engine PDA Derivation Helpers
+// ============================================================================
+
+/**
+ * Derive AtomConfig PDA: ["atom_config"]
+ */
+export function getAtomConfigPda(
+  programId: PublicKey = ATOM_ENGINE_PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("atom_config")],
+    programId
+  );
+}
+
+/**
+ * Derive AtomStats PDA: ["atom_stats", asset.key()]
+ */
+export function getAtomStatsPda(
+  asset: PublicKey,
+  programId: PublicKey = ATOM_ENGINE_PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("atom_stats"), asset.toBuffer()],
+    programId
+  );
+}
+
+// NOTE: getAtomCheckpointPda removed in v2.5c - checkpoints eliminated, events = source of truth
 
 /**
  * Build the wallet set message for Ed25519 signature verification
@@ -439,4 +474,93 @@ export async function getBalanceSOL(
 ): Promise<number> {
   const balance = await connection.getBalance(pubkey);
   return balance / anchor.web3.LAMPORTS_PER_SOL;
+}
+
+// ============================================================================
+// Funding Helpers (for stress tests)
+// ============================================================================
+
+/**
+ * Fund a keypair with SOL via transfer from provider wallet
+ * More reliable than airdrop for localnet stress testing
+ */
+export async function fundKeypair(
+  provider: anchor.AnchorProvider,
+  keypair: Keypair,
+  lamports: number
+): Promise<void> {
+  const tx = new anchor.web3.Transaction().add(
+    anchor.web3.SystemProgram.transfer({
+      fromPubkey: provider.wallet.publicKey,
+      toPubkey: keypair.publicKey,
+      lamports,
+    })
+  );
+  await provider.sendAndConfirm(tx);
+}
+
+/**
+ * Fund multiple keypairs in a single transaction (batched)
+ * More efficient for stress tests with many wallets
+ */
+export async function fundKeypairs(
+  provider: anchor.AnchorProvider,
+  keypairs: Keypair[],
+  lamportsEach: number
+): Promise<void> {
+  // Ensure lamports is an integer for BigInt conversion
+  const lamportsInt = Math.floor(lamportsEach);
+
+  // Batch into transactions of max 10 transfers each (to avoid tx size limits)
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < keypairs.length; i += BATCH_SIZE) {
+    const batch = keypairs.slice(i, i + BATCH_SIZE);
+    const tx = new anchor.web3.Transaction();
+    for (const keypair of batch) {
+      tx.add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: provider.wallet.publicKey,
+          toPubkey: keypair.publicKey,
+          lamports: lamportsInt,
+        })
+      );
+    }
+    await provider.sendAndConfirm(tx);
+  }
+}
+
+/**
+ * Return remaining SOL from keypairs back to provider wallet
+ * Returns total lamports recovered
+ */
+export async function returnFunds(
+  provider: anchor.AnchorProvider,
+  keypairs: Keypair[]
+): Promise<number> {
+  let totalRecovered = 0;
+  const MIN_BALANCE = 5000; // Minimum to keep for rent exemption check
+
+  for (const keypair of keypairs) {
+    try {
+      const balance = await provider.connection.getBalance(keypair.publicKey);
+      if (balance > MIN_BALANCE) {
+        // Leave some for transaction fee
+        const transferAmount = balance - 5000;
+        if (transferAmount > 0) {
+          const tx = new anchor.web3.Transaction().add(
+            anchor.web3.SystemProgram.transfer({
+              fromPubkey: keypair.publicKey,
+              toPubkey: provider.wallet.publicKey,
+              lamports: transferAmount,
+            })
+          );
+          await provider.sendAndConfirm(tx, [keypair]);
+          totalRecovered += transferAmount;
+        }
+      }
+    } catch (e) {
+      // Ignore errors for keypairs that can't return funds
+    }
+  }
+  return totalRecovered;
 }
