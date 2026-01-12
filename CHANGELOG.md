@@ -48,9 +48,31 @@ New `atom-engine` program for advanced on-chain reputation analytics with Sybil 
 
 ## [0.3.0] - 2026-01-10
 
-### Breaking Changes - Asset-Based Identification
+### Breaking Changes - Asset-Based Identification + Multi-Collection Sharding
 
-This version replaces `agent_id` (u64) with `asset` (Pubkey) as the unique identifier across all modules. This fixes the C-01 security vulnerability (agent ID collision between registries) and provides significant storage optimization.
+This version replaces `agent_id` (u64) with `asset` (Pubkey) as the unique identifier, and introduces multi-collection sharding for scalability.
+
+### Added - Scalability Architecture
+
+#### New Accounts
+| Account | Seeds | Description |
+|---------|-------|-------------|
+| RootConfig | `["root_config"]` | Global pointer to current base registry |
+| RegistryConfig | `["registry_config", collection]` | Per-collection config (Base or User type) |
+
+#### New Instructions
+| Instruction | Access | Description |
+|-------------|--------|-------------|
+| `initialize` | Authority | Initialize root config + first base registry |
+| `create_base_registry` | Authority | Create additional base registries |
+| `rotate_base_registry` | Authority | Switch active base registry |
+| `create_user_registry` | Anyone | Create custom user shard |
+| `update_user_registry_metadata` | Owner | Update user collection name/URI |
+| `register` | Anyone | Register agent in specific registry |
+
+#### Registry Types
+- **Base Registry**: Protocol-managed, indexed (0, 1, 2...), rotatable
+- **User Registry**: Custom shards, owned by creator, independent
 
 ### Changed
 

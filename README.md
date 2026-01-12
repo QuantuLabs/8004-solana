@@ -10,8 +10,8 @@
 
 | Program | Address |
 |---------|---------|
-| agent-registry-8004 | `3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC` |
-| atom-engine | `AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp` |
+| agent-registry-8004 | `ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz` |
+| atom-engine | `CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3` |
 
 ## v0.4.0 Highlights
 
@@ -26,7 +26,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 ```
 +-----------------------------------------------------------------+
 |              agent-registry-8004 (Devnet)                        |
-|         3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC            |
+|         ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz            |
 +-----------------------------------------------------------------+
 |  +---------------+ +----------------+ +----------------+         |
 |  | Identity      | | Reputation     | | Validation     |         |
@@ -42,7 +42,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
                              v
 +-----------------------------------------------------------------+
 |                    atom-engine (ATOM)                            |
-|         AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp            |
+|         CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3            |
 +-----------------------------------------------------------------+
 |  +---------------+ +------------------------------------------+ |
 |  | AtomConfig    | |              AtomStats (460 bytes)       | |
@@ -72,10 +72,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 | Operation | Rent (SOL) | Notes |
 |-----------|------------|-------|
-| Register Agent | ~0.009 | AgentAccount (313B) + AtomStats (460B) + Core Asset |
-| Give Feedback | ~0.00001 | No new account, just tx fee |
-| Set Metadata | ~0.003 | MetadataEntryPda (306B) |
-| Request Validation | ~0.0015 | ValidationRequest (151B) |
+| Register Agent | ~0.009 | AgentAccount (378B) + AtomStats (460B) + Core Asset |
+| Give Feedback | ~0.00001 | Event-only, just tx fee |
+| Request Validation | ~0.00001 | Event-only, just tx fee |
 
 ## Quick Start
 

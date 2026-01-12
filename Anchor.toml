@@ -6,12 +6,12 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-agent_registry_8004 = "3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC"
-atom_engine = "AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp"
+agent_registry_8004 = "ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz"
+atom_engine = "CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3"
 
 [programs.localnet]
-agent_registry_8004 = "3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC"
-atom_engine = "AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp"
+agent_registry_8004 = "ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz"
+atom_engine = "CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3"
 
 [registry]
 url = "https://api.apr.dev"
