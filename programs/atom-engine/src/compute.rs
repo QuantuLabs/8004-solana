@@ -2,7 +2,7 @@ use crate::params::*;
 use crate::state::*;
 
 // ============================================================================
-// ATOM Engine v1.0 - Calculation Functions
+// ATOM Engine - Calculation Functions
 // ============================================================================
 //
 // All calculation logic using parameters from params.rs.
@@ -14,12 +14,20 @@ use crate::state::*;
 
 /// Update all EMA values with new feedback
 fn update_ema(stats: &mut AtomStats, score: u8, slot_delta: u64) {
-    let score_scaled = (score as u16) * 100; // 0-10000 scale
+    let score_scaled = (score as u16) * 100;
 
     // Inactive decay: if slot_delta > 1 epoch, decay confidence
+    // Tiered decay based on dormancy severity
     if slot_delta > EPOCH_SLOTS {
         let epochs_inactive = (slot_delta / EPOCH_SLOTS).min(MAX_INACTIVE_EPOCHS) as u16;
-        stats.confidence = stats.confidence.saturating_sub(epochs_inactive * INACTIVE_DECAY_PER_EPOCH);
+
+        let decay_per_epoch = if epochs_inactive >= SEVERE_DORMANCY_EPOCHS as u16 {
+            INACTIVE_DECAY_PER_EPOCH * SEVERE_DORMANCY_MULTIPLIER
+        } else {
+            INACTIVE_DECAY_PER_EPOCH
+        };
+
+        stats.confidence = stats.confidence.saturating_sub(epochs_inactive * decay_per_epoch);
     }
 
     // Fast EMA (α = ALPHA_FAST/100)
@@ -80,10 +88,10 @@ fn calculate_risk(stats: &AtomStats, hll_est: u64) -> u8 {
     }
 
     // 3. STAGNATION RISK - No new unique clients (wallet rotation)
-    // Dynamic threshold: scales with HLL estimate
     let stagnation_threshold = (hll_est / 10)
         .max(STAGNATION_THRESHOLD_MIN as u64)
-        .min(STAGNATION_THRESHOLD_MAX as u64) as u8;
+        .min(STAGNATION_THRESHOLD_MAX as u64)
+        .min(255) as u8;
 
     if stats.updates_since_hll_change > stagnation_threshold {
         risk += WEIGHT_STAGNATION * (stats.updates_since_hll_change - stagnation_threshold) as u32;
@@ -118,51 +126,142 @@ fn calculate_risk(stats: &AtomStats, hll_est: u64) -> u8 {
 // Quality Score
 // ============================================================================
 
-/// Update quality score with optional bonuses
+/// Calculate WUE (Weighted-Unique Endorsement) weight based on diversity
+#[inline]
+fn calculate_wue_weight(diversity_ratio: u8) -> u32 {
+    if diversity_ratio <= WUE_DIVERSITY_LOW {
+        WUE_WEIGHT_MIN
+    } else if diversity_ratio >= WUE_DIVERSITY_HIGH {
+        WUE_WEIGHT_MAX
+    } else {
+        let range = (WUE_DIVERSITY_HIGH - WUE_DIVERSITY_LOW) as u32;
+        let pos = (diversity_ratio - WUE_DIVERSITY_LOW) as u32;
+        WUE_WEIGHT_MIN + (pos * (WUE_WEIGHT_MAX - WUE_WEIGHT_MIN)) / range
+    }
+}
+
+/// Update quality score with asymmetric EMA and anti-gaming protections
 fn update_quality(
     stats: &mut AtomStats,
     score: u8,
     hll_changed: bool,
     slot_delta: u64,
 ) {
-    // Base quality = score × consistency (inverse of volatility)
-    let consistency = 100u16.saturating_sub(stats.ema_volatility / 100);
-    let mut quality_delta = (score as u16 * consistency) / 100;
+    let consistency = 100u32.saturating_sub(stats.ema_volatility as u32 / 100);
+    let mut quality_delta: u32 = (score as u32 * consistency / 100) * 100;
 
-    // Uniqueness bonus: if HLL changed AND not in burst mode
+    // Uniqueness bonus
     if hll_changed && stats.burst_pressure < BONUS_MAX_BURST_PRESSURE {
-        quality_delta = quality_delta.saturating_add(UNIQUENESS_BONUS);
+        quality_delta = quality_delta.saturating_add(UNIQUENESS_BONUS as u32 * 100);
         stats.updates_since_hll_change = 0;
     } else {
         stats.updates_since_hll_change = stats.updates_since_hll_change.saturating_add(1);
     }
 
-    // Loyalty bonus: slow repeat (not spam, returning customer)
+    // Loyalty bonus
     if !hll_changed && slot_delta > LOYALTY_MIN_SLOT_DELTA && stats.burst_pressure < BURST_THRESHOLD {
         stats.loyalty_score = stats.loyalty_score.saturating_add(LOYALTY_BONUS);
-        quality_delta = quality_delta.saturating_add(LOYALTY_BONUS);
+        quality_delta = quality_delta.saturating_add(LOYALTY_BONUS as u32 * 100);
     }
 
-    // EMA of quality (α = ALPHA_QUALITY/100)
-    stats.quality_score = ((ALPHA_QUALITY * quality_delta as u32
-        + (100 - ALPHA_QUALITY) * stats.quality_score as u32) / 100) as u16;
+    quality_delta = quality_delta.min(10000);
+
+    // Asymmetric EMA with multiple protections
+    let alpha = if quality_delta > stats.quality_score as u32 {
+        // Improving: apply probation, elastic recovery, veteran bonus, WUE, contradiction penalty
+        let base_alpha_up = if stats.quality_score < PROBATION_THRESHOLD {
+            if stats.diversity_ratio > HEALTHY_DIVERSITY_THRESHOLD {
+                ALPHA_QUALITY_UP
+            } else {
+                ALPHA_QUALITY_UP / PROBATION_DAMPENING
+            }
+        } else {
+            ALPHA_QUALITY_UP
+        };
+
+        // Elastic recovery when in crash/dip
+        let alpha_with_elastic = if stats.ema_score_fast < stats.ema_score_slow {
+            base_alpha_up * ELASTIC_RECOVERY_MULTIPLIER
+        } else {
+            base_alpha_up
+        };
+
+        // Veteran recovery bonus
+        let alpha_with_veteran = if stats.confidence > VETERAN_CONFIDENCE_THRESHOLD {
+            alpha_with_elastic * VETERAN_RECOVERY_BONUS
+        } else {
+            alpha_with_elastic
+        };
+
+        // WUE weighting
+        let wue_weight = calculate_wue_weight(stats.diversity_ratio);
+        let alpha_with_wue = (alpha_with_veteran * wue_weight) / 100;
+
+        // Contradiction penalty
+        let alpha_with_contradiction = if stats.neg_pressure > NEG_PRESSURE_THRESHOLD
+            && stats.diversity_ratio < HEALTHY_DIVERSITY_THRESHOLD {
+            alpha_with_wue / NEG_PRESSURE_DAMPENING
+        } else {
+            alpha_with_wue
+        };
+
+        stats.neg_pressure = stats.neg_pressure.saturating_sub(NEG_PRESSURE_DECAY);
+        alpha_with_contradiction.max(1).min(50)
+    } else {
+        // Degrading: apply tier shielding, newcomer protection, burst amplifier, volatility shield, entropy gate
+        let base_alpha = if stats.trust_tier >= TIER_SHIELD_THRESHOLD {
+            ALPHA_QUALITY_DOWN / TIER_SHIELD_DAMPENING
+        } else if stats.feedback_count < NEWCOMER_SHIELD_THRESHOLD {
+            ALPHA_QUALITY_DOWN / TIER_SHIELD_DAMPENING
+        } else {
+            ALPHA_QUALITY_DOWN
+        };
+
+        // Burst amplifier (penalize burst during degradation)
+        let alpha_with_burst = if stats.burst_pressure > BURST_NEGATIVE_THRESHOLD
+            && stats.feedback_count > NEWCOMER_SHIELD_THRESHOLD {
+            (base_alpha * BURST_NEGATIVE_AMPLIFIER).min(100)
+        } else {
+            base_alpha
+        };
+
+        // Volatility shield
+        let volatility_dampener = (1 + stats.ema_volatility as u32 / VOLATILITY_SHIELD_DIVISOR)
+            .min(VOLATILITY_SHIELD_MAX);
+        let alpha_with_volatility = alpha_with_burst / volatility_dampener;
+
+        // Entropy gate
+        let entropy_dampener = (1 + stats.updates_since_hll_change as u32 / ENTROPY_GATE_DIVISOR as u32)
+            .min(ENTROPY_GATE_MAX_DAMPENING);
+        let alpha_with_entropy = alpha_with_volatility / entropy_dampener;
+
+        // Newcomer alpha cap
+        let final_alpha = if stats.trust_tier == 0 {
+            alpha_with_entropy.min(NEWCOMER_ALPHA_DOWN_CAP)
+        } else {
+            alpha_with_entropy
+        };
+
+        stats.neg_pressure = stats.neg_pressure.saturating_add(NEG_PRESSURE_INCREMENT);
+        final_alpha.max(1)
+    };
+
+    stats.quality_score = ((alpha * quality_delta
+        + (100 - alpha) * stats.quality_score as u32) / 100) as u16;
 }
 
 // ============================================================================
 // Confidence Calculation
 // ============================================================================
 
-/// Update confidence based on sample size and diversity
+/// Update confidence using EMA (allows decrease when diversity drops)
 fn update_confidence(stats: &mut AtomStats, hll_est: u64) {
     let n = stats.feedback_count;
 
-    // Count factor: more feedbacks = more confidence (up to 100)
-    let count_factor = (n.min(100) * 50) as u32; // 0-5000
+    let count_factor = (n.min(100) * 60) as u32;
+    let effective_unique = hll_est.min(n);
+    let diversity_factor = (effective_unique * 40).min(5000) as u32;
 
-    // Diversity factor: more unique clients = more confidence
-    let diversity_factor = (hll_est * 20).min(5000) as u32; // 0-5000
-
-    // Gradual cold start penalty (ramps from COLD_START_MIN to COLD_START_MAX)
     let cold_penalty = if n < COLD_START_MIN {
         COLD_START_PENALTY_HEAVY
     } else if n < COLD_START_MAX {
@@ -171,32 +270,57 @@ fn update_confidence(stats: &mut AtomStats, hll_est: u64) {
         0
     };
 
-    let raw = (count_factor + diversity_factor).saturating_sub(cold_penalty);
+    let risk_penalty = if stats.risk_score > 50 {
+        ((stats.risk_score - 50) as u32) * 50
+    } else {
+        0
+    };
 
-    // Don't decrease confidence faster than decay (preserve gains)
-    stats.confidence = stats.confidence.max(raw.min(10000) as u16);
+    let raw = (count_factor + diversity_factor)
+        .saturating_sub(cold_penalty)
+        .saturating_sub(risk_penalty);
+
+    let target = raw.min(10000) as u16;
+
+    stats.confidence = ((ALPHA_CONFIDENCE * target as u32
+        + (100 - ALPHA_CONFIDENCE) * stats.confidence as u32) / 100) as u16;
 }
 
 // ============================================================================
 // Trust Tier Classification
 // ============================================================================
 
-/// Update trust tier based on quality, risk, and confidence
+/// Update trust tier with hysteresis to prevent oscillation gaming
 fn update_trust_tier(stats: &mut AtomStats) {
     let q = stats.quality_score;
     let r = stats.risk_score;
     let c = stats.confidence;
+    let current = stats.trust_tier;
+    let h = TIER_HYSTERESIS;
 
-    stats.trust_tier = if q >= TIER_PLATINUM.0 && r <= TIER_PLATINUM.1 && c >= TIER_PLATINUM.2 {
-        4 // Platinum
-    } else if q >= TIER_GOLD.0 && r <= TIER_GOLD.1 && c >= TIER_GOLD.2 {
-        3 // Gold
-    } else if q >= TIER_SILVER.0 && r <= TIER_SILVER.1 && c >= TIER_SILVER.2 {
-        2 // Silver
-    } else if q >= TIER_BRONZE.0 && r <= TIER_BRONZE.1 && c >= TIER_BRONZE.2 {
-        1 // Bronze
+    let can_be_platinum = r <= TIER_PLATINUM.1 && c >= TIER_PLATINUM.2;
+    let can_be_gold = r <= TIER_GOLD.1 && c >= TIER_GOLD.2;
+    let can_be_silver = r <= TIER_SILVER.1 && c >= TIER_SILVER.2;
+    let can_be_bronze = r <= TIER_BRONZE.1 && c >= TIER_BRONZE.2;
+
+    stats.trust_tier = if can_be_platinum &&
+        (current == 4 && q >= TIER_PLATINUM.0.saturating_sub(h) ||
+         current < 4 && q >= TIER_PLATINUM.0.saturating_add(h)) {
+        4
+    } else if can_be_gold &&
+        (current >= 3 && q >= TIER_GOLD.0.saturating_sub(h) ||
+         current < 3 && q >= TIER_GOLD.0.saturating_add(h)) {
+        3
+    } else if can_be_silver &&
+        (current >= 2 && q >= TIER_SILVER.0.saturating_sub(h) ||
+         current < 2 && q >= TIER_SILVER.0.saturating_add(h)) {
+        2
+    } else if can_be_bronze &&
+        (current >= 1 && q >= TIER_BRONZE.0.saturating_sub(h) ||
+         current < 1 && q >= TIER_BRONZE.0.saturating_add(h)) {
+        1
     } else {
-        0 // Unrated
+        0
     };
 }
 
@@ -205,33 +329,30 @@ fn update_trust_tier(stats: &mut AtomStats) {
 // ============================================================================
 
 /// Update reputation stats with new feedback
-///
-/// # Arguments
-/// * `stats` - Mutable reference to AtomStats account
-/// * `client_hash` - Keccak256 hash of client pubkey (32 bytes)
-/// * `score` - Feedback score (0-100)
-/// * `current_slot` - Current Solana slot
 pub fn update_stats(
     stats: &mut AtomStats,
     client_hash: &[u8; 32],
     score: u8,
     current_slot: u64,
-) {
+) -> bool {
     let slot_delta = current_slot.saturating_sub(stats.last_feedback_slot);
 
-    // Fingerprint for burst detection
-    let caller_fp = splitmix64_fp16(client_hash);
+    // Domain-separated fingerprint (56-bit)
+    let caller_fp = secure_fp56(client_hash, &stats.asset);
 
-    // Alternating wallet detection via ring buffer
-    let is_recent = check_recent_caller(&stats.recent_callers, caller_fp);
-    push_caller(&mut stats.recent_callers, caller_fp);
+    // Upsert into ring buffer with Round Robin eviction
+    let is_recent = upsert_caller_entry(&mut stats.recent_callers, &mut stats.eviction_cursor, caller_fp, score);
 
-    // Burst pressure EMA: increases if caller was in recent ring, decays otherwise
+    // Sticky burst pressure
     if is_recent {
-        stats.burst_pressure = ((ALPHA_BURST_UP * 100
-            + (100 - ALPHA_BURST_UP) * stats.burst_pressure as u32) / 100) as u8;
+        stats.burst_pressure = stats.burst_pressure.saturating_add(BURST_INCREMENT);
     } else {
-        stats.burst_pressure = ((ALPHA_BURST_DOWN * stats.burst_pressure as u32) / 100) as u8;
+        stats.burst_pressure = stats.burst_pressure.saturating_sub(BURST_DECAY_LINEAR);
+    }
+
+    // Velocity-based burst detection
+    if slot_delta < VELOCITY_MIN_SLOT_DELTA {
+        stats.burst_pressure = stats.burst_pressure.saturating_add(VELOCITY_BURST_PENALTY);
     }
 
     // First-time initialization
@@ -244,6 +365,17 @@ pub fn update_stats(
         stats.ema_score_slow = (score as u16) * 100;
         stats.peak_ema = (score as u16) * 100;
         stats.schema_version = AtomStats::SCHEMA_VERSION;
+
+        // Generate per-agent HLL salt
+        let asset_bytes = stats.asset.to_bytes();
+        let mut salt_seed = [0u8; 40];
+        salt_seed[0..32].copy_from_slice(&asset_bytes);
+        salt_seed[32..40].copy_from_slice(&current_slot.to_le_bytes());
+        stats.hll_salt = u64::from_le_bytes(
+            anchor_lang::solana_program::keccak::hash(&salt_seed).0[0..8]
+                .try_into()
+                .unwrap(),
+        );
     }
 
     // Update core metrics
@@ -253,34 +385,34 @@ pub fn update_stats(
     stats.min_score = stats.min_score.min(score);
     stats.max_score = stats.max_score.max(score);
 
-    // Epoch tracking
+    // Epoch tracking with low-diversity decay
     let new_epoch = (current_slot / EPOCH_SLOTS) as u16;
     if new_epoch != stats.current_epoch {
+        if stats.diversity_ratio < EPOCH_DECAY_DIVERSITY_THRESHOLD && stats.feedback_count > COLD_START_MAX {
+            stats.quality_score = ((stats.quality_score as u32 * EPOCH_DECAY_PERCENT) / 100) as u16;
+        }
         stats.current_epoch = new_epoch;
         stats.epoch_count = stats.epoch_count.saturating_add(1);
     }
 
-    // HLL update (unique client detection)
-    let hll_changed = hll_add(&mut stats.hll_packed, client_hash);
+    // HLL update with slot-gating and salting
+    let salted_hash = salt_hash_with_asset(client_hash, &stats.asset);
+    let hll_changed = if slot_delta >= HLL_COOLDOWN_SLOTS || stats.feedback_count == 0 {
+        hll_add(&mut stats.hll_packed, &salted_hash, stats.hll_salt)
+    } else {
+        false
+    };
     let hll_est = hll_estimate(&stats.hll_packed);
 
-    // EMA updates with decay
+    // All updates
     update_ema(stats, score, slot_delta);
-
-    // Quality with bonuses
     update_quality(stats, score, hll_changed, slot_delta);
-
-    // Risk calculation
     stats.risk_score = calculate_risk(stats, hll_est);
-
-    // Diversity ratio
     stats.diversity_ratio = safe_div(hll_est * 255, stats.feedback_count.max(1)).min(255) as u8;
-
-    // Confidence
     update_confidence(stats, hll_est);
-
-    // Trust tier
     update_trust_tier(stats);
+
+    hll_changed
 }
 
 // ============================================================================
@@ -290,15 +422,8 @@ pub fn update_stats(
 /// Migrate stats from older schema versions if needed
 pub fn maybe_migrate(stats: &mut AtomStats) {
     match stats.schema_version {
-        0 => {
-            // Schema version 0 means uninitialized or pre-v1.0
-            stats.schema_version = AtomStats::SCHEMA_VERSION;
-        }
-        1 => {
-            // Current version, no migration needed
-        }
-        _ => {
-            // Future versions - handle here when needed
-        }
+        0 => stats.schema_version = AtomStats::SCHEMA_VERSION,
+        1 => {}
+        _ => {}
     }
 }

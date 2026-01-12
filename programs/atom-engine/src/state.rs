@@ -3,43 +3,46 @@ use anchor_lang::prelude::*;
 use crate::params::*;
 
 // ============================================================================
-// AtomStats v1.0 - Raw Metrics Struct
+// AtomStats - Raw Metrics Struct
 // ============================================================================
 //
-// This struct stores ONLY raw metrics. Risk/quality/tier calculations are
-// performed in compute.rs using parameters from params.rs or AtomConfig.
-//
-// Size: 96 bytes exactly (~0.00089 SOL rent per agent)
+// Stores raw metrics. Risk/quality/tier calculations performed in compute.rs.
+// Size: 460 bytes (~0.0040 SOL rent per agent)
 // Update: O(1), ~4500 CU per feedback
 
 /// Raw reputation metrics for an agent
 /// Seeds: ["atom_stats", asset.key()]
 #[account]
-#[derive(Default)]
 pub struct AtomStats {
-    // ========== BLOC 1: CORE (24 bytes) ==========
-    /// Slot of first feedback received (anchor for age calculation)
+    // ========== IDENTITY (64 bytes) ==========
+    /// Collection this agent belongs to (offset 8 - primary filter)
+    pub collection: Pubkey,
+    /// Asset (agent NFT) this stats belongs to
+    pub asset: Pubkey,
+
+    // ========== CORE (24 bytes) ==========
+    /// Slot of first feedback received
     pub first_feedback_slot: u64,
-    /// Slot of most recent feedback (recency, burst detection)
+    /// Slot of most recent feedback
     pub last_feedback_slot: u64,
     /// Total number of feedbacks received
     pub feedback_count: u64,
 
-    // ========== BLOC 2: DUAL-EMA (12 bytes) ==========
-    /// Fast EMA of scores (α=0.30), scale 0-10000 (represents 0.00-100.00)
+    // ========== DUAL-EMA (12 bytes) ==========
+    /// Fast EMA of scores (α=0.30), scale 0-10000
     pub ema_score_fast: u16,
     /// Slow EMA of scores (α=0.05), scale 0-10000
     pub ema_score_slow: u16,
     /// Smoothed absolute deviation |fast - slow|, scale 0-10000
     pub ema_volatility: u16,
-    /// EMA of ilog2(slot_delta), scale 0-1500 (0=instant, 1500=very slow)
+    /// EMA of ilog2(slot_delta), scale 0-1500
     pub ema_arrival_log: u16,
     /// Historical peak of ema_score_slow
     pub peak_ema: u16,
     /// Maximum drawdown (peak - current), scale 0-10000
     pub max_drawdown: u16,
 
-    // ========== BLOC 3: EPOCH & BOUNDS (8 bytes) ==========
+    // ========== EPOCH & BOUNDS (8 bytes) ==========
     /// Number of distinct epochs with activity
     pub epoch_count: u16,
     /// Current epoch number (slot / EPOCH_SLOTS)
@@ -53,33 +56,40 @@ pub struct AtomStats {
     /// Most recent score received (0-100)
     pub last_score: u8,
 
-    // ========== BLOC 4: HLL (24 bytes = 48 regs × 4 bits) ==========
-    /// HyperLogLog registers for unique client estimation
-    /// 48 registers × 4 bits each, ~15% error at high cardinalities
-    pub hll_packed: [u8; 24],
+    // ========== HLL (128 bytes = 256 regs × 4 bits) ==========
+    /// HyperLogLog registers for unique client estimation (~6.5% error)
+    pub hll_packed: [u8; 128],
 
-    // ========== BLOC 5: BURST DETECTION (8 bytes) ==========
-    /// Ring buffer of 3 recent caller fingerprints (16-bit each)
-    pub recent_callers: [u16; 3],
-    /// EMA of repeat caller pressure (0-255, higher = more repeats)
+    // ========== HLL SALT (8 bytes) ==========
+    /// Random salt for HLL to prevent cross-agent grinding attacks
+    pub hll_salt: u64,
+
+    // ========== BURST DETECTION (196 bytes) ==========
+    /// Ring buffer of recent caller fingerprints (requires 25+ wallets for bypass)
+    pub recent_callers: [u64; 24],
+    /// EMA of repeat caller pressure (0-255)
     pub burst_pressure: u8,
-    /// Updates since last HLL register change (detects wallet rotation)
+    /// Updates since last HLL register change
     pub updates_since_hll_change: u8,
+    /// Negative momentum pressure (0-255)
+    pub neg_pressure: u8,
+    /// Round Robin eviction cursor for ring buffer
+    pub eviction_cursor: u8,
 
-    // ========== BLOC 6: OUTPUT CACHE (12 bytes) ==========
-    /// Cached loyalty score (accumulated from slow repeats)
+    // ========== OUTPUT CACHE (12 bytes) ==========
+    /// Cached loyalty score
     pub loyalty_score: u16,
-    /// Cached quality score (score × consistency bonus)
+    /// Cached quality score (0-10000)
     pub quality_score: u16,
     /// Last computed risk score (0-100)
     pub risk_score: u8,
-    /// Last computed diversity ratio (hll_est * 255 / count)
+    /// Last computed diversity ratio (0-255)
     pub diversity_ratio: u8,
     /// Last computed trust tier (0-4: Unrated/Bronze/Silver/Gold/Platinum)
     pub trust_tier: u8,
     /// Bit flags for edge cases
     pub flags: u8,
-    /// Confidence in metrics (0-10000), based on sample size + diversity
+    /// Confidence in metrics (0-10000)
     pub confidence: u16,
     /// PDA bump seed
     pub bump: u8,
@@ -87,17 +97,57 @@ pub struct AtomStats {
     pub schema_version: u8,
 }
 
+impl Default for AtomStats {
+    fn default() -> Self {
+        Self {
+            collection: Pubkey::default(),
+            asset: Pubkey::default(),
+            first_feedback_slot: 0,
+            last_feedback_slot: 0,
+            feedback_count: 0,
+            ema_score_fast: 0,
+            ema_score_slow: 0,
+            ema_volatility: 0,
+            ema_arrival_log: 0,
+            peak_ema: 0,
+            max_drawdown: 0,
+            epoch_count: 0,
+            current_epoch: 0,
+            min_score: 0,
+            max_score: 0,
+            first_score: 0,
+            last_score: 0,
+            hll_packed: [0u8; 128],
+            hll_salt: 0,
+            recent_callers: [0u64; 24],
+            burst_pressure: 0,
+            updates_since_hll_change: 0,
+            neg_pressure: 0,
+            eviction_cursor: 0,
+            loyalty_score: 0,
+            quality_score: 0,
+            risk_score: 0,
+            diversity_ratio: 0,
+            trust_tier: 0,
+            flags: 0,
+            confidence: 0,
+            bump: 0,
+            schema_version: 0,
+        }
+    }
+}
+
 impl AtomStats {
-    /// Current schema version
     pub const SCHEMA_VERSION: u8 = 1;
 
-    /// Account size in bytes (discriminator + fields)
-    pub const SIZE: usize = 8 + 96;
+    /// Account size: 8 + 64 + 24 + 12 + 8 + 128 + 8 + 196 + 12 = 460 bytes
+    pub const SIZE: usize = 460;
 
-    /// Initialize a new AtomStats with first feedback
-    pub fn initialize(&mut self, bump: u8, score: u8, current_slot: u64) {
+    /// Initialize with first feedback
+    pub fn initialize(&mut self, bump: u8, collection: Pubkey, score: u8, current_slot: u64) {
         self.bump = bump;
         self.schema_version = Self::SCHEMA_VERSION;
+        self.collection = collection;
         self.first_feedback_slot = current_slot;
         self.last_feedback_slot = current_slot;
         self.feedback_count = 1;
@@ -128,16 +178,18 @@ pub struct AtomConfig {
     /// Agent registry program (authorized CPI caller)
     pub agent_registry_program: Pubkey,
 
-    // === EMA Parameters (scaled by 100) ===
+    // EMA Parameters (scaled by 100)
     pub alpha_fast: u16,
     pub alpha_slow: u16,
     pub alpha_volatility: u16,
     pub alpha_arrival: u16,
     pub alpha_quality: u16,
+    pub alpha_quality_up: u16,
+    pub alpha_quality_down: u16,
     pub alpha_burst_up: u16,
     pub alpha_burst_down: u16,
 
-    // === Risk Weights ===
+    // Risk Weights
     pub weight_sybil: u8,
     pub weight_burst: u8,
     pub weight_stagnation: u8,
@@ -145,14 +197,14 @@ pub struct AtomConfig {
     pub weight_volatility: u8,
     pub weight_arrival: u8,
 
-    // === Thresholds ===
+    // Thresholds
     pub diversity_threshold: u8,
     pub burst_threshold: u8,
     pub shock_threshold: u16,
     pub volatility_threshold: u16,
     pub arrival_fast_threshold: u16,
 
-    // === Tier Thresholds (quality_min, risk_max, confidence_min) ===
+    // Tier Thresholds (quality_min, risk_max, confidence_min)
     pub tier_platinum_quality: u16,
     pub tier_platinum_risk: u8,
     pub tier_platinum_confidence: u16,
@@ -166,22 +218,22 @@ pub struct AtomConfig {
     pub tier_bronze_risk: u8,
     pub tier_bronze_confidence: u16,
 
-    // === Cold Start ===
+    // Cold Start
     pub cold_start_min: u16,
     pub cold_start_max: u16,
     pub cold_start_penalty_heavy: u16,
     pub cold_start_penalty_per_feedback: u16,
 
-    // === Bonus/Loyalty ===
+    // Bonus/Loyalty
     pub uniqueness_bonus: u16,
     pub loyalty_bonus: u16,
     pub loyalty_min_slot_delta: u32,
     pub bonus_max_burst_pressure: u8,
 
-    // === Decay ===
+    // Decay
     pub inactive_decay_per_epoch: u16,
 
-    // === Meta ===
+    // Meta
     pub bump: u8,
     pub version: u8,
     pub paused: bool,
@@ -189,16 +241,7 @@ pub struct AtomConfig {
 }
 
 impl AtomConfig {
-    /// Account size in bytes
-    pub const SIZE: usize = 8 + 32 + 32 + // discriminator + authority + registry_program
-        14 + // EMA params (7 * u16)
-        6 + // Risk weights (6 * u8)
-        8 + // Thresholds (2 * u8 + 3 * u16)
-        20 + // Tier thresholds (4 * (u16 + u8 + u16))
-        8 + // Cold start (4 * u16)
-        10 + // Bonus/Loyalty (2 * u16 + u32 + u8)
-        2 + // Decay (u16)
-        8; // Meta (bump, version, paused, padding)
+    pub const SIZE: usize = 8 + 32 + 32 + 18 + 6 + 8 + 20 + 8 + 10 + 2 + 8;
 
     /// Initialize config with defaults from params.rs
     pub fn init_defaults(&mut self, authority: Pubkey, agent_registry_program: Pubkey, bump: u8) {
@@ -208,16 +251,16 @@ impl AtomConfig {
         self.version = 1;
         self.paused = false;
 
-        // EMA Parameters
         self.alpha_fast = ALPHA_FAST as u16;
         self.alpha_slow = ALPHA_SLOW as u16;
         self.alpha_volatility = ALPHA_VOLATILITY as u16;
         self.alpha_arrival = ALPHA_ARRIVAL as u16;
         self.alpha_quality = ALPHA_QUALITY as u16;
+        self.alpha_quality_up = ALPHA_QUALITY_UP as u16;
+        self.alpha_quality_down = ALPHA_QUALITY_DOWN as u16;
         self.alpha_burst_up = ALPHA_BURST_UP as u16;
         self.alpha_burst_down = ALPHA_BURST_DOWN as u16;
 
-        // Risk Weights
         self.weight_sybil = WEIGHT_SYBIL as u8;
         self.weight_burst = WEIGHT_BURST as u8;
         self.weight_stagnation = WEIGHT_STAGNATION as u8;
@@ -225,14 +268,12 @@ impl AtomConfig {
         self.weight_volatility = WEIGHT_VOLATILITY as u8;
         self.weight_arrival = WEIGHT_ARRIVAL as u8;
 
-        // Thresholds
         self.diversity_threshold = DIVERSITY_THRESHOLD;
         self.burst_threshold = BURST_THRESHOLD;
         self.shock_threshold = SHOCK_THRESHOLD;
         self.volatility_threshold = VOLATILITY_THRESHOLD;
         self.arrival_fast_threshold = ARRIVAL_FAST_THRESHOLD;
 
-        // Tier Thresholds
         self.tier_platinum_quality = TIER_PLATINUM.0;
         self.tier_platinum_risk = TIER_PLATINUM.1;
         self.tier_platinum_confidence = TIER_PLATINUM.2;
@@ -246,66 +287,30 @@ impl AtomConfig {
         self.tier_bronze_risk = TIER_BRONZE.1;
         self.tier_bronze_confidence = TIER_BRONZE.2;
 
-        // Cold Start
         self.cold_start_min = COLD_START_MIN as u16;
         self.cold_start_max = COLD_START_MAX as u16;
         self.cold_start_penalty_heavy = COLD_START_PENALTY_HEAVY as u16;
         self.cold_start_penalty_per_feedback = COLD_START_PENALTY_PER_FEEDBACK as u16;
 
-        // Bonus/Loyalty
         self.uniqueness_bonus = UNIQUENESS_BONUS;
         self.loyalty_bonus = LOYALTY_BONUS;
         self.loyalty_min_slot_delta = LOYALTY_MIN_SLOT_DELTA as u32;
         self.bonus_max_burst_pressure = BONUS_MAX_BURST_PRESSURE;
 
-        // Decay
         self.inactive_decay_per_epoch = INACTIVE_DECAY_PER_EPOCH;
     }
-}
-
-// ============================================================================
-// AtomCheckpoint - Recovery Checkpoint PDA
-// ============================================================================
-//
-// Stores periodic snapshots for recovery/reindexation.
-// Seeds: ["atom_checkpoint", asset.key(), checkpoint_index.to_le_bytes()]
-
-/// Checkpoint for recovery/reindexation
-#[account]
-pub struct AtomCheckpoint {
-    /// Asset this checkpoint belongs to
-    pub asset: Pubkey,
-    /// Checkpoint index (sequential)
-    pub checkpoint_index: u64,
-    /// Hash of the feedback that created this checkpoint
-    pub checkpoint_hash: [u8; 32],
-    /// Feedback index at checkpoint time
-    pub feedback_index: u64,
-    /// Snapshot of AtomStats at checkpoint time
-    pub stats_snapshot: [u8; 96],
-    /// Timestamp of checkpoint creation
-    pub created_at: i64,
-    /// PDA bump
-    pub bump: u8,
-}
-
-impl AtomCheckpoint {
-    /// Account size in bytes
-    pub const SIZE: usize = 8 + 32 + 8 + 32 + 8 + 96 + 8 + 1;
 }
 
 // ============================================================================
 // HyperLogLog Implementation (Integer-Only)
 // ============================================================================
 
-/// Add a client hash to the HLL, returns true if a register was updated (likely new unique)
-pub fn hll_add(hll: &mut [u8; 24], client_hash: &[u8; 32]) -> bool {
-    let h = u64::from_le_bytes(client_hash[0..8].try_into().unwrap());
+/// Add a client hash to the HLL, returns true if register was updated
+pub fn hll_add(hll: &mut [u8; 128], client_hash: &[u8; 32], salt: u64) -> bool {
+    let h_raw = u64::from_le_bytes(client_hash[0..8].try_into().unwrap());
+    let h = h_raw ^ salt;
 
-    // Unbiased modulo mapping to 48 registers
     let idx = (h % HLL_REGISTERS as u64) as usize;
-
-    // Count leading zeros after dividing out the index bits
     let remaining = h / HLL_REGISTERS as u64;
     let rho = if remaining == 0 {
         HLL_MAX_RHO
@@ -328,36 +333,53 @@ pub fn hll_add(hll: &mut [u8; 24], client_hash: &[u8; 32]) -> bool {
     false
 }
 
-/// Estimate unique client count from HLL (integer-only approximation)
-/// Uses lookup table for 2^-k to avoid floats
-pub fn hll_estimate(hll: &[u8; 24]) -> u64 {
-    // LUT: 65536 / 2^k (scaled inverse powers of 2)
+/// Estimate unique client count from HLL (integer-only)
+pub fn hll_estimate(hll: &[u8; 128]) -> u64 {
     const INV_TAB: [u16; 16] = [
         65535, 32768, 16384, 8192, 4096, 2048, 1024, 512,
         256, 128, 64, 32, 16, 8, 4, 2
     ];
 
-    let mut inv_sum: u32 = 0;
+    let mut inv_sum: u64 = 0;
     let mut zeros: u32 = 0;
 
     for byte in hll.iter() {
         let lo = (byte & 0x0F) as usize;
         let hi = (byte >> 4) as usize;
 
-        inv_sum += INV_TAB[lo] as u32;
-        inv_sum += INV_TAB[hi] as u32;
+        inv_sum += INV_TAB[lo] as u64;
+        inv_sum += INV_TAB[hi] as u64;
 
         if lo == 0 { zeros += 1; }
         if hi == 0 { zeros += 1; }
     }
 
-    // α * m² ≈ 0.709 * 48² = 1633.5 → scaled by 65536 = 107_055_104
-    let raw = HLL_ALPHA_M2_SCALED / (inv_sum.max(1) as u64);
+    let raw = HLL_ALPHA_M2_SCALED / inv_sum.max(1);
 
-    // Linear counting for small cardinalities (when many zeros)
+    // Linear counting for small cardinalities
     if raw < HLL_LINEAR_COUNTING_THRESHOLD && zeros > 0 {
-        // Approximation of 48 * ln(48/zeros)
-        (HLL_REGISTERS as u64 * HLL_REGISTERS as u64) / zeros.max(1) as u64
+        if zeros >= 256 {
+            0
+        } else if zeros == 0 {
+            raw
+        } else {
+            let estimate = match zeros {
+                1 => 1417,
+                2 => 1240,
+                4 => 1063,
+                8 => 886,
+                16 => 709,
+                32 => 532,
+                64 => 355,
+                128 => 177,
+                _ => {
+                    let log_v = ilog2_safe(zeros as u64) as u32;
+                    let log_256 = 8u32;
+                    if log_v >= log_256 { 0 } else { ((log_256 - log_v) * 177) as u64 }
+                }
+            };
+            estimate.min(raw)
+        }
     } else {
         raw
     }
@@ -367,25 +389,106 @@ pub fn hll_estimate(hll: &[u8; 24]) -> u64 {
 // Fingerprint for Burst Detection
 // ============================================================================
 
-/// Compute 16-bit fingerprint using Splitmix64 (fast, good distribution)
-pub fn splitmix64_fp16(pubkey_bytes: &[u8]) -> u16 {
+/// Compute 64-bit fingerprint using Splitmix64 - DEPRECATED, use secure_fp56
+pub fn splitmix64_fp64(pubkey_bytes: &[u8]) -> u64 {
     let bytes: [u8; 8] = pubkey_bytes[0..8].try_into().unwrap_or([0u8; 8]);
     let mut z = u64::from_le_bytes(bytes);
     z = z.wrapping_add(0x9e3779b97f4a7c15);
     z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
     z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
-    ((z ^ (z >> 31)) & 0xFFFF) as u16
+    z ^ (z >> 31)
 }
 
-/// Check if fingerprint is in recent callers ring buffer
-pub fn check_recent_caller(recent: &[u16; 3], fp: u16) -> bool {
-    recent[0] == fp || recent[1] == fp || recent[2] == fp
+// ============================================================================
+// Bit-Packed Ring Buffer for Revoke Support
+// ============================================================================
+//
+// Layout: bits 0-55 = fingerprint, bits 56-62 = score, bit 63 = revoked flag
+
+pub const FP_MASK: u64 = 0x00FF_FFFF_FFFF_FFFF;
+pub const SCORE_SHIFT: u32 = 56;
+pub const REVOKED_BIT: u64 = 1u64 << 63;
+
+/// Domain-separated fingerprint (56 bits) for cross-target attack resistance
+pub fn secure_fp56(client_hash: &[u8; 32], asset: &Pubkey) -> u64 {
+    use anchor_lang::solana_program::keccak;
+
+    let mut data = [0u8; 80];
+    data[0..16].copy_from_slice(b"ATOM_FEEDBACK_V1");
+    data[16..48].copy_from_slice(asset.as_ref());
+    data[48..80].copy_from_slice(client_hash);
+
+    let hash = keccak::hash(&data);
+    u64::from_le_bytes(hash.0[0..8].try_into().unwrap()) & FP_MASK
 }
 
-/// Push new fingerprint to ring buffer (shifts old ones out)
-pub fn push_caller(recent: &mut [u16; 3], fp: u16) {
-    recent[2] = recent[1];
-    recent[1] = recent[0];
+#[inline]
+pub fn encode_caller_entry(fp56: u64, score: u8, revoked: bool) -> u64 {
+    let mut entry = fp56 & FP_MASK;
+    entry |= (score as u64 & 0x7F) << SCORE_SHIFT;
+    if revoked { entry |= REVOKED_BIT; }
+    entry
+}
+
+#[inline]
+pub fn decode_caller_entry(entry: u64) -> (u64, u8, bool) {
+    let fp56 = entry & FP_MASK;
+    let score = ((entry >> SCORE_SHIFT) & 0x7F) as u8;
+    let revoked = (entry & REVOKED_BIT) != 0;
+    (fp56, score, revoked)
+}
+
+/// Find entry by fp56 in ring buffer
+pub fn find_caller_entry(recent: &[u64; RING_BUFFER_SIZE], fp56: u64) -> Option<(usize, u8, bool)> {
+    for (i, &entry) in recent.iter().enumerate() {
+        let (stored_fp, score, revoked) = decode_caller_entry(entry);
+        if stored_fp == fp56 && stored_fp != 0 {
+            return Some((i, score, revoked));
+        }
+    }
+    None
+}
+
+#[inline]
+pub fn mark_entry_revoked(recent: &mut [u64; RING_BUFFER_SIZE], index: usize) {
+    recent[index] |= REVOKED_BIT;
+}
+
+/// Push entry with Round Robin eviction (prevents targeted eviction attacks)
+pub fn push_caller_encoded(recent: &mut [u64; RING_BUFFER_SIZE], cursor: &mut u8, fp56: u64, score: u8) {
+    let evict_idx = *cursor as usize;
+    recent[evict_idx] = encode_caller_entry(fp56, score, false);
+    *cursor = ((*cursor as usize + 1) % RING_BUFFER_SIZE) as u8;
+}
+
+/// Update entry in-place if found, otherwise push new entry
+pub fn upsert_caller_entry(recent: &mut [u64; RING_BUFFER_SIZE], cursor: &mut u8, fp56: u64, score: u8) -> bool {
+    if let Some((idx, _old_score, _revoked)) = find_caller_entry(recent, fp56) {
+        recent[idx] = encode_caller_entry(fp56, score, false);
+        true
+    } else {
+        push_caller_encoded(recent, cursor, fp56, score);
+        false
+    }
+}
+
+/// Ring buffer size (requires 25+ wallets to bypass)
+pub const RING_BUFFER_SIZE: usize = 24;
+
+/// Check if fingerprint is in recent callers (constant-time)
+pub fn check_recent_caller(recent: &[u64; RING_BUFFER_SIZE], fp: u64) -> bool {
+    let mut found = false;
+    for &r in recent.iter() {
+        found |= r == fp;
+    }
+    found
+}
+
+/// Push fingerprint to ring buffer (shifts old ones out)
+pub fn push_caller(recent: &mut [u64; RING_BUFFER_SIZE], fp: u64) {
+    for i in (1..RING_BUFFER_SIZE).rev() {
+        recent[i] = recent[i - 1];
+    }
     recent[0] = fp;
 }
 
@@ -393,20 +496,28 @@ pub fn push_caller(recent: &mut [u16; 3], fp: u16) {
 // Helper Functions
 // ============================================================================
 
-/// Safe integer log2 (returns 0 for input 0)
 #[inline]
 pub fn ilog2_safe(x: u64) -> u8 {
     if x == 0 { 0 } else { (63 - x.leading_zeros()) as u8 }
 }
 
-/// Safe division (returns 0 if divisor is 0)
 #[inline]
 pub fn safe_div(a: u64, b: u64) -> u64 {
     if b == 0 { 0 } else { a / b }
 }
 
-/// Safe u32 division (returns 0 if divisor is 0)
 #[inline]
 pub fn safe_div_u32(a: u32, b: u32) -> u32 {
     if b == 0 { 0 } else { a / b }
+}
+
+/// Salt client hash with asset pubkey (prevents HLL pre-mining)
+#[inline]
+pub fn salt_hash_with_asset(client_hash: &[u8; 32], asset: &Pubkey) -> [u8; 32] {
+    let asset_bytes = asset.to_bytes();
+    let mut salted = [0u8; 32];
+    for i in 0..32 {
+        salted[i] = client_hash[i] ^ asset_bytes[i];
+    }
+    salted
 }
