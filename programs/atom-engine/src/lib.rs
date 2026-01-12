@@ -1,9 +1,6 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::sysvar::instructions::{
-    get_instruction_relative, load_current_index_checked,
-};
 
-declare_id!("CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3");
+declare_id!("B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7");
 
 /// Metaplex Core program ID
 pub const MPL_CORE_ID: Pubkey = pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
@@ -267,7 +264,7 @@ pub mod atom_engine {
 
     /// Update stats for an agent (called via CPI from agent-registry during feedback)
     /// Stats must already exist (created during agent registration via initialize_stats)
-    /// SECURITY: Verifies caller is the authorized agent-registry program
+    /// SECURITY: Caller verified via PDA signer (registry_authority) in context constraints
     /// v2.5b: Returns UpdateResult for enriched events in agent-registry
     pub fn update_stats(
         ctx: Context<UpdateStats>,
@@ -276,12 +273,6 @@ pub mod atom_engine {
     ) -> Result<UpdateResult> {
         require!(score <= 100, AtomError::InvalidScore);
         require!(!ctx.accounts.config.paused, AtomError::Paused);
-
-        // SECURITY FIX: Verify CPI caller is the authorized agent-registry program
-        verify_cpi_caller(
-            &ctx.accounts.instructions_sysvar,
-            ctx.accounts.config.agent_registry_program,
-        )?;
 
         let clock = Clock::get()?;
         let stats = &mut ctx.accounts.stats;
@@ -349,7 +340,7 @@ pub mod atom_engine {
 
     /// v2.5a: Revoke a feedback entry from the ring buffer
     /// Called via CPI from agent-registry during revoke_feedback
-    /// SECURITY: Verifies caller is the authorized agent-registry program
+    /// SECURITY: Caller verified via PDA signer (registry_authority) in context constraints
     ///
     /// # Arguments
     /// * `client_pubkey` - The pubkey of the client who gave the feedback
@@ -365,12 +356,6 @@ pub mod atom_engine {
         client_pubkey: Pubkey,
     ) -> Result<RevokeResult> {
         require!(!ctx.accounts.config.paused, AtomError::Paused);
-
-        // SECURITY: Verify CPI caller is the authorized agent-registry program
-        verify_cpi_caller(
-            &ctx.accounts.instructions_sysvar,
-            ctx.accounts.config.agent_registry_program,
-        )?;
 
         let stats = &mut ctx.accounts.stats;
         require!(stats.schema_version > 0, AtomError::StatsNotInitialized);
@@ -441,40 +426,3 @@ pub mod atom_engine {
     }
 }
 
-// ============================================================================
-// Security Helper Functions
-// ============================================================================
-
-/// Verify that the CPI caller is the authorized agent-registry program
-/// Uses instruction sysvar introspection to check the parent instruction
-///
-/// SECURITY: This function ensures that update_stats can ONLY be called via CPI
-/// from the authorized agent-registry program, preventing direct manipulation
-/// of reputation scores by malicious actors.
-fn verify_cpi_caller(
-    instructions_sysvar: &AccountInfo,
-    expected_caller: Pubkey,
-) -> Result<()> {
-    // Get the current instruction index in the transaction
-    let current_idx = load_current_index_checked(instructions_sysvar)
-        .map_err(|_| AtomError::UnauthorizedCaller)?;
-
-    // Get the instruction at the current index (this is the outer instruction that initiated the CPI)
-    // When atom_engine is called via CPI from give_feedback:
-    // - current_idx = 0 (give_feedback is instruction 0 in the transaction)
-    // - The instruction at index 0 should be from agent-registry
-    let outer_ix = get_instruction_relative(0, instructions_sysvar)
-        .map_err(|_| AtomError::UnauthorizedCaller)?;
-
-    // Verify the outer instruction (that initiated CPI to us) is from the authorized program
-    require!(
-        outer_ix.program_id == expected_caller,
-        AtomError::UnauthorizedCaller
-    );
-
-    // Additional check: if called directly (not via CPI), the outer instruction
-    // would be atom_engine itself, which would fail the above check
-    // This ensures update_stats can ONLY be called via CPI from agent-registry
-
-    Ok(())
-}

@@ -10,8 +10,8 @@
 
 | Program | Address |
 |---------|---------|
-| agent-registry-8004 | `ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz` |
-| atom-engine | `CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3` |
+| agent-registry-8004 | `HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT` |
+| atom-engine | `B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7` |
 
 ## v0.4.0 Highlights
 
@@ -26,7 +26,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 ```
 +-----------------------------------------------------------------+
 |              agent-registry-8004 (Devnet)                        |
-|         ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz            |
+|         HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT            |
 +-----------------------------------------------------------------+
 |  +---------------+ +----------------+ +----------------+         |
 |  | Identity      | | Reputation     | | Validation     |         |
@@ -42,7 +42,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
                              v
 +-----------------------------------------------------------------+
 |                    atom-engine (ATOM)                            |
-|         CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3            |
+|         B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7            |
 +-----------------------------------------------------------------+
 |  +---------------+ +------------------------------------------+ |
 |  | AtomConfig    | |              AtomStats (460 bytes)       | |
@@ -72,7 +72,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 | Operation | Rent (SOL) | Notes |
 |-----------|------------|-------|
-| Register Agent | ~0.009 | AgentAccount (378B) + AtomStats (460B) + Core Asset |
+| Register Agent | ~0.009 | AgentAccount (378B) + AtomStats (476B) + Core Asset |
 | Give Feedback | ~0.00001 | Event-only, just tx fee |
 | Request Validation | ~0.00001 | Event-only, just tx fee |
 

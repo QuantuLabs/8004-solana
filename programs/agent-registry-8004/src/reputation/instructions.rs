@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
 use mpl_core::accounts::BaseAssetV1;
 
-use super::contexts::*;
+use super::contexts::{*, ATOM_CPI_AUTHORITY_SEED};
 use super::events::*;
 use super::state::*;
 use crate::error::RegistryError;
@@ -50,20 +50,23 @@ pub fn give_feedback(
     // Compute client hash for ATOM
     let client_hash = keccak::hash(ctx.accounts.client.key().as_ref());
 
-    // CPI to atom-engine to update stats
     let cpi_accounts = atom_engine::cpi::accounts::UpdateStats {
         payer: ctx.accounts.client.to_account_info(),
         asset: ctx.accounts.asset.to_account_info(),
         collection: ctx.accounts.collection.to_account_info(),
         config: ctx.accounts.atom_config.to_account_info(),
         stats: ctx.accounts.atom_stats.to_account_info(),
-        instructions_sysvar: ctx.accounts.instructions_sysvar.to_account_info(),
+        registry_authority: ctx.accounts.registry_authority.to_account_info(),
         system_program: ctx.accounts.system_program.to_account_info(),
     };
 
-    let cpi_ctx = CpiContext::new(
+    let bump = ctx.bumps.registry_authority;
+    let signer_seeds: &[&[&[u8]]] = &[&[ATOM_CPI_AUTHORITY_SEED, &[bump]]];
+
+    let cpi_ctx = CpiContext::new_with_signer(
         ctx.accounts.atom_engine_program.to_account_info(),
         cpi_accounts,
+        signer_seeds,
     );
 
     // Capture UpdateResult for enriched event
@@ -108,19 +111,22 @@ pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Res
     let asset = ctx.accounts.asset.key();
     let client = ctx.accounts.client.key();
 
-    // CPI to atom-engine to revoke stats
     let cpi_accounts = atom_engine::cpi::accounts::RevokeStats {
         payer: ctx.accounts.client.to_account_info(),
         asset: ctx.accounts.asset.to_account_info(),
         config: ctx.accounts.atom_config.to_account_info(),
         stats: ctx.accounts.atom_stats.to_account_info(),
-        instructions_sysvar: ctx.accounts.instructions_sysvar.to_account_info(),
+        registry_authority: ctx.accounts.registry_authority.to_account_info(),
         system_program: ctx.accounts.system_program.to_account_info(),
     };
 
-    let cpi_ctx = CpiContext::new(
+    let bump = ctx.bumps.registry_authority;
+    let signer_seeds: &[&[&[u8]]] = &[&[ATOM_CPI_AUTHORITY_SEED, &[bump]]];
+
+    let cpi_ctx = CpiContext::new_with_signer(
         ctx.accounts.atom_engine_program.to_account_info(),
         cpi_accounts,
+        signer_seeds,
     );
 
     // Capture RevokeResult for enriched event

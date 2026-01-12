@@ -2,7 +2,7 @@
 
 > On-chain reputation scoring engine for AI agents on Solana
 
-**Program ID**: `CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3`
+**Program ID**: `B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7`
 
 ## Why On-Chain?
 
@@ -53,9 +53,9 @@ ATOM computes and stores reputation metrics for AI agents:
 | Account | Seeds | Size | Rent |
 |---------|-------|------|------|
 | AtomConfig | `["atom_config"]` | ~144 bytes | ~0.0014 SOL |
-| AtomStats | `["atom_stats", asset]` | 460 bytes | ~0.0040 SOL |
+| AtomStats | `["atom_stats", asset]` | 476 bytes | ~0.0041 SOL |
 
-## AtomStats Structure (460 bytes)
+## AtomStats Structure (476 bytes)
 
 ```rust
 pub struct AtomStats {
@@ -96,6 +96,19 @@ pub struct AtomStats {
     pub updates_since_hll_change: u8,// Stagnation detection
     pub neg_pressure: u8,            // Negative momentum
     pub eviction_cursor: u8,         // Round robin pointer
+
+    // MRT Eviction Protection (8 bytes)
+    pub ring_base_slot: u64,         // Slot when current ring window started
+
+    // Quality Circuit Breaker (6 bytes)
+    pub quality_velocity: u16,       // Quality change magnitude this epoch
+    pub velocity_epoch: u16,         // Epoch when velocity tracking started
+    pub freeze_epochs: u8,           // Epochs remaining in freeze
+    pub quality_floor: u8,           // Floor quality during freeze
+
+    // Bypass Tracking (2 bytes)
+    pub bypass_count: u8,            // Bypassed writes in current window
+    pub bypass_score_avg: u8,        // Average of bypassed scores
 
     // Output Cache (12 bytes)
     pub loyalty_score: u16,
@@ -251,6 +264,9 @@ All parameters can be updated via `AtomConfig` without program upgrade:
 - **Domain-Separated Fingerprints**: `keccak256("ATOM_FEEDBACK_V1" || asset || client_hash)`
 - **CPI Caller Verification**: Only agent-registry-8004 can call update/revoke
 - **Asymmetric EMA**: Hard to whitewash reputation, easy to penalize bad actors
+- **MRT Eviction Protection**: Minimum 150 slots (~60s) residency before eviction
+- **Quality Circuit Breaker**: Freezes quality updates on excessive velocity
+- **Capped Recovery Multipliers**: Elastic/veteran recovery capped at 10% alpha
 
 ## References
 

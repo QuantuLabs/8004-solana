@@ -76,6 +76,26 @@ pub struct AtomStats {
     /// Round Robin eviction cursor for ring buffer
     pub eviction_cursor: u8,
 
+    // ========== MRT EVICTION PROTECTION (8 bytes) ==========
+    /// Slot when current ring buffer window started (for MRT calculation)
+    pub ring_base_slot: u64,
+
+    // ========== QUALITY CIRCUIT BREAKER (6 bytes) ==========
+    /// Accumulated quality change magnitude this epoch
+    pub quality_velocity: u16,
+    /// Epoch when velocity tracking started
+    pub velocity_epoch: u16,
+    /// Epochs remaining in quality freeze (0 = not frozen)
+    pub freeze_epochs: u8,
+    /// Floor quality during freeze (0-100, used as quality_score/100)
+    pub quality_floor: u8,
+
+    // ========== BYPASS TRACKING (2 bytes) ==========
+    /// Number of bypassed writes in current window
+    pub bypass_count: u8,
+    /// Sum of bypassed scores (for averaging when merging)
+    pub bypass_score_avg: u8,
+
     // ========== OUTPUT CACHE (12 bytes) ==========
     /// Cached loyalty score
     pub loyalty_score: u16,
@@ -124,6 +144,15 @@ impl Default for AtomStats {
             updates_since_hll_change: 0,
             neg_pressure: 0,
             eviction_cursor: 0,
+            // MRT fields
+            ring_base_slot: 0,
+            quality_velocity: 0,
+            velocity_epoch: 0,
+            freeze_epochs: 0,
+            quality_floor: 0,
+            bypass_count: 0,
+            bypass_score_avg: 0,
+            // Output cache
             loyalty_score: 0,
             quality_score: 0,
             risk_score: 0,
@@ -138,10 +167,11 @@ impl Default for AtomStats {
 }
 
 impl AtomStats {
-    pub const SCHEMA_VERSION: u8 = 1;
+    pub const SCHEMA_VERSION: u8 = 2;
 
-    /// Account size: 8 + 64 + 24 + 12 + 8 + 128 + 8 + 196 + 12 = 460 bytes
-    pub const SIZE: usize = 460;
+    /// Account size: 8 + 64 + 24 + 12 + 8 + 128 + 8 + 196 + 16 + 12 = 476 bytes
+    /// Added in v2: MRT (8), Quality Circuit Breaker (6), Bypass Tracking (2)
+    pub const SIZE: usize = 476;
 
     /// Initialize with first feedback
     pub fn initialize(&mut self, bump: u8, collection: Pubkey, score: u8, current_slot: u64) {
@@ -459,6 +489,53 @@ pub fn push_caller_encoded(recent: &mut [u64; RING_BUFFER_SIZE], cursor: &mut u8
     let evict_idx = *cursor as usize;
     recent[evict_idx] = encode_caller_entry(fp56, score, false);
     *cursor = ((*cursor as usize + 1) % RING_BUFFER_SIZE) as u8;
+}
+
+/// MRT-aware push: protects entries younger than MRT_MIN_SLOTS from eviction
+/// Returns: (wrote_to_buffer, bypassed)
+pub fn push_caller_mrt(
+    recent: &mut [u64; RING_BUFFER_SIZE],
+    cursor: &mut u8,
+    ring_base_slot: &mut u64,
+    bypass_count: &mut u8,
+    fp56: u64,
+    score: u8,
+    current_slot: u64,
+) -> (bool, bool) {
+    // Check if the entry at cursor position is protected by MRT
+    let slots_since_base = current_slot.saturating_sub(*ring_base_slot);
+    let entries_since_base = slots_since_base / MRT_MIN_SLOTS;
+
+    // If we've written fewer than RING_BUFFER_SIZE entries since base,
+    // and we're trying to evict an entry within MRT window, bypass instead
+    let cursor_age_in_entries = if entries_since_base < RING_BUFFER_SIZE as u64 {
+        entries_since_base
+    } else {
+        RING_BUFFER_SIZE as u64
+    };
+
+    // Calculate if cursor position is protected
+    let cursor_pos = *cursor as u64;
+    let is_protected = cursor_pos < cursor_age_in_entries.min(RING_BUFFER_SIZE as u64)
+        && *bypass_count < MRT_MAX_BYPASS;
+
+    if is_protected && recent[*cursor as usize] != 0 {
+        // Bypass mode: don't write to buffer, just track
+        *bypass_count = bypass_count.saturating_add(1);
+        return (false, true);
+    }
+
+    // Normal write
+    recent[*cursor as usize] = encode_caller_entry(fp56, score, false);
+    *cursor = ((*cursor as usize + 1) % RING_BUFFER_SIZE) as u8;
+
+    // Reset base slot when we complete a full cycle
+    if *cursor == 0 {
+        *ring_base_slot = current_slot;
+        *bypass_count = 0;
+    }
+
+    (true, false)
 }
 
 /// Update entry in-place if found, otherwise push new entry

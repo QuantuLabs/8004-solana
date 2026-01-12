@@ -6,18 +6,18 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-agent_registry_8004 = "ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz"
-atom_engine = "CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3"
+agent_registry_8004 = "HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT"
+atom_engine = "B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7"
 
 [programs.localnet]
-agent_registry_8004 = "ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz"
-atom_engine = "CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3"
+agent_registry_8004 = "HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT"
+atom_engine = "B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

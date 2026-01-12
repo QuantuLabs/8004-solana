@@ -6,7 +6,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
 import { AtomEngine } from "../target/types/atom_engine";
-import { Keypair, SystemProgram, PublicKey, LAMPORTS_PER_SOL, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
+import { Keypair, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
 import * as crypto from "crypto";
 
@@ -17,6 +17,7 @@ import {
   getAgentPda,
   getAtomStatsPda,
   getAtomConfigPda,
+  getRegistryAuthorityPda,
   fundKeypair,
   fundKeypairs,
   returnFunds,
@@ -34,6 +35,7 @@ describe("ATOM Attack Vector Tests", () => {
   let registryConfigPda: PublicKey;
   let collectionPubkey: PublicKey;
   let atomConfigPda: PublicKey;
+  let registryAuthorityPda: PublicKey;
 
   const allFundedKeypairs: Keypair[] = [];
   const FUND_AMOUNT = 0.05 * LAMPORTS_PER_SOL;
@@ -41,6 +43,7 @@ describe("ATOM Attack Vector Tests", () => {
   before(async () => {
     [rootConfigPda] = getRootConfigPda(program.programId);
     [atomConfigPda] = getAtomConfigPda();
+    [registryAuthorityPda] = getRegistryAuthorityPda(program.programId);
 
     // Check if root config exists, if not initialize
     let rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
@@ -183,7 +186,7 @@ describe("ATOM Attack Vector Tests", () => {
         atomConfig: atomConfigPda,
         atomStats: statsPda,
         atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([client])
@@ -2424,7 +2427,7 @@ describe("ATOM Attack Vector Tests", () => {
         atomConfig: atomConfigPda,
         atomStats: statsPda,
         atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([client])

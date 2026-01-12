@@ -146,7 +146,30 @@ fn update_quality(
     score: u8,
     hll_changed: bool,
     slot_delta: u64,
+    current_epoch: u16,
 ) {
+    // Quality Circuit Breaker: check if frozen
+    if stats.freeze_epochs > 0 {
+        // Decrement freeze on epoch change
+        if current_epoch != stats.velocity_epoch {
+            stats.freeze_epochs = stats.freeze_epochs.saturating_sub(1);
+            stats.velocity_epoch = current_epoch;
+            stats.quality_velocity = 0;
+        }
+        // During freeze, clamp quality to floor
+        if stats.freeze_epochs > 0 {
+            let floor = (stats.quality_floor as u16) * 100;
+            stats.quality_score = stats.quality_score.max(floor);
+            return;
+        }
+    }
+
+    // Reset velocity tracking on new epoch
+    if current_epoch != stats.velocity_epoch {
+        stats.velocity_epoch = current_epoch;
+        stats.quality_velocity = 0;
+    }
+
     let consistency = 100u32.saturating_sub(stats.ema_volatility as u32 / 100);
     let mut quality_delta: u32 = (score as u32 * consistency / 100) * 100;
 
@@ -179,16 +202,16 @@ fn update_quality(
             ALPHA_QUALITY_UP
         };
 
-        // Elastic recovery when in crash/dip
+        // Elastic recovery when in crash/dip (capped to prevent abuse)
         let alpha_with_elastic = if stats.ema_score_fast < stats.ema_score_slow {
-            base_alpha_up * ELASTIC_RECOVERY_MULTIPLIER
+            (base_alpha_up * ELASTIC_RECOVERY_MULTIPLIER).min(ALPHA_QUALITY_MAX)
         } else {
             base_alpha_up
         };
 
-        // Veteran recovery bonus
+        // Veteran recovery bonus (capped to prevent abuse)
         let alpha_with_veteran = if stats.confidence > VETERAN_CONFIDENCE_THRESHOLD {
-            alpha_with_elastic * VETERAN_RECOVERY_BONUS
+            (alpha_with_elastic * VETERAN_RECOVERY_BONUS).min(ALPHA_QUALITY_MAX)
         } else {
             alpha_with_elastic
         };
@@ -246,8 +269,19 @@ fn update_quality(
         final_alpha.max(1)
     };
 
+    let old_quality = stats.quality_score;
     stats.quality_score = ((alpha * quality_delta
         + (100 - alpha) * stats.quality_score as u32) / 100) as u16;
+
+    // Track quality velocity for circuit breaker
+    let change_magnitude = old_quality.abs_diff(stats.quality_score);
+    stats.quality_velocity = stats.quality_velocity.saturating_add(change_magnitude);
+
+    // Trigger circuit breaker if velocity exceeds threshold
+    if stats.quality_velocity > QUALITY_VELOCITY_THRESHOLD {
+        stats.freeze_epochs = QUALITY_FREEZE_EPOCHS;
+        stats.quality_floor = (stats.quality_score / 100) as u8;
+    }
 }
 
 // ============================================================================
@@ -340,8 +374,32 @@ pub fn update_stats(
     // Domain-separated fingerprint (56-bit)
     let caller_fp = secure_fp56(client_hash, &stats.asset);
 
-    // Upsert into ring buffer with Round Robin eviction
-    let is_recent = upsert_caller_entry(&mut stats.recent_callers, &mut stats.eviction_cursor, caller_fp, score);
+    // Check if already in ring buffer (for burst detection)
+    let existing_entry = find_caller_entry(&stats.recent_callers, caller_fp);
+    let is_recent = existing_entry.is_some();
+
+    // MRT-aware ring buffer update
+    let (_wrote_to_buffer, bypassed) = if let Some((idx, _old_score, _revoked)) = existing_entry {
+        // Update in place if found
+        stats.recent_callers[idx] = encode_caller_entry(caller_fp, score, false);
+        (true, false)
+    } else {
+        // Try to push with MRT protection
+        push_caller_mrt(
+            &mut stats.recent_callers,
+            &mut stats.eviction_cursor,
+            &mut stats.ring_base_slot,
+            &mut stats.bypass_count,
+            caller_fp,
+            score,
+            current_slot,
+        )
+    };
+
+    // Track bypass for metrics
+    if bypassed {
+        stats.bypass_score_avg = ((stats.bypass_score_avg as u16 + score as u16) / 2) as u8;
+    }
 
     // Sticky burst pressure
     if is_recent {
@@ -365,6 +423,10 @@ pub fn update_stats(
         stats.ema_score_slow = (score as u16) * 100;
         stats.peak_ema = (score as u16) * 100;
         stats.schema_version = AtomStats::SCHEMA_VERSION;
+
+        // Initialize MRT fields
+        stats.ring_base_slot = current_slot;
+        stats.velocity_epoch = (current_slot / EPOCH_SLOTS) as u16;
 
         // Generate per-agent HLL salt
         let asset_bytes = stats.asset.to_bytes();
@@ -405,8 +467,9 @@ pub fn update_stats(
     let hll_est = hll_estimate(&stats.hll_packed);
 
     // All updates
+    let current_epoch = stats.current_epoch;
     update_ema(stats, score, slot_delta);
-    update_quality(stats, score, hll_changed, slot_delta);
+    update_quality(stats, score, hll_changed, slot_delta, current_epoch);
     stats.risk_score = calculate_risk(stats, hll_est);
     stats.diversity_ratio = safe_div(hll_est * 255, stats.feedback_count.max(1)).min(255) as u8;
     update_confidence(stats, hll_est);
@@ -419,11 +482,10 @@ pub fn update_stats(
 // Migration Support
 // ============================================================================
 
-/// Migrate stats from older schema versions if needed
+/// No migration needed - starting from scratch with schema v2
+/// Kept for potential future migrations
 pub fn maybe_migrate(stats: &mut AtomStats) {
-    match stats.schema_version {
-        0 => stats.schema_version = AtomStats::SCHEMA_VERSION,
-        1 => {}
-        _ => {}
+    if stats.schema_version != AtomStats::SCHEMA_VERSION {
+        stats.schema_version = AtomStats::SCHEMA_VERSION;
     }
 }

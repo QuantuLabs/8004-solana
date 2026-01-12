@@ -239,3 +239,26 @@ pub const HLL_ALPHA_M2_SCALED: u64 = 3_045_994_599;
 
 /// Linear counting threshold (roughly 2.5 * m)
 pub const HLL_LINEAR_COUNTING_THRESHOLD: u64 = 640;
+
+// ============================================================================
+// MRT (Minimum Residency Time) Parameters
+// ============================================================================
+
+/// Minimum slots an entry must stay in ring buffer before eviction (~60 seconds)
+pub const MRT_MIN_SLOTS: u64 = 150;
+
+/// Maximum bypass count before forcing eviction (prevents infinite bypass)
+pub const MRT_MAX_BYPASS: u8 = 10;
+
+// ============================================================================
+// Quality Circuit Breaker Parameters
+// ============================================================================
+
+/// Quality velocity threshold that triggers circuit breaker (sum of changes)
+pub const QUALITY_VELOCITY_THRESHOLD: u16 = 2000;
+
+/// Epochs to freeze quality updates when circuit breaker triggers
+pub const QUALITY_FREEZE_EPOCHS: u8 = 2;
+
+/// Maximum alpha for quality updates (caps elastic recovery abuse)
+pub const ALPHA_QUALITY_MAX: u32 = 10;

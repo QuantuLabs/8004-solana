@@ -1,8 +1,9 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::sysvar::instructions as sysvar_instructions;
 
 use crate::error::RegistryError;
 use crate::identity::state::AgentAccount;
+
+pub const ATOM_CPI_AUTHORITY_SEED: &[u8] = b"atom_cpi_authority";
 
 #[derive(Accounts)]
 #[instruction(_score: u8, _tag1: String, _tag2: String, _endpoint: String, _feedback_uri: String, _feedback_hash: [u8; 32], _feedback_index: u64)]
@@ -10,18 +11,21 @@ pub struct GiveFeedback<'info> {
     #[account(mut)]
     pub client: Signer<'info>,
 
-    /// CHECK: Validated via agent_account constraint
-    pub asset: UncheckedAccount<'info>,
-
-    /// CHECK: Collection for the agent (passed to atom-engine for filtering)
-    pub collection: UncheckedAccount<'info>,
-
     #[account(
         seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
         constraint = agent_account.owner != client.key() @ RegistryError::SelfFeedbackNotAllowed
     )]
     pub agent_account: Account<'info, AgentAccount>,
+
+    /// CHECK: Validated via agent_account.asset constraint
+    #[account(
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
+    )]
+    pub asset: UncheckedAccount<'info>,
+
+    /// CHECK: Collection for the agent (passed to atom-engine for filtering)
+    pub collection: UncheckedAccount<'info>,
 
     // === CPI to atom-engine ===
 
@@ -34,15 +38,16 @@ pub struct GiveFeedback<'info> {
     #[account(mut)]
     pub atom_stats: UncheckedAccount<'info>,
 
-    /// atom-engine program
     /// CHECK: Program ID validated below
     #[account(constraint = atom_engine_program.key() == atom_engine::ID @ RegistryError::InvalidProgram)]
     pub atom_engine_program: UncheckedAccount<'info>,
 
-    /// Instructions sysvar (passed to atom-engine for CPI caller verification)
-    /// CHECK: Verified by address constraint
-    #[account(address = sysvar_instructions::ID)]
-    pub instructions_sysvar: UncheckedAccount<'info>,
+    /// CHECK: PDA derived from this program, used to sign CPI calls to atom-engine
+    #[account(
+        seeds = [ATOM_CPI_AUTHORITY_SEED],
+        bump,
+    )]
+    pub registry_authority: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
 }
@@ -54,7 +59,16 @@ pub struct RevokeFeedback<'info> {
     #[account(mut)]
     pub client: Signer<'info>,
 
-    /// CHECK: Asset for event emission and PDA derivation
+    #[account(
+        seeds = [b"agent", asset.key().as_ref()],
+        bump = agent_account.bump,
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    /// CHECK: Validated via agent_account.asset constraint
+    #[account(
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
+    )]
     pub asset: UncheckedAccount<'info>,
 
     // === CPI to atom-engine ===
@@ -68,15 +82,16 @@ pub struct RevokeFeedback<'info> {
     #[account(mut)]
     pub atom_stats: UncheckedAccount<'info>,
 
-    /// atom-engine program
     /// CHECK: Program ID validated below
     #[account(constraint = atom_engine_program.key() == atom_engine::ID @ RegistryError::InvalidProgram)]
     pub atom_engine_program: UncheckedAccount<'info>,
 
-    /// Instructions sysvar (passed to atom-engine for CPI caller verification)
-    /// CHECK: Verified by address constraint
-    #[account(address = sysvar_instructions::ID)]
-    pub instructions_sysvar: UncheckedAccount<'info>,
+    /// CHECK: PDA derived from this program, used to sign CPI calls to atom-engine
+    #[account(
+        seeds = [ATOM_CPI_AUTHORITY_SEED],
+        bump,
+    )]
+    pub registry_authority: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
 }

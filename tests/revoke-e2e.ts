@@ -9,7 +9,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
 import { AtomEngine } from "../target/types/atom_engine";
-import { Keypair, SystemProgram, PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
+import { Keypair, SystemProgram, PublicKey } from "@solana/web3.js";
 import { expect } from "chai";
 
 import {
@@ -18,6 +18,7 @@ import {
   getAtomStatsPda,
   getAgentPda,
   getRootConfigPda,
+  getRegistryAuthorityPda,
   randomHash,
   fundKeypair,
 } from "./utils/helpers";
@@ -33,6 +34,7 @@ describe("E2E Revoke Feedback v2.5", () => {
   let registryConfigPda: PublicKey;
   let collectionPubkey: PublicKey;
   let atomConfigPda: PublicKey;
+  let registryAuthorityPda: PublicKey;
 
   let agentAsset: Keypair;
   let agentPda: PublicKey;
@@ -55,6 +57,9 @@ describe("E2E Revoke Feedback v2.5", () => {
 
     // Get ATOM config
     [atomConfigPda] = getAtomConfigPda(atomEngine.programId);
+
+    // Get registry authority PDA for CPI signing
+    [registryAuthorityPda] = getRegistryAuthorityPda(program.programId);
 
     // Create and fund a separate client
     client = Keypair.generate();
@@ -124,7 +129,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([client])
@@ -148,7 +153,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([client])
@@ -193,7 +198,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([client])
@@ -210,7 +215,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([client])
@@ -230,7 +235,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([client])
@@ -264,7 +269,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([otherClient])
@@ -316,7 +321,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([firstClient])
@@ -344,7 +349,7 @@ describe("E2E Revoke Feedback v2.5", () => {
           atomConfig: atomConfigPda,
           atomStats: atomStatsPda,
           atomEngineProgram: atomEngine.programId,
-          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([clients[i]])
@@ -365,7 +370,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([firstClient])
@@ -407,7 +412,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([recentClient])
@@ -424,7 +429,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         atomConfig: atomConfigPda,
         atomStats: atomStatsPda,
         atomEngineProgram: atomEngine.programId,
-        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        registryAuthority: registryAuthorityPda,
         systemProgram: SystemProgram.programId,
       })
       .signers([recentClient])

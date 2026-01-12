@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::sysvar::instructions as sysvar_instructions;
 
 use crate::state::{AtomConfig, AtomStats};
 use crate::error::AtomError;
@@ -71,7 +70,7 @@ pub struct InitializeStats<'info> {
 
 /// Update stats for an agent (called via CPI from agent-registry during feedback)
 /// Stats must already exist (created during agent registration)
-/// SECURITY: Verifies caller is the authorized agent-registry program via instruction sysvar
+/// SECURITY: Verifies caller via PDA signer - only agent-registry can sign with this PDA
 #[derive(Accounts)]
 pub struct UpdateStats<'info> {
     #[account(mut)]
@@ -96,10 +95,17 @@ pub struct UpdateStats<'info> {
     )]
     pub stats: Account<'info, AtomStats>,
 
-    /// Instructions sysvar for CPI caller verification
-    /// CHECK: Verified by address constraint
-    #[account(address = sysvar_instructions::ID @ AtomError::UnauthorizedCaller)]
-    pub instructions_sysvar: UncheckedAccount<'info>,
+    /// Registry authority PDA - must be signed by agent-registry program
+    /// Seeds: ["atom_cpi_authority"] derived from agent-registry program
+    /// CHECK: Verified by constraint against config.agent_registry_program
+    #[account(
+        signer,
+        constraint = is_valid_registry_authority(
+            registry_authority.key,
+            &config.agent_registry_program
+        ) @ AtomError::UnauthorizedCaller
+    )]
+    pub registry_authority: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
 }
@@ -118,7 +124,7 @@ pub struct GetSummary<'info> {
 }
 
 /// Revoke stats for an agent (called via CPI from agent-registry during revoke_feedback)
-/// SECURITY: Verifies caller is the authorized agent-registry program via instruction sysvar
+/// SECURITY: Verifies caller via PDA signer - only agent-registry can sign with this PDA
 #[derive(Accounts)]
 pub struct RevokeStats<'info> {
     #[account(mut)]
@@ -140,10 +146,35 @@ pub struct RevokeStats<'info> {
     )]
     pub stats: Account<'info, AtomStats>,
 
-    /// Instructions sysvar for CPI caller verification
-    /// CHECK: Verified by address constraint
-    #[account(address = sysvar_instructions::ID @ AtomError::UnauthorizedCaller)]
-    pub instructions_sysvar: UncheckedAccount<'info>,
+    /// Registry authority PDA - must be signed by agent-registry program
+    /// Seeds: ["atom_cpi_authority"] derived from agent-registry program
+    /// CHECK: Verified by constraint against config.agent_registry_program
+    #[account(
+        signer,
+        constraint = is_valid_registry_authority(
+            registry_authority.key,
+            &config.agent_registry_program
+        ) @ AtomError::UnauthorizedCaller
+    )]
+    pub registry_authority: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
+}
+
+// ============================================================================
+// CPI Authority Verification
+// ============================================================================
+
+/// Seeds used by agent-registry to derive its CPI authority PDA
+pub const ATOM_CPI_AUTHORITY_SEED: &[u8] = b"atom_cpi_authority";
+
+/// Verify that the provided authority is the correct PDA derived from agent-registry
+/// This is cryptographically secure - only agent-registry can sign with this PDA
+#[inline]
+pub fn is_valid_registry_authority(authority: &Pubkey, registry_program: &Pubkey) -> bool {
+    let (expected_pda, _bump) = Pubkey::find_program_address(
+        &[ATOM_CPI_AUTHORITY_SEED],
+        registry_program,
+    );
+    authority == &expected_pda
 }

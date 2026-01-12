@@ -13,7 +13,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
 import { AtomEngine } from "../target/types/atom_engine";
-import { Keypair, SystemProgram, PublicKey, LAMPORTS_PER_SOL, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
+import { Keypair, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
 
 import {
@@ -22,6 +22,7 @@ import {
   getAgentPda,
   getAtomConfigPda,
   getAtomStatsPda,
+  getRegistryAuthorityPda,
   randomHash,
   uniqueNonce,
 } from "./utils/helpers";
@@ -200,6 +201,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
   let registryConfigPda: PublicKey;
   let collectionPubkey: PublicKey;
   let atomConfigPda: PublicKey;
+  let registryAuthorityPda: PublicKey;
 
   let agent1Asset: Keypair;
   let agent1Pda: PublicKey;
@@ -225,6 +227,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
     collectionPubkey = registryConfig.collection;
 
     [atomConfigPda] = getAtomConfigPda(atomEngine.programId);
+    [registryAuthorityPda] = getRegistryAuthorityPda(program.programId);
 
     console.log(`Collection: ${collectionPubkey.toBase58()}`);
     console.log(`AtomConfig: ${atomConfigPda.toBase58()}`);
@@ -348,7 +351,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
               atomConfig: atomConfigPda,
               atomStats: agent1StatsPda,
               atomEngineProgram: atomEngine.programId,
-              instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+              registryAuthority: registryAuthorityPda,
               systemProgram: SystemProgram.programId,
             })
             .signers([thirdParty])
@@ -384,7 +387,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
               atomConfig: atomConfigPda,
               atomStats: agent1StatsPda,
               atomEngineProgram: atomEngine.programId,
-              instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+              registryAuthority: registryAuthorityPda,
               systemProgram: SystemProgram.programId,
             })
             .signers([client2])
@@ -420,7 +423,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
               atomConfig: atomConfigPda,
               atomStats: agent1StatsPda,
               atomEngineProgram: atomEngine.programId,
-              instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+              registryAuthority: registryAuthorityPda,
               systemProgram: SystemProgram.programId,
             })
             .signers([client3])
@@ -453,7 +456,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
           atomConfig: atomConfigPda,
           atomStats: agent1StatsPda,
           atomEngineProgram: atomEngine.programId,
-          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([thirdParty])
@@ -471,7 +474,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
               atomConfig: atomConfigPda,
               atomStats: agent1StatsPda,
               atomEngineProgram: atomEngine.programId,
-              instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+              registryAuthority: registryAuthorityPda,
               systemProgram: SystemProgram.programId,
             })
             .signers([thirdParty])

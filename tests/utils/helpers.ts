@@ -14,7 +14,7 @@ export const MPL_CORE_PROGRAM_ID = new PublicKey(
 );
 
 export const ATOM_ENGINE_PROGRAM_ID = new PublicKey(
-  "CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3"
+  "B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7"
 );
 
 export const MAX_URI_LENGTH = 200;
@@ -254,6 +254,19 @@ export function getAtomStatsPda(
 }
 
 // NOTE: getAtomCheckpointPda removed in v2.5c - checkpoints eliminated, events = source of truth
+
+/**
+ * Derive registry authority PDA for CPI signing to atom-engine: ["atom_cpi_authority"]
+ * This PDA is derived from agent-registry and used to sign CPI calls
+ */
+export function getRegistryAuthorityPda(
+  registryProgramId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("atom_cpi_authority")],
+    registryProgramId
+  );
+}
 
 /**
  * Build the wallet set message for Ed25519 signature verification
