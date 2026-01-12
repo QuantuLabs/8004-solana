@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC");
+declare_id!("ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz");
 
 pub mod error;
 pub mod identity;
@@ -39,10 +39,10 @@ pub mod agent_registry_8004 {
         identity::instructions::register(ctx, agent_uri)
     }
 
-    /// Set agent metadata as individual PDA
+    /// Set agent metadata as individual PDA (key_hash = SHA256(key)[0..16])
     pub fn set_metadata_pda(
         ctx: Context<SetMetadataPda>,
-        key_hash: [u8; 8],
+        key_hash: [u8; 16],
         key: String,
         value: Vec<u8>,
         immutable: bool,
@@ -50,8 +50,8 @@ pub mod agent_registry_8004 {
         identity::instructions::set_metadata_pda(ctx, key_hash, key, value, immutable)
     }
 
-    /// Delete agent metadata PDA and recover rent
-    pub fn delete_metadata_pda(ctx: Context<DeleteMetadataPda>, key_hash: [u8; 8]) -> Result<()> {
+    /// Delete agent metadata PDA and recover rent (key_hash = SHA256(key)[0..16])
+    pub fn delete_metadata_pda(ctx: Context<DeleteMetadataPda>, key_hash: [u8; 16]) -> Result<()> {
         identity::instructions::delete_metadata_pda(ctx, key_hash)
     }
 

@@ -66,18 +66,25 @@ pub struct RegistryConfig {
 #[account]
 #[derive(InitSpace)]
 pub struct AgentAccount {
+    // === Fixed-size fields first (for predictable offsets) ===
+
+    /// Collection this agent belongs to (offset 8 - for filtering)
+    pub collection: Pubkey,
+
     /// Agent owner (cached from Core asset)
     pub owner: Pubkey,
 
     /// Metaplex Core asset address (unique identifier)
     pub asset: Pubkey,
 
-    /// PDA bump seed (static field - fixed offset)
+    /// PDA bump seed
     pub bump: u8,
 
     /// Agent's operational wallet (set via Ed25519 signature verification)
     /// None = no wallet set, Some = wallet address
     pub agent_wallet: Option<Pubkey>,
+
+    // === Dynamic-size fields last ===
 
     /// Agent URI (IPFS/Arweave/HTTP link, max 200 bytes)
     #[max_len(200)]
@@ -95,7 +102,8 @@ impl AgentAccount {
 }
 
 /// Individual metadata entry stored as separate PDA
-/// Seeds: [b"agent_meta", asset.key(), key_hash[0..8]]
+/// Seeds: [b"agent_meta", asset.key(), key_hash[0..16]]
+/// key_hash is SHA256(key)[0..16] for collision resistance (2^128 space)
 ///
 /// This replaces Vec<MetadataEntry> in AgentAccount for:
 /// - Unlimited metadata entries per agent

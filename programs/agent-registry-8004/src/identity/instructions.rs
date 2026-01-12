@@ -24,11 +24,11 @@ const WALLET_SET_MESSAGE_PREFIX: &[u8] = b"8004_WALLET_SET:";
 ///
 /// Creates a new MetadataEntryPda if it doesn't exist.
 /// Updates existing entry if not immutable.
-/// key_hash is first 8 bytes of SHA256(key) for PDA derivation.
+/// key_hash is SHA256(key)[0..16] for collision resistance (2^128 space)
 /// Note: "agentWallet" is a reserved key - use set_agent_wallet instruction instead
 pub fn set_metadata_pda(
     ctx: Context<SetMetadataPda>,
-    key_hash: [u8; 8],
+    key_hash: [u8; 16],
     key: String,
     value: Vec<u8>,
     immutable: bool,
@@ -36,10 +36,10 @@ pub fn set_metadata_pda(
     // Block reserved metadata key "agentWallet" - must use set_agent_wallet instruction
     require!(key != "agentWallet", RegistryError::ReservedMetadataKey);
 
-    // Verify key_hash matches SHA256(key)[0..8]
+    // Verify key_hash matches SHA256(key)[0..16]
     use anchor_lang::solana_program::hash::hash;
     let computed_hash = hash(key.as_bytes());
-    let expected: [u8; 8] = computed_hash.to_bytes()[0..8]
+    let expected: [u8; 16] = computed_hash.to_bytes()[0..16]
         .try_into()
         .expect("hash is 32 bytes");
     require!(key_hash == expected, RegistryError::KeyHashMismatch);
@@ -105,7 +105,7 @@ pub fn set_metadata_pda(
 /// Delete metadata PDA and recover rent
 ///
 /// Only works if metadata is not immutable.
-pub fn delete_metadata_pda(ctx: Context<DeleteMetadataPda>, _key_hash: [u8; 8]) -> Result<()> {
+pub fn delete_metadata_pda(ctx: Context<DeleteMetadataPda>, _key_hash: [u8; 16]) -> Result<()> {
     // Verify ownership via Core asset
     verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
 
@@ -795,6 +795,7 @@ pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
 
     // Initialize agent account
     let agent = &mut ctx.accounts.agent_account;
+    agent.collection = ctx.accounts.collection.key();
     agent.owner = ctx.accounts.owner.key();
     agent.asset = asset;
     agent.bump = ctx.bumps.agent_account;

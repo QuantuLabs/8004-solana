@@ -7,8 +7,9 @@ use crate::error::RegistryError;
 
 /// Set metadata as individual PDA with dynamic sizing
 /// Creates new PDA if not exists, updates if exists and not immutable
+/// key_hash is SHA256(key)[0..16] for collision resistance (2^128 space)
 #[derive(Accounts)]
-#[instruction(key_hash: [u8; 8], key: String, value: Vec<u8>, immutable: bool)]
+#[instruction(key_hash: [u8; 16], key: String, value: Vec<u8>, immutable: bool)]
 pub struct SetMetadataPda<'info> {
     /// Uses max space for init, realloc in instruction handles actual sizing
     #[account(
@@ -42,8 +43,9 @@ pub struct SetMetadataPda<'info> {
 
 /// Delete metadata PDA and recover rent
 /// Only works if metadata is not immutable
+/// key_hash is SHA256(key)[0..16] for collision resistance
 #[derive(Accounts)]
-#[instruction(key_hash: [u8; 8])]
+#[instruction(key_hash: [u8; 16])]
 pub struct DeleteMetadataPda<'info> {
     #[account(
         mut,
