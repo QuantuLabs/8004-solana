@@ -252,6 +252,12 @@ All parameters can be updated via `AtomConfig` without program upgrade:
 - **CPI Caller Verification**: Only agent-registry-8004 can call update/revoke
 - **Asymmetric EMA**: Hard to whitewash reputation, easy to penalize bad actors
 
+## References
+
+- [HyperLogLog: the analysis of a near-optimal cardinality estimation algorithm](http://algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf) - Flajolet et al., 2007
+- [HyperLogLog in Practice](https://research.google/pubs/pub40671/) - Google, 2013
+- [Exponential Smoothing](https://en.wikipedia.org/wiki/Exponential_smoothing) - EMA fundamentals
+
 ## License
 
 MIT
