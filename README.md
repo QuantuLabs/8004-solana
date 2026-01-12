@@ -1,6 +1,6 @@
-# ERC-8004 on Solana
+# 8004 on Solana
 
-> Solana implementation of ERC-8004 (Trustless Agents Registry)
+> Solana implementation of 8004 (Trustless Agents Registry)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Anchor](https://img.shields.io/badge/Anchor-0.32.1-blue)](https://github.com/coral-xyz/anchor)
@@ -102,7 +102,7 @@ anchor test
 
 ## References
 
-- [ERC-8004 Spec](https://eips.ethereum.org/EIPS/eip-8004)
+- [8004 Spec](https://eips.ethereum.org/EIPS/eip-8004)
 - [Forum Discussion](https://ethereum-magicians.org/t/erc-8004-trustless-agents/25098)
 
 ---
