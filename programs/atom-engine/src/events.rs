@@ -33,27 +33,26 @@ pub struct ConfigUpdated {
     pub version: u8,
 }
 
-/// Emitted when a checkpoint is created
+/// Emitted when stats are initialized for a new agent
 #[event]
-pub struct CheckpointCreated {
+pub struct StatsInitialized {
     pub asset: Pubkey,
-    pub checkpoint_index: u64,
-    pub feedback_index: u64,
-    pub checkpoint_hash: [u8; 32],
+    pub collection: Pubkey,
 }
 
-/// Emitted when stats are restored from checkpoint
+/// Emitted when a feedback is revoked
 #[event]
-pub struct StatsRestored {
+pub struct StatsRevoked {
+    /// Asset (agent NFT) public key
     pub asset: Pubkey,
-    pub checkpoint_index: u64,
-    pub feedback_index: u64,
-}
-
-/// Emitted when batch replay is complete
-#[event]
-pub struct BatchReplayed {
-    pub asset: Pubkey,
-    pub events_replayed: u32,
-    pub final_feedback_index: u64,
+    /// Client who gave the feedback
+    pub client: Pubkey,
+    /// Original score from the revoked feedback (0-100)
+    pub original_score: u8,
+    /// True if revoke had impact on stats (false = not found or already revoked)
+    pub had_impact: bool,
+    /// Quality score after revoke (0-10000)
+    pub new_quality_score: u16,
+    /// Confidence after revoke (0-10000)
+    pub new_confidence: u16,
 }

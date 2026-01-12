@@ -1,6 +1,12 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::sysvar::instructions::{
+    get_instruction_relative, load_current_index_checked,
+};
 
-declare_id!("AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp");
+declare_id!("CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3");
+
+/// Metaplex Core program ID
+pub const MPL_CORE_ID: Pubkey = pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
 
 pub mod compute;
 pub mod contexts;
@@ -14,12 +20,71 @@ pub use error::AtomError;
 pub use events::*;
 pub use state::*;
 
-/// Replay event for batch recovery
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct ReplayEvent {
-    pub client_hash: [u8; 32],
-    pub score: u8,
-    pub slot: u64,
+/// Summary returned by get_summary instruction (CPI-friendly)
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Default)]
+pub struct Summary {
+    /// Collection this agent belongs to
+    pub collection: Pubkey,
+    /// Asset (agent) this summary is for
+    pub asset: Pubkey,
+    /// Trust tier (0=Unrated, 1=Bronze, 2=Silver, 3=Gold, 4=Platinum)
+    pub trust_tier: u8,
+    /// Quality score (0-10000, represents 0.00-100.00)
+    pub quality_score: u16,
+    /// Risk score (0-100)
+    pub risk_score: u8,
+    /// Confidence in metrics (0-10000)
+    pub confidence: u16,
+    /// Total feedback count
+    pub feedback_count: u64,
+    /// Estimated unique clients (HLL)
+    pub unique_clients: u64,
+    /// Diversity ratio (0-255)
+    pub diversity_ratio: u8,
+    /// Fast EMA of scores (0-10000)
+    pub ema_score_fast: u16,
+    /// Slow EMA of scores (0-10000)
+    pub ema_score_slow: u16,
+    /// Loyalty score
+    pub loyalty_score: u16,
+    /// First feedback slot
+    pub first_feedback_slot: u64,
+    /// Last feedback slot
+    pub last_feedback_slot: u64,
+}
+
+/// v2.5b: Result of update_stats for enriched events
+/// Returned to caller so agent-registry can emit detailed NewFeedback event
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
+pub struct UpdateResult {
+    /// Trust tier after update (0-4)
+    pub trust_tier: u8,
+    /// Quality score after update (0-10000)
+    pub quality_score: u16,
+    /// Confidence after update (0-10000)
+    pub confidence: u16,
+    /// Risk score after update (0-100)
+    pub risk_score: u8,
+    /// Diversity ratio after update (0-255)
+    pub diversity_ratio: u8,
+    /// True if HLL register changed (likely new unique client)
+    pub hll_changed: bool,
+}
+
+/// v2.5b: Result of revoke_stats for enriched events
+/// Returned to caller so agent-registry can emit detailed FeedbackRevoked event
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
+pub struct RevokeResult {
+    /// Original score from the revoked feedback (0-100)
+    pub original_score: u8,
+    /// True if revoke had impact (false = feedback not found or already revoked)
+    pub had_impact: bool,
+    /// Trust tier after revoke (0-4)
+    pub new_trust_tier: u8,
+    /// Quality score after revoke (0-10000)
+    pub new_quality_score: u16,
+    /// Confidence after revoke (0-10000)
+    pub new_confidence: u16,
 }
 
 #[program]
@@ -48,6 +113,7 @@ pub mod atom_engine {
     }
 
     /// Update config parameters (authority only)
+    /// SECURITY v1.9: Added parameter bounds validation
     pub fn update_config(
         ctx: Context<UpdateConfig>,
         // EMA Parameters
@@ -72,21 +138,66 @@ pub mod atom_engine {
     ) -> Result<()> {
         let config = &mut ctx.accounts.config;
 
-        // Update only provided values
-        if let Some(v) = alpha_fast { config.alpha_fast = v; }
-        if let Some(v) = alpha_slow { config.alpha_slow = v; }
-        if let Some(v) = alpha_volatility { config.alpha_volatility = v; }
-        if let Some(v) = alpha_arrival { config.alpha_arrival = v; }
-        if let Some(v) = weight_sybil { config.weight_sybil = v; }
-        if let Some(v) = weight_burst { config.weight_burst = v; }
-        if let Some(v) = weight_stagnation { config.weight_stagnation = v; }
-        if let Some(v) = weight_shock { config.weight_shock = v; }
-        if let Some(v) = weight_volatility { config.weight_volatility = v; }
-        if let Some(v) = weight_arrival { config.weight_arrival = v; }
-        if let Some(v) = diversity_threshold { config.diversity_threshold = v; }
-        if let Some(v) = burst_threshold { config.burst_threshold = v; }
-        if let Some(v) = shock_threshold { config.shock_threshold = v; }
-        if let Some(v) = volatility_threshold { config.volatility_threshold = v; }
+        // SECURITY v1.9: Validate parameter bounds before updating
+        // EMA alphas must be 1-100 (used as percentage in calculations)
+        if let Some(v) = alpha_fast {
+            require!(v >= 1 && v <= 100, AtomError::InvalidConfigParameter);
+            config.alpha_fast = v;
+        }
+        if let Some(v) = alpha_slow {
+            require!(v >= 1 && v <= 100, AtomError::InvalidConfigParameter);
+            config.alpha_slow = v;
+        }
+        if let Some(v) = alpha_volatility {
+            require!(v >= 1 && v <= 100, AtomError::InvalidConfigParameter);
+            config.alpha_volatility = v;
+        }
+        if let Some(v) = alpha_arrival {
+            require!(v >= 1 && v <= 100, AtomError::InvalidConfigParameter);
+            config.alpha_arrival = v;
+        }
+        // Risk weights: max 50 each to prevent single factor domination (sum capped at 300)
+        if let Some(v) = weight_sybil {
+            require!(v <= 50, AtomError::InvalidConfigParameter);
+            config.weight_sybil = v;
+        }
+        if let Some(v) = weight_burst {
+            require!(v <= 50, AtomError::InvalidConfigParameter);
+            config.weight_burst = v;
+        }
+        if let Some(v) = weight_stagnation {
+            require!(v <= 50, AtomError::InvalidConfigParameter);
+            config.weight_stagnation = v;
+        }
+        if let Some(v) = weight_shock {
+            require!(v <= 50, AtomError::InvalidConfigParameter);
+            config.weight_shock = v;
+        }
+        if let Some(v) = weight_volatility {
+            require!(v <= 50, AtomError::InvalidConfigParameter);
+            config.weight_volatility = v;
+        }
+        if let Some(v) = weight_arrival {
+            require!(v <= 50, AtomError::InvalidConfigParameter);
+            config.weight_arrival = v;
+        }
+        // Thresholds: reasonable bounds
+        if let Some(v) = diversity_threshold {
+            require!(v <= 100, AtomError::InvalidConfigParameter);
+            config.diversity_threshold = v;
+        }
+        if let Some(v) = burst_threshold {
+            // u8 always <= 255, no validation needed
+            config.burst_threshold = v;
+        }
+        if let Some(v) = shock_threshold {
+            require!(v <= 10000, AtomError::InvalidConfigParameter);
+            config.shock_threshold = v;
+        }
+        if let Some(v) = volatility_threshold {
+            require!(v <= 10000, AtomError::InvalidConfigParameter);
+            config.volatility_threshold = v;
+        }
         if let Some(v) = paused { config.paused = v; }
 
         config.version = config.version.saturating_add(1);
@@ -100,25 +211,86 @@ pub mod atom_engine {
         Ok(())
     }
 
-    /// Update stats for an agent (called via CPI from agent-registry or directly for testing)
+    /// Initialize stats for a new agent (only asset holder can initialize)
+    /// This ensures the agent owner pays for their own reputation account, not the first reviewer
+    /// Verifies ownership by reading Metaplex Core asset data (owner at offset 1)
+    /// SECURITY: Also verifies the asset and collection are owned by Metaplex Core program
+    pub fn initialize_stats(ctx: Context<InitializeStats>) -> Result<()> {
+        // SECURITY FIX v1.9: Verify asset is owned by Metaplex Core program
+        // This prevents attackers from creating fake accounts with their pubkey at offset 1
+        require!(
+            *ctx.accounts.asset.owner == MPL_CORE_ID,
+            AtomError::InvalidAsset
+        );
+
+        // SECURITY FIX v1.9: Verify collection is also owned by Metaplex Core program
+        // This prevents attackers from passing arbitrary collection addresses
+        require!(
+            *ctx.accounts.collection.owner == MPL_CORE_ID,
+            AtomError::InvalidCollection
+        );
+
+        // Verify caller is the asset owner (Metaplex Core: owner at offset 1)
+        let asset_data = ctx.accounts.asset.try_borrow_data()?;
+        require!(asset_data.len() >= 33, AtomError::InvalidAsset);
+
+        let owner_bytes: [u8; 32] = asset_data[1..33]
+            .try_into()
+            .map_err(|_| AtomError::InvalidAsset)?;
+        let asset_owner = Pubkey::new_from_array(owner_bytes);
+
+        require!(
+            asset_owner == ctx.accounts.owner.key(),
+            AtomError::NotAssetOwner
+        );
+
+        let stats = &mut ctx.accounts.stats;
+
+        stats.bump = ctx.bumps.stats;
+        stats.collection = ctx.accounts.collection.key();
+        stats.asset = ctx.accounts.asset.key();
+        stats.schema_version = AtomStats::SCHEMA_VERSION;
+
+        emit!(StatsInitialized {
+            asset: ctx.accounts.asset.key(),
+            collection: ctx.accounts.collection.key(),
+        });
+
+        msg!(
+            "Stats initialized: asset={}, collection={}",
+            ctx.accounts.asset.key(),
+            ctx.accounts.collection.key()
+        );
+
+        Ok(())
+    }
+
+    /// Update stats for an agent (called via CPI from agent-registry during feedback)
+    /// Stats must already exist (created during agent registration via initialize_stats)
+    /// SECURITY: Verifies caller is the authorized agent-registry program
+    /// v2.5b: Returns UpdateResult for enriched events in agent-registry
     pub fn update_stats(
         ctx: Context<UpdateStats>,
         client_hash: [u8; 32],
         score: u8,
-    ) -> Result<()> {
+    ) -> Result<UpdateResult> {
         require!(score <= 100, AtomError::InvalidScore);
         require!(!ctx.accounts.config.paused, AtomError::Paused);
+
+        // SECURITY FIX: Verify CPI caller is the authorized agent-registry program
+        verify_cpi_caller(
+            &ctx.accounts.instructions_sysvar,
+            ctx.accounts.config.agent_registry_program,
+        )?;
 
         let clock = Clock::get()?;
         let stats = &mut ctx.accounts.stats;
 
-        // Initialize bump if this is a new account
-        if stats.feedback_count == 0 {
-            stats.bump = ctx.bumps.stats;
-        }
+        // Stats should already be initialized via initialize_stats
+        require!(stats.schema_version > 0, AtomError::StatsNotInitialized);
 
-        // Update stats
-        compute::update_stats(stats, &client_hash, score, clock.slot);
+        // Update stats - returns hll_changed
+        let hll_changed = compute::update_stats(stats, &client_hash, score, clock.slot);
 
         emit!(StatsUpdated {
             asset: ctx.accounts.asset.key(),
@@ -138,117 +310,171 @@ pub mod atom_engine {
             stats.risk_score
         );
 
-        Ok(())
+        // v2.5b: Return result for enriched events
+        Ok(UpdateResult {
+            trust_tier: stats.trust_tier,
+            quality_score: stats.quality_score,
+            confidence: stats.confidence,
+            risk_score: stats.risk_score,
+            diversity_ratio: stats.diversity_ratio,
+            hll_changed,
+        })
     }
 
-    /// Create a checkpoint for recovery (permissionless)
-    pub fn create_checkpoint(
-        ctx: Context<CreateCheckpoint>,
-        checkpoint_index: u64,
-        checkpoint_hash: [u8; 32],
-    ) -> Result<()> {
+    /// Get summary for an agent (CPI-callable, returns Summary struct)
+    /// Other programs can call this via CPI to get reputation data
+    pub fn get_summary(ctx: Context<GetSummary>) -> Result<Summary> {
         let stats = &ctx.accounts.stats;
-        let checkpoint = &mut ctx.accounts.checkpoint;
 
-        // Verify checkpoint interval
-        require!(
-            stats.feedback_count >= checkpoint_index * params::CHECKPOINT_INTERVAL,
-            AtomError::CheckpointIntervalNotReached
-        );
+        // Estimate unique clients from HLL
+        let unique_clients = hll_estimate(&stats.hll_packed);
 
-        // Serialize stats to snapshot
-        let mut stats_snapshot = [0u8; 96];
-        let stats_data = stats.try_to_vec()?;
-        let copy_len = stats_data.len().min(96);
-        stats_snapshot[..copy_len].copy_from_slice(&stats_data[..copy_len]);
-
-        checkpoint.asset = ctx.accounts.asset.key();
-        checkpoint.checkpoint_index = checkpoint_index;
-        checkpoint.checkpoint_hash = checkpoint_hash;
-        checkpoint.feedback_index = stats.feedback_count;
-        checkpoint.stats_snapshot = stats_snapshot;
-        checkpoint.created_at = Clock::get()?.unix_timestamp;
-        checkpoint.bump = ctx.bumps.checkpoint;
-
-        emit!(CheckpointCreated {
-            asset: ctx.accounts.asset.key(),
-            checkpoint_index,
-            feedback_index: stats.feedback_count,
-            checkpoint_hash,
-        });
-
-        msg!(
-            "Checkpoint created: asset={}, index={}, feedback_count={}",
-            ctx.accounts.asset.key(),
-            checkpoint_index,
-            stats.feedback_count
-        );
-
-        Ok(())
+        Ok(Summary {
+            collection: stats.collection,
+            asset: stats.asset,
+            trust_tier: stats.trust_tier,
+            quality_score: stats.quality_score,
+            risk_score: stats.risk_score,
+            confidence: stats.confidence,
+            feedback_count: stats.feedback_count,
+            unique_clients,
+            diversity_ratio: stats.diversity_ratio,
+            ema_score_fast: stats.ema_score_fast,
+            ema_score_slow: stats.ema_score_slow,
+            loyalty_score: stats.loyalty_score,
+            first_feedback_slot: stats.first_feedback_slot,
+            last_feedback_slot: stats.last_feedback_slot,
+        })
     }
 
-    /// Restore stats from a checkpoint (authority only)
-    pub fn restore_from_checkpoint(
-        ctx: Context<RestoreFromCheckpoint>,
-        checkpoint_index: u64,
-    ) -> Result<()> {
-        let checkpoint = &ctx.accounts.checkpoint;
-        let stats = &mut ctx.accounts.stats;
+    /// v2.5a: Revoke a feedback entry from the ring buffer
+    /// Called via CPI from agent-registry during revoke_feedback
+    /// SECURITY: Verifies caller is the authorized agent-registry program
+    ///
+    /// # Arguments
+    /// * `client_pubkey` - The pubkey of the client who gave the feedback
+    ///
+    /// # Returns
+    /// RevokeResult with original_score, had_impact, and new stats
+    ///
+    /// # Soft Fail Behavior
+    /// If feedback is not found (too old, ejected from ring buffer) or already revoked,
+    /// returns `had_impact: false` instead of erroring. This is intentional for UX.
+    pub fn revoke_stats(
+        ctx: Context<RevokeStats>,
+        client_pubkey: Pubkey,
+    ) -> Result<RevokeResult> {
+        require!(!ctx.accounts.config.paused, AtomError::Paused);
 
-        // Deserialize checkpoint data
-        let restored: AtomStats = AtomStats::try_deserialize(
-            &mut &checkpoint.stats_snapshot[..]
-        ).map_err(|_| AtomError::InvalidCheckpointData)?;
-
-        // Restore stats (preserve bump)
-        let bump = stats.bump;
-        **stats = restored;
-        stats.bump = bump;
-
-        emit!(StatsRestored {
-            asset: ctx.accounts.asset.key(),
-            checkpoint_index,
-            feedback_index: stats.feedback_count,
-        });
-
-        msg!(
-            "Stats restored: asset={}, from checkpoint {}",
-            ctx.accounts.asset.key(),
-            checkpoint_index
-        );
-
-        Ok(())
-    }
-
-    /// Replay a batch of historical events (authority only, for recovery)
-    pub fn replay_batch(
-        ctx: Context<ReplayBatch>,
-        events: Vec<ReplayEvent>,
-    ) -> Result<()> {
-        require!(!events.is_empty(), AtomError::InvalidReplayBatch);
+        // SECURITY: Verify CPI caller is the authorized agent-registry program
+        verify_cpi_caller(
+            &ctx.accounts.instructions_sysvar,
+            ctx.accounts.config.agent_registry_program,
+        )?;
 
         let stats = &mut ctx.accounts.stats;
-        let mut count = 0u32;
+        require!(stats.schema_version > 0, AtomError::StatsNotInitialized);
 
-        for event in events.iter() {
-            require!(event.score <= 100, AtomError::InvalidScore);
-            compute::update_stats(stats, &event.client_hash, event.score, event.slot);
-            count += 1;
-        }
+        // Compute fingerprint from client pubkey (same as give_feedback does)
+        use anchor_lang::solana_program::keccak;
+        let client_hash = keccak::hash(client_pubkey.as_ref());
+        let fp56 = secure_fp56(&client_hash.0, &stats.asset);
 
-        emit!(BatchReplayed {
+        // Try to find entry in ring buffer
+        let (original_score, had_impact) = if let Some((idx, score, already_revoked)) =
+            find_caller_entry(&stats.recent_callers, fp56)
+        {
+            if already_revoked {
+                // Already revoked - soft fail
+                (score, false)
+            } else {
+                // Mark as revoked
+                mark_entry_revoked(&mut stats.recent_callers, idx);
+
+                // Apply inverse correction to quality EMA
+                // If original was good (>50), apply bad score correction
+                // If original was bad (<=50), apply good score correction
+                let correction_score: u16 = if score > 50 { 0 } else { 10000 };
+
+                // Dampened correction (half of ALPHA_QUALITY_DOWN)
+                let dampened_alpha = params::ALPHA_QUALITY_DOWN / 2;
+                stats.quality_score = ((dampened_alpha * correction_score as u32
+                    + (100 - dampened_alpha) * stats.quality_score as u32) / 100) as u16;
+
+                // Decrease confidence slightly (feedback was unreliable)
+                stats.confidence = stats.confidence.saturating_sub(100);
+
+                // Recalculate trust tier after quality change
+                // (simplified - could call update_trust_tier but that requires more context)
+                // For now, just let it be recalculated on next feedback
+
+                (score, true)
+            }
+        } else {
+            // Not found in ring buffer - soft fail
+            (0, false)
+        };
+
+        emit!(StatsRevoked {
             asset: ctx.accounts.asset.key(),
-            events_replayed: count,
-            final_feedback_index: stats.feedback_count,
+            client: client_pubkey,
+            original_score,
+            had_impact,
+            new_quality_score: stats.quality_score,
+            new_confidence: stats.confidence,
         });
 
         msg!(
-            "Batch replayed: asset={}, events={}, final_count={}",
+            "Stats revoke: asset={}, had_impact={}, original_score={}",
             ctx.accounts.asset.key(),
-            count,
-            stats.feedback_count
+            had_impact,
+            original_score
         );
 
-        Ok(())
+        Ok(RevokeResult {
+            original_score,
+            had_impact,
+            new_trust_tier: stats.trust_tier,
+            new_quality_score: stats.quality_score,
+            new_confidence: stats.confidence,
+        })
     }
+}
+
+// ============================================================================
+// Security Helper Functions
+// ============================================================================
+
+/// Verify that the CPI caller is the authorized agent-registry program
+/// Uses instruction sysvar introspection to check the parent instruction
+///
+/// SECURITY: This function ensures that update_stats can ONLY be called via CPI
+/// from the authorized agent-registry program, preventing direct manipulation
+/// of reputation scores by malicious actors.
+fn verify_cpi_caller(
+    instructions_sysvar: &AccountInfo,
+    expected_caller: Pubkey,
+) -> Result<()> {
+    // Get the current instruction index in the transaction
+    let current_idx = load_current_index_checked(instructions_sysvar)
+        .map_err(|_| AtomError::UnauthorizedCaller)?;
+
+    // Get the instruction at the current index (this is the outer instruction that initiated the CPI)
+    // When atom_engine is called via CPI from give_feedback:
+    // - current_idx = 0 (give_feedback is instruction 0 in the transaction)
+    // - The instruction at index 0 should be from agent-registry
+    let outer_ix = get_instruction_relative(0, instructions_sysvar)
+        .map_err(|_| AtomError::UnauthorizedCaller)?;
+
+    // Verify the outer instruction (that initiated CPI to us) is from the authorized program
+    require!(
+        outer_ix.program_id == expected_caller,
+        AtomError::UnauthorizedCaller
+    );
+
+    // Additional check: if called directly (not via CPI), the outer instruction
+    // would be atom_engine itself, which would fail the above check
+    // This ensures update_stats can ONLY be called via CPI from agent-registry
+
+    Ok(())
 }

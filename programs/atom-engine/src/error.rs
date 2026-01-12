@@ -17,15 +17,24 @@ pub enum AtomError {
     #[msg("Engine is paused")]
     Paused,
 
-    #[msg("Checkpoint interval not reached")]
-    CheckpointIntervalNotReached,
+    #[msg("Stats not initialized: call initialize_stats first")]
+    StatsNotInitialized,
 
-    #[msg("Invalid checkpoint data")]
-    InvalidCheckpointData,
+    #[msg("Not asset owner: only the Metaplex Core asset holder can initialize stats")]
+    NotAssetOwner,
 
-    #[msg("Hash chain mismatch")]
-    HashChainMismatch,
+    #[msg("Invalid asset: cannot read owner from asset data")]
+    InvalidAsset,
 
-    #[msg("Invalid replay batch")]
-    InvalidReplayBatch,
+    #[msg("Invalid collection: must be owned by Metaplex Core program")]
+    InvalidCollection,
+
+    #[msg("Invalid config parameter: value out of allowed bounds")]
+    InvalidConfigParameter,
+
+    #[msg("Feedback not found in ring buffer (may be too old)")]
+    FeedbackNotFound,
+
+    #[msg("Feedback already revoked")]
+    AlreadyRevoked,
 }
