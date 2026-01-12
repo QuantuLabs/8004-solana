@@ -11,7 +11,7 @@
 
 ## v0.4.0 - ATOM Integration (Current)
 
-- **[ATOM Engine](programs/atom-engine/README.md)**: On-chain reputation scoring (HLL, ring buffer, trust tiers)
+- **[ATOM](programs/atom-engine/README.md)** (Agent Trust On-chain Model): Reputation scoring model with Sybil resistance
 - **Multi-Collection Registry**: Global registry with base + user-created collections (sharding)
 - **CPI Integration**: `give_feedback` / `revoke_feedback` → ATOM for real-time scoring
 
