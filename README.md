@@ -24,20 +24,39 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 ## Architecture
 
 ```
-agent-registry-8004                      atom-engine
-┌────────────────────────────┐          ┌─────────────────────┐
-│ Identity   │ Reputation    │   CPI    │ AtomStats (460B)    │
-│ - register │ - giveFeedback│ ───────► │ - HLL[256] + salt   │
-│ - metadata │ - revoke      │          │ - ring buffer[24]   │
-│ - transfer │ - respond     │          │ - trust tier        │
-├────────────┴───────────────┤          └─────────────────────┘
-│ Validation                 │
-│ - request/respond/close    │
-└────────────────────────────┘
-            │
-            ▼
-      Metaplex Core
-   (Collection + Assets)
++-----------------------------------------------------------------+
+|              agent-registry-8004 (Devnet)                        |
+|         3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC            |
++-----------------------------------------------------------------+
+|  +---------------+ +----------------+ +----------------+         |
+|  | Identity      | | Reputation     | | Validation     |         |
+|  +---------------+ +----------------+ +----------------+         |
+|  | Agent NFTs    | | Feedback Events| | Validation Req |         |
+|  |  (Core)       | | Revocations    | | Responses      |         |
+|  | Metadata PDAs | | Responses      | | Multi-validator|         |
+|  | Asset = ID    | |       |        | | Progressive    |         |
+|  +---------------+ +-------+--------+ +----------------+         |
++-----------------------------------------------------------------+
+                             |
+                             | CPI (give_feedback, revoke_feedback)
+                             v
++-----------------------------------------------------------------+
+|                    atom-engine (ATOM)                            |
+|         AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp            |
++-----------------------------------------------------------------+
+|  +---------------+ +------------------------------------------+ |
+|  | AtomConfig    | |              AtomStats (460 bytes)       | |
+|  +---------------+ +------------------------------------------+ |
+|  | - authority   | | - HLL[256] + salt (unique clients)       | |
+|  | - params      | | - ring buffer[24] (burst detection)      | |
+|  | - thresholds  | | - quality, risk, tier, confidence        | |
+|  +---------------+ +------------------------------------------+ |
++-----------------------------------------------------------------+
+                             |
++-----------------------------------------------------------------+
+|                      Metaplex Core                               |
+|         (Collection + Agent Assets)                              |
++-----------------------------------------------------------------+
 ```
 
 ## Features
@@ -53,8 +72,8 @@ agent-registry-8004                      atom-engine
 
 | Operation | Rent (SOL) |
 |-----------|------------|
-| Register Agent | ~0.006 |
-| Give Feedback + ATOM | ~0.005 |
+| Register Agent (+ AtomStats) | ~0.010 |
+| Give Feedback | ~0.001 |
 | Set Metadata | ~0.003 |
 | Request Validation | ~0.002 |
 
