@@ -4,16 +4,22 @@
 
 **Program ID**: `AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp`
 
+## Why On-Chain?
+
+On-chain reputation is **verifiable** (open algorithm), **immutable** (no silent deletions), and **composable** (other programs can read scores via CPI). The tradeoff is ~$0.80/agent storage cost.
+
+**Core principle**: Good reputation = quality (high scores) + diversity (many unique clients). 100 perfect scores from 3 wallets is suspicious. 80-average from 50 clients is trustworthy.
+
 ## Overview
 
-ATOM is a standalone Solana program that computes and stores reputation metrics for AI agents. It uses a sophisticated statistical model with:
+ATOM computes and stores reputation metrics for AI agents:
 
-- **Dual-EMA System**: Fast (α=0.30) and Slow (α=0.05) exponential moving averages for trend detection
+- **Dual-EMA System**: Fast (α=0.30) and Slow (α=0.05) moving averages for trend detection
 - **HyperLogLog**: 256-register probabilistic counter for unique client estimation (~6.5% error)
-- **Ring Buffer**: 24-slot buffer with 56-bit fingerprints for burst detection and revoke support
+- **Ring Buffer**: 24-slot buffer with 56-bit fingerprints for burst detection and revoke
 - **Per-Agent Salt**: Random salt prevents cross-agent HLL grinding attacks
 - **Round Robin Eviction**: Cursor-based eviction prevents targeted manipulation
-- **Multi-signal Risk Score**: Sybil, burst, stagnation, shock, volatility, arrival rate
+- **Multi-signal Risk Score**: Sybil, burst, stagnation, shock, volatility
 
 ## Architecture
 
