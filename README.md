@@ -228,7 +228,7 @@ anchor test --skip-build tests/e2e-*.ts
 - [x] Trust tier classification
 - [x] Tunable parameters via Config PDA
 - [x] Checkpoint/recovery support
-- [ ] CPI integration (agent-registry → atom-engine)
+- [x] CPI integration (agent-registry → atom-engine)
 
 ### v0.3.0 - COMPLETE
 - [x] Asset-based identification (C-01 fix)
