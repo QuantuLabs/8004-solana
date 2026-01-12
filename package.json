@@ -9,12 +9,21 @@
     "url": "https://github.com/QuantuLabs/8004-solana.git"
   },
   "scripts": {
-    "test": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=~/.config/solana/id.json ts-mocha -p ./tsconfig.json -t 1000000",
+    "test": "ANCHOR_PROVIDER_URL=${HELIUS_RPC_URL:-https://api.devnet.solana.com} ANCHOR_WALLET=~/.config/solana/id.json ts-mocha -p ./tsconfig.json -t 1000000",
+    "test:local": "ANCHOR_PROVIDER_URL=http://localhost:8899 ANCHOR_WALLET=~/.config/solana/id.json ts-mocha -p ./tsconfig.json -t 1000000",
     "test:identity": "npm test -- tests/identity-tests.ts",
     "test:reputation": "npm test -- tests/reputation-tests.ts",
     "test:validation": "npm test -- tests/validation-tests.ts",
     "test:anti-gaming": "npm test -- tests/anti-gaming-tests.ts",
-    "test:all": "npm test -- tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts tests/anti-gaming-tests.ts",
+    "test:atom": "npm test -- tests/atom-engine-tests.ts",
+    "test:stress": "npm test -- tests/atom-stress-tests.ts",
+    "test:security": "npm test -- tests/atom-security-audit.ts",
+    "test:functional": "npm test -- tests/atom-functional-validation.ts",
+    "test:intensive": "npm test -- tests/atom-intensive-scale.ts",
+    "test:attacks": "npm run test:local -- tests/atom-attack-vectors.ts",
+    "test:massive": "npm run test:local -- tests/atom-massive-scale.ts",
+    "test:all": "npm test -- tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts tests/anti-gaming-tests.ts tests/atom-engine-tests.ts tests/atom-stress-tests.ts tests/atom-security-audit.ts",
+    "test:all-local": "npm run test:local -- tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts tests/anti-gaming-tests.ts tests/atom-attack-vectors.ts tests/atom-massive-scale.ts",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },
