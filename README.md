@@ -11,15 +11,9 @@
 
 ## v0.4.0 - ATOM Integration (Current)
 
-**New: ATOM Engine** - Standalone reputation scoring program
-
-- **[ATOM - Agent Trust On-chain Model](programs/atom-engine/README.md)**: Separate program for reputation computation
-- **Dual-EMA System**: Fast (α=0.30) / Slow (α=0.05) moving averages for manipulation-resistant scoring
-- **HyperLogLog**: 256 registers for unique client counting (~6.5% error, 128 bytes)
-- **Ring Buffer**: 24 slots with 56-bit fingerprints for burst detection and revoke support
-- **Per-Agent Salt**: Random salt prevents cross-agent HLL grinding attacks
-- **Trust Tiers**: Platinum/Gold/Silver/Bronze/Unrated classification
-- **Tunable Parameters**: Config PDA allows parameter updates without program upgrade
+- **[ATOM Engine](programs/atom-engine/README.md)**: On-chain reputation scoring (HLL, ring buffer, trust tiers)
+- **Multi-Collection Registry**: Global registry with base + user-created collections (sharding)
+- **CPI Integration**: `give_feedback` / `revoke_feedback` → ATOM for real-time scoring
 
 **Programs:**
 | Program | Address | Description |
