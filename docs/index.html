@@ -345,20 +345,24 @@
     <div class="container">
         <header>
             <div class="version-tabs" style="margin-bottom: 1rem;">
-                <a href="v0.1.0.html" style="color: var(--text-secondary); margin-right: 1rem; text-decoration: none;">v0.1.0</a>
-                <a href="v0.2.0.html" style="color: var(--text-secondary); margin-right: 1rem; text-decoration: none;">v0.2.0</a>
-                <a href="index.html" style="color: var(--accent-purple); font-weight: bold; text-decoration: none; border-bottom: 2px solid var(--accent-purple); padding-bottom: 2px;">v0.3.0</a>
+                <a href="archive/v0.1.0.html" style="color: var(--text-secondary); margin-right: 1rem; text-decoration: none;">v0.1.0</a>
+                <a href="archive/v0.2.0.html" style="color: var(--text-secondary); margin-right: 1rem; text-decoration: none;">v0.2.0</a>
+                <a href="index.html" style="color: var(--accent-purple); font-weight: bold; text-decoration: none; border-bottom: 2px solid var(--accent-purple); padding-bottom: 2px;">v0.4.0</a>
             </div>
             <h1>8004 on Solana</h1>
             <p class="subtitle">Technical Documentation for AI Agent Identity & Reputation Registry</p>
             <div class="program-ids">
                 <div class="program-id identity" style="border-left: 3px solid var(--accent-blue);">
-                    <span class="label">AgentRegistry8004 (Devnet)</span>
-                    ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v
+                    <span class="label">agent-registry-8004 (Devnet)</span>
+                    3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC
+                </div>
+                <div class="program-id reputation" style="border-left: 3px solid var(--accent-green);">
+                    <span class="label">atom-engine (Devnet)</span>
+                    AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp
                 </div>
             </div>
             <p style="color: var(--text-secondary); margin-top: 1rem; font-size: 0.9rem;">
-                Single program with Identity, Reputation & Validation modules | Metaplex Core | 118 tests | Asset-based IDs
+                2 programs | Metaplex Core | ATOM Engine (HLL + Ring Buffer) | 35+ security tests | Asset-based IDs
             </p>
         </header>
 
@@ -367,6 +371,7 @@
                 <li><a href="#changelog">Changelog</a></li>
                 <li><a href="#overview">Overview</a></li>
                 <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#atom-engine">ATOM Engine</a></li>
                 <li><a href="#identity">Identity</a></li>
                 <li><a href="#reputation">Reputation</a></li>
                 <li><a href="#validation">Validation</a></li>
@@ -377,67 +382,57 @@
 
         <!-- CHANGELOG SECTION -->
         <section id="changelog">
-            <h2>v0.3.0 Changelog</h2>
+            <h2>v0.4.0 Changelog - ATOM Engine</h2>
 
-            <div class="warning">
-                <strong>Breaking Changes:</strong> This version replaces <code>agent_id</code> (u64) with <code>asset</code> (Pubkey) as the unique identifier. All PDA seeds and API parameters have changed.
+            <div class="success">
+                <strong>New:</strong> ATOM Engine integration for advanced on-chain reputation analytics with Sybil resistance.
             </div>
 
-            <h3>C-01 Security Fix: Asset-Based Identification</h3>
+            <h3>New Program: atom-engine</h3>
             <ul>
-                <li><strong>Asset = Unique Identifier</strong> — Core NFT address (Pubkey) replaces sequential agent_id (u64)</li>
-                <li><strong>Globally Unique</strong> — No more ID collision between registries</li>
-                <li><strong>Direct PDA Derivation</strong> — Simpler seeds, no collection prefix needed</li>
+                <li><strong>HyperLogLog (HLL)</strong> — 256 registers (4-bit packed, 128 bytes) for unique client estimation</li>
+                <li><strong>Ring Buffer</strong> — 24 slots with 56-bit fingerprints for burst detection and revoke</li>
+                <li><strong>Per-Agent Salt</strong> — 8-byte salt prevents HLL grinding attacks</li>
+                <li><strong>Round Robin Eviction</strong> — Cursor-based eviction prevents targeted manipulation</li>
+                <li><strong>Trust Tiers</strong> — 5 tiers (Unknown → Legendary) with hysteresis thresholds</li>
             </ul>
 
-            <h3>Storage Optimization (-18%)</h3>
+            <h3>CPI Integration</h3>
             <ul>
-                <li><strong>AgentReputationMetadata:</strong> 50 → 17 bytes (<strong>-66%</strong>) — aggregates moved off-chain</li>
-                <li><strong>ResponseAccount:</strong> 73 → 41 bytes (<strong>-44%</strong>) — minimal (responder + bump)</li>
-                <li><strong>ResponseIndexAccount:</strong> 33 → 17 bytes (<strong>-48%</strong>)</li>
-                <li><strong>FeedbackAccount:</strong> 99 → 83 bytes (<strong>-16%</strong>)</li>
-                <li><strong>ValidationRequest:</strong> 166 → 151 bytes (<strong>-9%</strong>)</li>
-                <li><strong>AgentAccount:</strong> 343 → 313 bytes (<strong>-9%</strong>)</li>
+                <li><code>give_feedback</code> → CPI to <code>atom_engine::update_stats</code></li>
+                <li><code>revoke_feedback</code> → CPI to <code>atom_engine::revoke_stats</code></li>
+                <li><code>NewFeedback</code> event enriched with ATOM metrics</li>
             </ul>
 
-            <h3>Removed (Off-chain via Indexer)</h3>
-            <ul>
-                <li><strong>ValidationStats</strong> — Account deleted (counters off-chain)</li>
-                <li><strong>agent_id</strong> — Removed everywhere (use asset)</li>
-                <li><strong>collection</strong> — Removed from FeedbackAccount, ValidationRequest</li>
-                <li><strong>created_at</strong> — Removed (use blockTime)</li>
-                <li><strong>total_feedbacks, total_score_sum, average_score</strong> — Off-chain aggregation</li>
-                <li><strong>nft_symbol</strong> — Removed from AgentAccount (read from Metaplex)</li>
-                <li><strong>next_agent_id, total_agents</strong> — Removed from RegistryConfig</li>
-            </ul>
-
-            <h3>API Changes</h3>
-            <ul>
-                <li><code>give_feedback</code>: removed <code>agent_id</code> parameter</li>
-                <li><code>revoke_feedback</code>: removed <code>agent_id</code> parameter</li>
-                <li><code>append_response</code>: removed <code>agent_id</code> parameter</li>
-                <li><code>set_feedback_tags</code>: removed <code>agent_id</code> parameter</li>
-                <li><code>request_validation</code>: removed <code>agent_id</code> parameter</li>
-                <li>All events use <code>asset: Pubkey</code> instead of <code>agent_id: u64</code></li>
-            </ul>
-
-            <h3>PDA Seeds Changes</h3>
+            <h3>New Account: AtomStats (460 bytes)</h3>
             <table>
-                <tr><th>PDA</th><th>v0.2.0</th><th>v0.3.0</th></tr>
-                <tr><td>FeedbackAccount</td><td><code>["feedback", agent_id, index]</code></td><td><code>["feedback", asset, index]</code></td></tr>
-                <tr><td>FeedbackTagsPda</td><td><code>["feedback_tags", agent_id, index]</code></td><td><code>["feedback_tags", asset, index]</code></td></tr>
-                <tr><td>ResponseAccount</td><td><code>["response", agent_id, fb_idx, resp_idx]</code></td><td><code>["response", asset, fb_idx, resp_idx]</code></td></tr>
-                <tr><td>ResponseIndexAccount</td><td><code>["response_index", agent_id, fb_idx]</code></td><td><code>["response_index", asset, fb_idx]</code></td></tr>
-                <tr><td>AgentReputationMetadata</td><td><code>["agent_reputation", agent_id]</code></td><td><code>["agent_reputation", asset]</code></td></tr>
-                <tr><td>ValidationRequest</td><td><code>["validation", agent_id, validator, nonce]</code></td><td><code>["validation", asset, validator, nonce]</code></td></tr>
-                <tr><td>MetadataEntryPda</td><td><code>["agent_meta", agent_id, key_hash]</code></td><td><code>["agent_meta", asset, key_hash]</code></td></tr>
+                <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+                <tr><td>collection</td><td>Pubkey</td><td>Collection filter</td></tr>
+                <tr><td>asset</td><td>Pubkey</td><td>Agent identifier</td></tr>
+                <tr><td>feedback_count</td><td>u32</td><td>Total feedbacks</td></tr>
+                <tr><td>quality_score</td><td>i32</td><td>Weighted score (EMA)</td></tr>
+                <tr><td>hll_packed</td><td>[u8; 128]</td><td>HyperLogLog registers</td></tr>
+                <tr><td>hll_salt</td><td>u64</td><td>Per-agent salt</td></tr>
+                <tr><td>recent_callers</td><td>[u64; 24]</td><td>Ring buffer fingerprints</td></tr>
+                <tr><td>eviction_cursor</td><td>u8</td><td>Round robin pointer</td></tr>
             </table>
+
+            <h3>Enriched Events</h3>
+            <p><code>NewFeedback</code> now includes:</p>
+            <ul>
+                <li><code>new_trust_tier</code> — Current trust tier (0-4)</li>
+                <li><code>new_quality_score</code> — Updated EMA score</li>
+                <li><code>new_confidence</code> — Statistical confidence (0-100)</li>
+                <li><code>new_risk_score</code> — Burst/outlier risk (0-100)</li>
+                <li><code>new_diversity_ratio</code> — Client diversity (0-100)</li>
+                <li><code>is_unique_client</code> — HLL changed flag</li>
+            </ul>
         </section>
 
         <!-- OVERVIEW SECTION -->
         <section id="overview">
             <h2>Overview</h2>
-            <p>8004 is a standard for on-chain AI agent registries. This Solana implementation (v0.3.0) uses <strong>asset (Pubkey)</strong> as unique identifier instead of sequential agent_id:</p>
+            <p>8004 is a standard for on-chain AI agent registries. This Solana implementation (v0.4.0) features <strong>ATOM Engine</strong> for advanced reputation analytics:</p>
 
             <div class="grid" style="margin-top: 1.5rem;">
                 <div class="card">
@@ -450,9 +445,9 @@
                 <div class="card">
                     <div class="card-header">
                         <div class="icon green">★</div>
-                        <h4 style="margin: 0;">Reputation Module</h4>
+                        <h4 style="margin: 0;">Reputation + ATOM</h4>
                     </div>
-                    <p>Feedback system with scores (0-100), tags, and responses. Aggregates computed off-chain via indexer.</p>
+                    <p>Feedback system with <strong>CPI to ATOM Engine</strong>. HyperLogLog for Sybil resistance, trust tiers, and real-time scoring.</p>
                 </div>
                 <div class="card">
                     <div class="card-header">
@@ -469,16 +464,16 @@
                     <div class="label">SOL per Agent Registration</div>
                 </div>
                 <div class="stat-card">
-                    <div class="value">0.0014</div>
-                    <div class="label">SOL per Feedback</div>
+                    <div class="value">~0.0046</div>
+                    <div class="label">SOL per Feedback + ATOM</div>
                 </div>
                 <div class="stat-card">
-                    <div class="value">-18%</div>
-                    <div class="label">Storage vs v0.2.0</div>
+                    <div class="value">460</div>
+                    <div class="label">Bytes AtomStats/Agent</div>
                 </div>
                 <div class="stat-card">
-                    <div class="value">∞</div>
-                    <div class="label">Metadata per Agent</div>
+                    <div class="value">5</div>
+                    <div class="label">Trust Tiers</div>
                 </div>
             </div>
         </section>
@@ -489,25 +484,124 @@
 
             <div class="architecture-diagram">
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                     AgentRegistry8004 (Devnet)                               │
-│              <span class="highlight">ygD54Gx7UHgW8vKK1jt2g2scwqLX4SFiN95DxCoqL7v</span>                  │
+│                     agent-registry-8004 (Devnet)                             │
+│              <span class="highlight">3GGkAWC3mYYdud8GVBsKXK5QC9siXtFkWVZFYtbueVbC</span>                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  ┌────────────────────┐ ┌──────────────────┐ ┌────────────────────────────┐ │
 │  │   Identity Module  │ │ Reputation Module│ │    Validation Module       │ │
 │  ├────────────────────┤ ├──────────────────┤ ├────────────────────────────┤ │
 │  │ • register()       │ │ • give_feedback()│ │ • request_validation()     │ │
-│  │ • set_metadata_pda │ │ • revoke_feedback│ │ • respond_to_validation()  │ │
-│  │ • delete_meta_pda  │ │ • append_response│ │ • update_validation()      │ │
-│  │ • set_agent_uri()  │ │                  │ │ • close_validation()       │ │
-│  │ • transfer_agent() │ │                  │ │                            │ │
-│  └────────────────────┘ └──────────────────┘ └────────────────────────────┘ │
+│  │ • set_metadata_pda │ │   └─→ CPI ATOM   │ │ • respond_to_validation()  │ │
+│  │ • delete_meta_pda  │ │ • revoke_feedback│ │ • update_validation()      │ │
+│  │ • set_agent_uri()  │ │   └─→ CPI ATOM   │ │ • close_validation()       │ │
+│  │ • transfer_agent() │ │ • append_response│ │                            │ │
+│  └────────────────────┘ └────────┬─────────┘ └────────────────────────────┘ │
+├──────────────────────────────────┼──────────────────────────────────────────┤
+│                                  ▼                                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                        atom-engine (Devnet)                           │   │
+│  │              <span class="highlight">AToMNGXU9X5o9r2wg2d9xZnMQkGy6fypHs3c6DZd8VUp</span>              │   │
+│  ├──────────────────────────────────────────────────────────────────────┤   │
+│  │  • update_stats() — HLL + Ring Buffer + EMA + Trust Tier              │   │
+│  │  • revoke_stats() — Remove from ring buffer, adjust scores            │   │
+│  │  • AtomStats PDA — 460 bytes per agent                                │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                           METAPLEX CORE                                      │
 │  • Collection created on initialize() as Core Collection                    │
 │  • Agent NFTs are Core Assets verified against collection                   │
-│  • Update authority managed via Config PDA                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
             </div>
+        </section>
+
+        <!-- ATOM ENGINE SECTION -->
+        <section id="atom-engine">
+            <h2>ATOM Engine</h2>
+            <p>Agent Trust On-chain Model - Advanced reputation analytics with Sybil resistance.</p>
+
+            <div class="info">
+                ATOM provides real-time trust scoring via HyperLogLog (unique clients), ring buffer (burst detection), and EMA (quality weighting).
+            </div>
+
+            <h3>Trust Tiers</h3>
+            <table>
+                <tr><th>Tier</th><th>Value</th><th>Threshold (Upgrade)</th><th>Hysteresis (Downgrade)</th></tr>
+                <tr><td>Unknown</td><td>0</td><td>-</td><td>-</td></tr>
+                <tr><td>New</td><td>1</td><td>1 feedback</td><td>0</td></tr>
+                <tr><td>Established</td><td>2</td><td>10 feedbacks + 60 quality</td><td>50 quality</td></tr>
+                <tr><td>Trusted</td><td>3</td><td>50 feedbacks + 75 quality</td><td>65 quality</td></tr>
+                <tr><td>Legendary</td><td>4</td><td>200 feedbacks + 90 quality</td><td>80 quality</td></tr>
+            </table>
+
+            <h3>Key Algorithms</h3>
+
+            <div class="card">
+                <h4>HyperLogLog (Unique Client Estimation)</h4>
+                <p>256 registers, 4-bit packed (128 bytes). Estimates unique clients with ~6.5% standard error.</p>
+                <pre><code>// Per-agent salt prevents grinding attacks
+salted_hash = keccak256(client_hash || hll_salt)
+register_idx = salted_hash[0..8] % 256
+leading_zeros = count_leading_zeros(salted_hash[8..])
+registers[idx] = max(registers[idx], leading_zeros + 1)</code></pre>
+            </div>
+
+            <div class="card">
+                <h4>Ring Buffer (Burst Detection & Revoke)</h4>
+                <p>24 slots with 56-bit fingerprints. Round-robin eviction prevents manipulation.</p>
+                <pre><code>// Fingerprint = truncated keccak hash
+fingerprint = keccak256(client_pubkey)[0..7]
+
+// Round-robin eviction (cursor increments each write)
+slot = eviction_cursor % 24
+recent_callers[slot] = fingerprint
+eviction_cursor += 1</code></pre>
+            </div>
+
+            <div class="card">
+                <h4>EMA Quality Score</h4>
+                <p>Exponential Moving Average with α=0.1 (10% weight to new scores).</p>
+                <pre><code>// Centered score: 0-100 → -50 to +50
+centered = (score as i32) - 50
+
+// EMA update (scaled by 1000 for precision)
+quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
+            </div>
+
+            <h3>CPI Flow</h3>
+            <div class="architecture-diagram">
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        give_feedback()                                   │
+│                    agent-registry-8004                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│  1. Validate feedback parameters                                         │
+│  2. Compute client_hash = keccak256(client.key)                         │
+│  3. CPI → atom_engine::update_stats(client_hash, score)                 │
+│     └─→ Returns: UpdateResult { trust_tier, quality_score, ... }        │
+│  4. Emit NewFeedback event with ATOM metrics                            │
+└─────────────────────────────────────────────────────────────────────────┘
+            </div>
+
+            <h3>Account Structure: AtomStats</h3>
+            <pre><code>pub struct AtomStats {           // 460 bytes total
+    pub collection: Pubkey,      // 32 - Collection filter
+    pub asset: Pubkey,           // 32 - Agent identifier
+    pub feedback_count: u32,     // 4  - Total feedbacks
+    pub positive_count: u32,     // 4  - Score > 50
+    pub negative_count: u32,     // 4  - Score < 50
+    pub quality_score: i32,      // 4  - EMA score (scaled)
+    pub last_feedback_slot: u64, // 8  - Slot of last feedback
+    pub hll_packed: [u8; 128],   // 128 - HLL registers (256 × 4-bit)
+    pub hll_salt: u64,           // 8  - Per-agent salt
+    pub recent_callers: [u64; 24], // 192 - Ring buffer
+    pub eviction_cursor: u8,     // 1  - Round robin pointer
+    // Output cache (computed on update)
+    pub trust_tier: u8,          // 1
+    pub confidence: u8,          // 1
+    pub risk_score: u8,          // 1
+    pub diversity_ratio: u8,     // 1
+    pub bump: u8,                // 1
+}</code></pre>
+            <div class="pda-seed"><strong>PDA:</strong> seeds = ["atom_stats", asset.key()]</div>
         </section>
 
         <!-- TOOLS & ECOSYSTEM SECTION -->
@@ -1174,8 +1268,8 @@ constraint = asset.owner == owner.key()</code></pre>
         </section>
 
         <footer>
-            <p>8004 Solana Implementation - Technical Documentation</p>
-            <p>Generated: January 2026 | Programs deployed on Devnet</p>
+            <p>8004 Solana Implementation v0.4.0 - Technical Documentation</p>
+            <p>Updated: January 12, 2026 | Programs deployed on Devnet</p>
             <p style="margin-top: 1rem;">
                 <a href="https://eips.ethereum.org/EIPS/eip-8004" style="color: var(--accent-blue);">8004 Spec</a> ·
                 <a href="https://github.com/QuantuLabs/8004-solana" style="color: var(--accent-blue);">GitHub Repository</a>
