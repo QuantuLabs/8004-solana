@@ -70,12 +70,12 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Costs (v0.4.0)
 
-| Operation | Rent (SOL) |
-|-----------|------------|
-| Register Agent (+ AtomStats) | ~0.010 |
-| Give Feedback | ~0.001 |
-| Set Metadata | ~0.003 |
-| Request Validation | ~0.002 |
+| Operation | Rent (SOL) | Notes |
+|-----------|------------|-------|
+| Register Agent | ~0.009 | AgentAccount (313B) + AtomStats (460B) + Core Asset |
+| Give Feedback | ~0.00001 | No new account, just tx fee |
+| Set Metadata | ~0.003 | MetadataEntryPda (306B) |
+| Request Validation | ~0.0015 | ValidationRequest (151B) |
 
 ## Quick Start
 
