@@ -1,9 +1,11 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::bpf_loader_upgradeable;
 
 use crate::state::{AtomConfig, AtomStats};
 use crate::error::AtomError;
 
-/// Initialize the ATOM config (authority only, once)
+/// Initialize the ATOM config (upgrade authority only, once)
+/// SECURITY: Only the program deployer can initialize to prevent front-running
 #[derive(Accounts)]
 pub struct InitializeConfig<'info> {
     #[account(mut)]
@@ -17,6 +19,17 @@ pub struct InitializeConfig<'info> {
         bump,
     )]
     pub config: Account<'info, AtomConfig>,
+
+    /// Program data account for upgrade authority verification
+    /// SECURITY: Only program deployer can initialize
+    #[account(
+        seeds = [crate::ID.as_ref()],
+        bump,
+        seeds::program = bpf_loader_upgradeable::ID,
+        constraint = program_data.upgrade_authority_address == Some(authority.key())
+            @ AtomError::Unauthorized
+    )]
+    pub program_data: Account<'info, ProgramData>,
 
     pub system_program: Program<'info, System>,
 }
