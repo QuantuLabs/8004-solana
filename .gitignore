@@ -30,6 +30,9 @@ tests/sdk/
 # Documentation archives (old versions, audits, refs)
 docs/archive/
 
+# Documentation markdown (local)
+docs/**/*.md
+
 # IDE
 .vscode/
 .idea/
@@ -53,3 +56,6 @@ test-wallets-backup.json
 
 # Marketing content
 twitter-thread-*.md
+
+# Local changelog
+ATOM-CHANGELOG.md
