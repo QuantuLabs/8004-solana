@@ -23,6 +23,21 @@ See `ATOM-CHANGELOG.md` for complete security audit history.
 
 ---
 
+## [0.4.1] - 2026-01-13
+
+### Added
+- ATOM Engine adversarial test suites (entropy backfire, griefing, HLL stuffing, iron dome, phantom swarm)
+- `ATOM-CHANGELOG.md` for detailed audit history
+
+### Changed
+- Hardened ATOM Engine stats computation and parameters
+- SDK package version bumped to 0.4.1
+
+### Removed
+- Devnet debug test scripts from `scripts/`
+
+---
+
 ## [0.4.0] - 2026-01-12
 
 ### Added - ATOM Engine Integration
