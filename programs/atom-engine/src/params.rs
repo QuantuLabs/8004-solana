@@ -112,9 +112,11 @@ pub const EPOCH_DECAY_PERCENT: u32 = 98;
 pub const VOLATILITY_SHIELD_DIVISOR: u32 = 500;
 pub const VOLATILITY_SHIELD_MAX: u32 = 4;
 
-/// Entropy-gated alpha_down parameters
+/// Entropy-gated alpha_down parameters (for repeat attacker amplification)
 pub const ENTROPY_GATE_DIVISOR: u8 = 3;
-pub const ENTROPY_GATE_MAX_DAMPENING: u32 = 4;
+pub const ENTROPY_GATE_MAX_DAMPENING: u32 = 4; // DEPRECATED: kept for backward compat
+pub const ENTROPY_GATE_MAX_AMPLIFIER: u32 = 3; // Max 3x amplification for repeat attackers
+pub const ALPHA_QUALITY_MAX_AMPLIFIED: u32 = 75; // Cap amplified alpha_down at 75
 
 /// Newcomer alpha_down cap to protect bootstrapping agents
 pub const NEWCOMER_ALPHA_DOWN_CAP: u32 = 10;
@@ -199,6 +201,9 @@ pub const UNIQUENESS_BONUS: u16 = 15;
 /// Bonus for loyal repeat (slow return)
 pub const LOYALTY_BONUS: u16 = 5;
 
+/// Maximum loyalty score (F99: prevents unbounded accumulation via bot farming)
+pub const LOYALTY_SCORE_MAX: u16 = 1000;
+
 /// Minimum slot delta for loyalty bonus
 pub const LOYALTY_MIN_SLOT_DELTA: u64 = 2000;
 
@@ -240,6 +245,10 @@ pub const HLL_ALPHA_M2_SCALED: u64 = 3_045_994_599;
 /// Linear counting threshold (roughly 2.5 * m)
 pub const HLL_LINEAR_COUNTING_THRESHOLD: u64 = 640;
 
+/// Salt rotation period in slots (~2.5 hours on Solana mainnet)
+/// Breaks pre-mining attacks by invalidating pre-computed keypairs periodically
+pub const HLL_SALT_ROTATION_PERIOD: u64 = 10_000;
+
 // ============================================================================
 // MRT (Minimum Residency Time) Parameters
 // ============================================================================
@@ -262,3 +271,72 @@ pub const QUALITY_FREEZE_EPOCHS: u8 = 2;
 
 /// Maximum alpha for quality updates (caps elastic recovery abuse)
 pub const ALPHA_QUALITY_MAX: u32 = 10;
+
+// ============================================================================
+// "Sovereign" Parameters - Caller-Specific Pricing & Temporal Inertia
+// ============================================================================
+
+/// Panic threshold for dynamic pricing (neg_pressure above this triggers tax)
+pub const V7_PANIC_THRESHOLD: u8 = 30;
+
+/// Diversity floor for panic salt rotation (low diversity = under Sybil attack)
+pub const V7_PANIC_DIVERSITY_FLOOR: u8 = 100;
+
+/// Minimum positive score to be considered a "VIP" (verified caller)
+pub const V7_VIP_MIN_SCORE: u8 = 30;
+
+/// Epochs per temporal inertia unit (1 inertia per 4 epochs of existence)
+pub const V7_TEMPORAL_INERTIA_EPOCHS: u16 = 4;
+
+/// Maximum temporal inertia (cap at 10)
+pub const V7_TEMPORAL_INERTIA_MAX: u16 = 10;
+
+/// Volume-based inertia divisor (feedback_count >> 6 = /64)
+pub const V7_VOLUME_INERTIA_SHIFT: u8 = 6;
+
+/// Maximum volume-based inertia (cap at 4)
+pub const V7_VOLUME_INERTIA_MAX: u16 = 4;
+
+/// Diversity cap divisor (>> 4 = /16)
+pub const V7_DIVERSITY_CAP_SHIFT: u8 = 4;
+
+/// Maximum diversity cap (12 for more headroom for legitimate agents)
+pub const V7_DIVERSITY_CAP_MAX: u16 = 12;
+
+/// Age penalty threshold (neg_pressure must exceed this with epochs > 1)
+pub const V7_AGE_PENALTY_THRESHOLD: u8 = 20;
+
+/// Age penalty multiplier (alpha * 3/2 for old agents with sustained negatives)
+pub const V7_AGE_PENALTY_NUMERATOR: u32 = 3;
+pub const V7_AGE_PENALTY_DENOMINATOR: u32 = 2;
+
+/// Maximum alpha after all adjustments
+pub const V7_ALPHA_MAX: u32 = 50;
+
+/// Panic salt rotation XOR mask (DEPRECATED)
+pub const V7_PANIC_SALT_MASK: u64 = 0xDEAD_BEEF_CAFE_BABE;
+
+// ============================================================================
+// Temporal Inertia and Salt Hardening Parameters
+// ============================================================================
+
+/// Dormancy threshold in epochs (agents inactive >= this lose temporal inertia)
+/// Mitigates sleeper cell attacks.
+pub const V8_DORMANCY_EPOCHS: u16 = 2;
+
+/// Salt entropy mixing constant (SplitMix64-style)
+/// Mitigates predictive salt by adding non-slot entropy.
+pub const V8_SALT_MIX_CONSTANT: u64 = 0x517c_c1b7_2722_0a95;
+
+// ============================================================================
+// Tier Vesting Parameters
+// ============================================================================
+
+/// Epochs of vesting before tier promotion (8 epochs ≈ 20 days)
+/// Prevents instant Platinum promotion, oscillation griefing, and promotion during freezes.
+pub const TIER_VESTING_EPOCHS: u16 = 8;
+
+/// Minimum loyalty score for Platinum candidature (anti-Sybil)
+/// Check loyalty before candidature to prevent late loyalty injection.
+/// 500 = requires multiple returning customers over time
+pub const TIER_PLATINUM_MIN_LOYALTY: u16 = 500;

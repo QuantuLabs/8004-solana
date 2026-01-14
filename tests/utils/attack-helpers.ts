@@ -5,8 +5,8 @@
 import { Keypair, PublicKey } from "@solana/web3.js";
 import * as crypto from "crypto";
 
-// HLL Constants (must match atom-engine/src/state.rs)
-const HLL_REGISTERS = 48;
+// HLL Constants (must match atom-engine/src/params.rs)
+const HLL_REGISTERS = 256; // ATOM uses 256 registers (4-bit packed = 128 bytes)
 const HLL_MAX_RHO = 15;
 
 // ============================================================================

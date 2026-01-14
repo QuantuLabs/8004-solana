@@ -7,7 +7,7 @@ use crate::params::*;
 // ============================================================================
 //
 // Stores raw metrics. Risk/quality/tier calculations performed in compute.rs.
-// Size: 460 bytes (~0.0040 SOL rent per agent)
+// Size: 561 bytes (~0.0049 SOL rent per agent)
 // Update: O(1), ~4500 CU per feedback
 
 /// Raw reputation metrics for an agent
@@ -90,11 +90,16 @@ pub struct AtomStats {
     /// Floor quality during freeze (0-100, used as quality_score/100)
     pub quality_floor: u8,
 
-    // ========== BYPASS TRACKING (2 bytes) ==========
+    // ========== BYPASS TRACKING (83 bytes) ==========
     /// Number of bypassed writes in current window
     pub bypass_count: u8,
     /// Sum of bypassed scores (for averaging when merging)
     pub bypass_score_avg: u8,
+    /// Fingerprints of bypassed entries (for revoke support)
+    /// Stores last 10 bypassed FPs so they can still be revoked (matches MRT_MAX_BYPASS)
+    pub bypass_fingerprints: [u64; 10],
+    /// Cursor for round-robin in bypass_fingerprints
+    pub bypass_fp_cursor: u8,
 
     // ========== OUTPUT CACHE (12 bytes) ==========
     /// Cached loyalty score
@@ -107,6 +112,15 @@ pub struct AtomStats {
     pub diversity_ratio: u8,
     /// Last computed trust tier (0-4: Unrated/Bronze/Silver/Gold/Platinum)
     pub trust_tier: u8,
+
+    // ========== TIER VESTING (4 bytes) ==========
+    /// Tier candidate waiting for promotion (0-4)
+    pub tier_candidate: u8,
+    /// Epoch when candidature started (for vesting calculation)
+    pub tier_candidate_epoch: u16,
+    /// Confirmed tier after vesting period (replaces trust_tier for logic)
+    pub tier_confirmed: u8,
+
     /// Bit flags for edge cases
     pub flags: u8,
     /// Confidence in metrics (0-10000)
@@ -152,12 +166,18 @@ impl Default for AtomStats {
             quality_floor: 0,
             bypass_count: 0,
             bypass_score_avg: 0,
+            bypass_fingerprints: [0u64; 10],
+            bypass_fp_cursor: 0,
             // Output cache
             loyalty_score: 0,
             quality_score: 0,
             risk_score: 0,
             diversity_ratio: 0,
             trust_tier: 0,
+            // Tier vesting
+            tier_candidate: 0,
+            tier_candidate_epoch: 0,
+            tier_confirmed: 0,
             flags: 0,
             confidence: 0,
             bump: 0,
@@ -167,11 +187,10 @@ impl Default for AtomStats {
 }
 
 impl AtomStats {
-    pub const SCHEMA_VERSION: u8 = 2;
+    pub const SCHEMA_VERSION: u8 = 1;
 
-    /// Account size: 8 + 64 + 24 + 12 + 8 + 128 + 8 + 196 + 16 + 12 = 476 bytes
-    /// Added in v2: MRT (8), Quality Circuit Breaker (6), Bypass Tracking (2)
-    pub const SIZE: usize = 476;
+    /// Account size: 8 + 64 + 24 + 12 + 8 + 128 + 8 + 196 + 16 + 83 + 12 + 4 = 561 bytes
+    pub const SIZE: usize = 561;
 
     /// Initialize with first feedback
     pub fn initialize(&mut self, bump: u8, collection: Pubkey, score: u8, current_slot: u64) {
@@ -342,10 +361,11 @@ pub fn hll_add(hll: &mut [u8; 128], client_hash: &[u8; 32], salt: u64) -> bool {
 
     let idx = (h % HLL_REGISTERS as u64) as usize;
     let remaining = h / HLL_REGISTERS as u64;
+    // Adjust for 56-bit effective width after division
     let rho = if remaining == 0 {
         HLL_MAX_RHO
     } else {
-        (remaining.leading_zeros() as u8 + 1).min(HLL_MAX_RHO)
+        (remaining.leading_zeros().saturating_sub(8) as u8 + 1).min(HLL_MAX_RHO)
     };
 
     let byte_idx = idx / 2;
@@ -491,51 +511,97 @@ pub fn push_caller_encoded(recent: &mut [u64; RING_BUFFER_SIZE], cursor: &mut u8
     *cursor = ((*cursor as usize + 1) % RING_BUFFER_SIZE) as u8;
 }
 
+/// Size of bypass fingerprints buffer (matches MRT_MAX_BYPASS for full revoke coverage)
+pub const BYPASS_FP_SIZE: usize = 10;
+
 /// MRT-aware push: protects entries younger than MRT_MIN_SLOTS from eviction
+/// Also stores bypassed fingerprints for revoke support
 /// Returns: (wrote_to_buffer, bypassed)
 pub fn push_caller_mrt(
     recent: &mut [u64; RING_BUFFER_SIZE],
     cursor: &mut u8,
     ring_base_slot: &mut u64,
     bypass_count: &mut u8,
+    bypass_fingerprints: &mut [u64; BYPASS_FP_SIZE],
+    bypass_fp_cursor: &mut u8,
     fp56: u64,
     score: u8,
     current_slot: u64,
 ) -> (bool, bool) {
     // Check if the entry at cursor position is protected by MRT
+    // An entry is protected if it was written less than MRT_MIN_SLOTS ago
+    //
+    // With round-robin eviction:
+    // - Position 0 was written at ring_base_slot
+    // - Position P was written at ring_base_slot + P * (time_per_entry)
+    // - We estimate time_per_entry ≈ slots_since_base / entries_written
+    //
+    // Simplified: if the whole buffer cycle took < MRT_MIN_SLOTS, protect all entries
     let slots_since_base = current_slot.saturating_sub(*ring_base_slot);
-    let entries_since_base = slots_since_base / MRT_MIN_SLOTS;
 
-    // If we've written fewer than RING_BUFFER_SIZE entries since base,
-    // and we're trying to evict an entry within MRT window, bypass instead
-    let cursor_age_in_entries = if entries_since_base < RING_BUFFER_SIZE as u64 {
-        entries_since_base
-    } else {
-        RING_BUFFER_SIZE as u64
-    };
+    // Calculate how old the entry at cursor position is
+    // Entry at cursor was written (24 - cursor) entries before the newest entry
+    // If cursor = 0, this entry is the oldest (written 24 entries ago)
+    let cursor_pos = *cursor as usize;
+    let entries_behind = if cursor_pos == 0 { RING_BUFFER_SIZE } else { cursor_pos };
 
-    // Calculate if cursor position is protected
-    let cursor_pos = *cursor as u64;
-    let is_protected = cursor_pos < cursor_age_in_entries.min(RING_BUFFER_SIZE as u64)
-        && *bypass_count < MRT_MAX_BYPASS;
+    // Estimate when this entry was written: base + (entries_behind / 24) * slots_since_base
+    // For MRT protection: entry is protected if age < MRT_MIN_SLOTS
+    // Since we're about to overwrite the oldest entry (cursor position),
+    // check if enough time has passed since we started this cycle
+    let min_cycle_time = (entries_behind as u64 * MRT_MIN_SLOTS) / RING_BUFFER_SIZE as u64;
+    let entry_is_young = slots_since_base < min_cycle_time && recent[cursor_pos] != 0;
 
-    if is_protected && recent[*cursor as usize] != 0 {
-        // Bypass mode: don't write to buffer, just track
+    if entry_is_young {
+        if *bypass_count >= MRT_MAX_BYPASS {
+            // Bypass buffer full - drop incoming entry
+            return (false, true);
+        }
+        // Bypass mode: store in bypass buffer
         *bypass_count = bypass_count.saturating_add(1);
-        return (false, true);
+
+        let bp_idx = (*bypass_fp_cursor as usize) % BYPASS_FP_SIZE;
+        bypass_fingerprints[bp_idx] = encode_caller_entry(fp56, score, false);
+        *bypass_fp_cursor = ((*bypass_fp_cursor as usize + 1) % BYPASS_FP_SIZE) as u8;
+
+        return (true, true);
+    }
+
+    // Reset ring_base_slot when writing to position 0
+    if cursor_pos == 0 {
+        *ring_base_slot = current_slot;
     }
 
     // Normal write
-    recent[*cursor as usize] = encode_caller_entry(fp56, score, false);
-    *cursor = ((*cursor as usize + 1) % RING_BUFFER_SIZE) as u8;
+    recent[cursor_pos] = encode_caller_entry(fp56, score, false);
+    *cursor = ((cursor_pos + 1) % RING_BUFFER_SIZE) as u8;
 
-    // Reset base slot when we complete a full cycle
+    // Reset bypass state when completing a full cycle
     if *cursor == 0 {
-        *ring_base_slot = current_slot;
         *bypass_count = 0;
+        for fp in bypass_fingerprints.iter_mut() {
+            *fp = 0;
+        }
+        *bypass_fp_cursor = 0;
     }
 
     (true, false)
+}
+
+/// Find entry in bypass fingerprints buffer (for revoke support)
+pub fn find_bypass_entry(bypass_fps: &[u64; BYPASS_FP_SIZE], fp56: u64) -> Option<(usize, u8, bool)> {
+    for (i, &entry) in bypass_fps.iter().enumerate() {
+        let (stored_fp, score, revoked) = decode_caller_entry(entry);
+        if stored_fp == fp56 && stored_fp != 0 {
+            return Some((i, score, revoked));
+        }
+    }
+    None
+}
+
+/// Mark entry as revoked in bypass fingerprints buffer
+pub fn mark_bypass_revoked(bypass_fps: &mut [u64; BYPASS_FP_SIZE], index: usize) {
+    bypass_fps[index] |= REVOKED_BIT;
 }
 
 /// Update entry in-place if found, otherwise push new entry

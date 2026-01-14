@@ -17,6 +17,9 @@ pub use error::AtomError;
 pub use events::*;
 pub use state::*;
 
+// Caller-specific pricing exports
+pub use compute::{is_caller_verified, calculate_v7_tax_shift};
+
 /// Summary returned by get_summary instruction (CPI-friendly)
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default)]
 pub struct Summary {
@@ -50,7 +53,7 @@ pub struct Summary {
     pub last_feedback_slot: u64,
 }
 
-/// v2.5b: Result of update_stats for enriched events
+/// Result of update_stats for enriched events
 /// Returned to caller so agent-registry can emit detailed NewFeedback event
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
 pub struct UpdateResult {
@@ -68,7 +71,7 @@ pub struct UpdateResult {
     pub hll_changed: bool,
 }
 
-/// v2.5b: Result of revoke_stats for enriched events
+/// Result of revoke_stats for enriched events
 /// Returned to caller so agent-registry can emit detailed FeedbackRevoked event
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
 pub struct RevokeResult {
@@ -110,7 +113,7 @@ pub mod atom_engine {
     }
 
     /// Update config parameters (authority only)
-    /// SECURITY v1.9: Added parameter bounds validation
+    /// SECURITY: Added parameter bounds validation
     pub fn update_config(
         ctx: Context<UpdateConfig>,
         // EMA Parameters
@@ -135,7 +138,7 @@ pub mod atom_engine {
     ) -> Result<()> {
         let config = &mut ctx.accounts.config;
 
-        // SECURITY v1.9: Validate parameter bounds before updating
+        // SECURITY: Validate parameter bounds before updating
         // EMA alphas must be 1-100 (used as percentage in calculations)
         if let Some(v) = alpha_fast {
             require!(v >= 1 && v <= 100, AtomError::InvalidConfigParameter);
@@ -213,14 +216,14 @@ pub mod atom_engine {
     /// Verifies ownership by reading Metaplex Core asset data (owner at offset 1)
     /// SECURITY: Also verifies the asset and collection are owned by Metaplex Core program
     pub fn initialize_stats(ctx: Context<InitializeStats>) -> Result<()> {
-        // SECURITY FIX v1.9: Verify asset is owned by Metaplex Core program
+        // SECURITY: Verify asset is owned by Metaplex Core program
         // This prevents attackers from creating fake accounts with their pubkey at offset 1
         require!(
             *ctx.accounts.asset.owner == MPL_CORE_ID,
             AtomError::InvalidAsset
         );
 
-        // SECURITY FIX v1.9: Verify collection is also owned by Metaplex Core program
+        // SECURITY: Verify collection is also owned by Metaplex Core program
         // This prevents attackers from passing arbitrary collection addresses
         require!(
             *ctx.accounts.collection.owner == MPL_CORE_ID,
@@ -265,7 +268,7 @@ pub mod atom_engine {
     /// Update stats for an agent (called via CPI from agent-registry during feedback)
     /// Stats must already exist (created during agent registration via initialize_stats)
     /// SECURITY: Caller verified via PDA signer (registry_authority) in context constraints
-    /// v2.5b: Returns UpdateResult for enriched events in agent-registry
+    /// Returns UpdateResult for enriched events in agent-registry
     pub fn update_stats(
         ctx: Context<UpdateStats>,
         client_hash: [u8; 32],
@@ -301,7 +304,7 @@ pub mod atom_engine {
             stats.risk_score
         );
 
-        // v2.5b: Return result for enriched events
+        // Return result for enriched events
         Ok(UpdateResult {
             trust_tier: stats.trust_tier,
             quality_score: stats.quality_score,
@@ -338,7 +341,7 @@ pub mod atom_engine {
         })
     }
 
-    /// v2.5a: Revoke a feedback entry from the ring buffer
+    /// Revoke a feedback entry from the ring buffer
     /// Called via CPI from agent-registry during revoke_feedback
     /// SECURITY: Caller verified via PDA signer (registry_authority) in context constraints
     ///
@@ -365,7 +368,8 @@ pub mod atom_engine {
         let client_hash = keccak::hash(client_pubkey.as_ref());
         let fp56 = secure_fp56(&client_hash.0, &stats.asset);
 
-        // Try to find entry in ring buffer
+        // Try to find entry in ring buffer first, then check bypass_fingerprints
+        // (Iron Dome fix: bypassed entries are stored in bypass_fingerprints for revoke support)
         let (original_score, had_impact) = if let Some((idx, score, already_revoked)) =
             find_caller_entry(&stats.recent_callers, fp56)
         {
@@ -377,26 +381,38 @@ pub mod atom_engine {
                 mark_entry_revoked(&mut stats.recent_callers, idx);
 
                 // Apply inverse correction to quality EMA
-                // If original was good (>50), apply bad score correction
-                // If original was bad (<=50), apply good score correction
                 let correction_score: u16 = if score > 50 { 0 } else { 10000 };
-
-                // Dampened correction (half of ALPHA_QUALITY_DOWN)
                 let dampened_alpha = params::ALPHA_QUALITY_DOWN / 2;
                 stats.quality_score = ((dampened_alpha * correction_score as u32
                     + (100 - dampened_alpha) * stats.quality_score as u32) / 100) as u16;
 
-                // Decrease confidence slightly (feedback was unreliable)
+                // Decrease confidence slightly
                 stats.confidence = stats.confidence.saturating_sub(100);
 
-                // Recalculate trust tier after quality change
-                // (simplified - could call update_trust_tier but that requires more context)
-                // For now, just let it be recalculated on next feedback
+                (score, true)
+            }
+        } else if let Some((idx, score, already_revoked)) =
+            find_bypass_entry(&stats.bypass_fingerprints, fp56)
+        {
+            // Found in bypass buffer (was bypassed due to Iron Dome attack)
+            if already_revoked {
+                (score, false)
+            } else {
+                // Mark as revoked in bypass buffer
+                mark_bypass_revoked(&mut stats.bypass_fingerprints, idx);
+
+                // Apply inverse correction
+                let correction_score: u16 = if score > 50 { 0 } else { 10000 };
+                let dampened_alpha = params::ALPHA_QUALITY_DOWN / 2;
+                stats.quality_score = ((dampened_alpha * correction_score as u32
+                    + (100 - dampened_alpha) * stats.quality_score as u32) / 100) as u16;
+
+                stats.confidence = stats.confidence.saturating_sub(100);
 
                 (score, true)
             }
         } else {
-            // Not found in ring buffer - soft fail
+            // Not found in ring buffer or bypass buffer - soft fail
             (0, false)
         };
 
@@ -425,4 +441,3 @@ pub mod atom_engine {
         })
     }
 }
-

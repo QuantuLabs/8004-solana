@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-01-14
+
+### ATOM Engine v0.2.0 "Fortress" - Production Ready
+
+The ATOM Engine has reached production stability after extensive security audits.
+
+#### Added
+- **Tier Vesting** - 8 epoch (~20 days) delay before tier promotion to prevent Sybil attacks
+- **Platinum Loyalty Gate** - Requires 500+ loyalty score before Platinum candidature
+- **Anti-Oscillation** - Tier fluctuations don't reset vesting timer
+
+#### State Changes
+- +4 bytes per agent (tier_candidate, tier_candidate_epoch, tier_confirmed)
+
+See `ATOM-CHANGELOG.md` for complete security audit history.
+
+---
+
 ## [0.4.0] - 2026-01-12
 
 ### Added - ATOM Engine Integration

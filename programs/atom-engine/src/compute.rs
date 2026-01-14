@@ -140,27 +140,216 @@ fn calculate_wue_weight(diversity_ratio: u8) -> u32 {
     }
 }
 
-/// Update quality score with asymmetric EMA and anti-gaming protections
+// ============================================================================
+// Alpha Calculation Functions
+// ============================================================================
+
+/// Compute alpha for degrading path (negative feedback)
+#[inline]
+fn compute_alpha_down_v6(stats: &AtomStats, base_alpha: u32) -> u32 {
+    // Inertia buckets with 1-bit smoothing
+    let confidence_inertia = ((stats.confidence >> 10) as u16)
+        + (((stats.confidence >> 9) & 1) as u16);
+    let tenure_inertia = (((stats.feedback_count >> 5) as u16).min(4))
+        + (((stats.feedback_count >> 4) & 1) as u16);
+
+    let raw_inertia = confidence_inertia.max(tenure_inertia).max(1);
+
+    // Diversity cap with tenure floor
+    let sybil_cap = ((stats.diversity_ratio >> 5) as u16).clamp(1, 10);
+    let tiny_tenure_floor = 1u16 + tenure_inertia.min(2);
+    let cap = sybil_cap.max(tiny_tenure_floor);
+    let effective_inertia = raw_inertia.min(cap);
+
+    let mut alpha = (base_alpha / effective_inertia as u32).max(1);
+
+    // Graded glass shield for newcomers
+    if stats.feedback_count < NEWCOMER_SHIELD_THRESHOLD && stats.neg_pressure < 2 {
+        let shield_cap = if stats.feedback_count < 8 { 10 } else { 15 };
+        alpha = alpha.min(shield_cap);
+    }
+
+    // Malice override for confirmed bad actors
+    let persistent_neg = stats.neg_pressure >= 30;
+    let enough_history = stats.feedback_count > NEWCOMER_SHIELD_THRESHOLD;
+    let neg_dense = stats.neg_pressure >= 200;
+
+    if persistent_neg && enough_history && neg_dense {
+        let kill_floor = 12u32;
+        alpha = alpha.max(kill_floor);
+        alpha = (alpha + (alpha >> 1)).min(50);
+    }
+
+    alpha
+}
+
+/// Compute alpha for improving path (positive feedback)
+#[inline]
+fn compute_alpha_up_v6(stats: &AtomStats, base_alpha: u32) -> u32 {
+    // Volatility brake (one-way, only slows upward - prevents pump attacks)
+    // NEVER amplifies downward (prevents Volatility Trap attack)
+    let vol_penalty = (1 + (stats.ema_volatility >> 9) as u32).min(2);
+
+    // Momentum release: bypass brake on winning streak (neg_pressure == 0)
+    // Prevents recovery suppression attack
+    let effective_brake = if stats.neg_pressure == 0 {
+        1  // Full speed recovery
+    } else {
+        vol_penalty
+    };
+
+    (base_alpha / effective_brake).max(1)
+}
+
+// ============================================================================
+// Caller-Specific Pricing & Temporal Inertia
+// ============================================================================
+
+/// Check if caller is a verified "VIP" (has positive history with this agent)
+#[inline]
+pub fn is_caller_verified(stats: &AtomStats, caller_fp: u64) -> bool {
+    // Check ring buffer for positive non-revoked feedback
+    for &packed in stats.recent_callers.iter() {
+        if packed == 0 { continue; }
+        let (stored_fp, score, revoked) = decode_caller_entry(packed);
+        if stored_fp == caller_fp && !revoked && score >= V7_VIP_MIN_SCORE {
+            return true;
+        }
+    }
+
+    // Also check bypass fingerprints (Iron Dome victims)
+    for &packed in stats.bypass_fingerprints.iter() {
+        if packed == 0 { continue; }
+        let (stored_fp, score, revoked) = decode_caller_entry(packed);
+        if stored_fp == caller_fp && !revoked && score >= V7_VIP_MIN_SCORE {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Calculate discriminatory Sybil Tax based on caller history
+/// Returns cost multiplier (shift amount for exponential pricing)
+#[inline]
+pub fn calculate_v7_tax_shift(stats: &AtomStats, caller_fp: u64) -> u32 {
+    if stats.neg_pressure <= V7_PANIC_THRESHOLD {
+        return 0;
+    }
+
+    // VIP Lane: verified callers exempt from tax
+    if is_caller_verified(stats, caller_fp) {
+        return 0;
+    }
+
+    // Unknown caller during attack: apply exponential tax
+    let pressure_excess = (stats.neg_pressure - V7_PANIC_THRESHOLD) as u32;
+    (pressure_excess / 5).min(10)
+}
+
+/// Compute alpha for degrading path with temporal inertia
+#[inline]
+fn compute_alpha_down_v8(stats: &AtomStats, base_alpha: u32, current_slot: u64, slot_delta: u64) -> u32 {
+    let age_slots = current_slot.saturating_sub(stats.first_feedback_slot);
+    let age_epochs = (age_slots / EPOCH_SLOTS) as u16;
+
+    // Dormancy check
+    let inactive_slots = slot_delta;
+    let inactive_epochs = (inactive_slots / EPOCH_SLOTS) as u16;
+
+    let base_temporal = (age_epochs / V7_TEMPORAL_INERTIA_EPOCHS)
+        .max(1)
+        .min(V7_TEMPORAL_INERTIA_MAX);
+
+    // Dormant agents lose temporal inertia protection
+    let temporal_inertia: u16 = if inactive_epochs >= V8_DORMANCY_EPOCHS {
+        1
+    } else if inactive_epochs >= 1 {
+        base_temporal.min(4)
+    } else {
+        base_temporal
+    };
+
+    // Volume provides minor bonus (capped at 4)
+    let volume_inertia = ((stats.feedback_count >> V7_VOLUME_INERTIA_SHIFT as u64) as u16)
+        .max(1)
+        .min(V7_VOLUME_INERTIA_MAX);
+
+    // Time wins over volume
+    let raw_inertia = temporal_inertia.max(volume_inertia);
+
+    // Diversity gating (anti-Sybil)
+    let sybil_cap = ((stats.diversity_ratio >> V7_DIVERSITY_CAP_SHIFT) as u16)
+        .max(1)
+        .min(V7_DIVERSITY_CAP_MAX);
+
+    // Age penalty on inertia for sustained negatives
+    let age_penalty_divisor: u16 = if stats.neg_pressure > V7_AGE_PENALTY_THRESHOLD && age_epochs > 1 {
+        3
+    } else {
+        2
+    };
+
+    let effective_inertia = raw_inertia
+        .saturating_mul(2)
+        .saturating_div(age_penalty_divisor)
+        .min(sybil_cap)
+        .max(1);
+
+    let mut alpha = (base_alpha / effective_inertia as u32).max(1);
+
+    // Graded glass shield (newcomer protection)
+    if stats.feedback_count < NEWCOMER_SHIELD_THRESHOLD && stats.neg_pressure < 2 {
+        let shield_cap = if stats.feedback_count < 8 { 10 } else { 15 };
+        alpha = alpha.min(shield_cap);
+    }
+
+    // Malice override for confirmed bad actors
+    let persistent_neg = stats.neg_pressure >= 30;
+    let enough_history = stats.feedback_count > NEWCOMER_SHIELD_THRESHOLD;
+    let neg_dense = stats.neg_pressure >= 200;
+
+    if persistent_neg && enough_history && neg_dense {
+        let kill_floor = 12u32;
+        alpha = alpha.max(kill_floor);
+        alpha = (alpha + (alpha >> 1)).min(V7_ALPHA_MAX);
+    }
+
+    alpha
+}
+
+/// Compute alpha for improving path
+#[inline]
+fn compute_alpha_up_v7(stats: &AtomStats, base_alpha: u32) -> u32 {
+    let vol_penalty = (1 + (stats.ema_volatility >> 9) as u32).min(2);
+
+    let effective_brake = if stats.neg_pressure == 0 {
+        1
+    } else {
+        vol_penalty
+    };
+
+    (base_alpha / effective_brake).max(1)
+}
+
+/// Update quality score with anti-gaming protections
 fn update_quality(
     stats: &mut AtomStats,
     score: u8,
     hll_changed: bool,
     slot_delta: u64,
     current_epoch: u16,
+    current_slot: u64,
 ) {
-    // Quality Circuit Breaker: check if frozen
-    if stats.freeze_epochs > 0 {
+    // Circuit breaker: dampen during freeze, never block negative
+    let is_frozen = stats.freeze_epochs > 0;
+
+    if is_frozen {
         // Decrement freeze on epoch change
         if current_epoch != stats.velocity_epoch {
             stats.freeze_epochs = stats.freeze_epochs.saturating_sub(1);
             stats.velocity_epoch = current_epoch;
             stats.quality_velocity = 0;
-        }
-        // During freeze, clamp quality to floor
-        if stats.freeze_epochs > 0 {
-            let floor = (stats.quality_floor as u16) * 100;
-            stats.quality_score = stats.quality_score.max(floor);
-            return;
         }
     }
 
@@ -181,44 +370,24 @@ fn update_quality(
         stats.updates_since_hll_change = stats.updates_since_hll_change.saturating_add(1);
     }
 
-    // Loyalty bonus
+    // Loyalty bonus (capped to prevent farming)
     if !hll_changed && slot_delta > LOYALTY_MIN_SLOT_DELTA && stats.burst_pressure < BURST_THRESHOLD {
-        stats.loyalty_score = stats.loyalty_score.saturating_add(LOYALTY_BONUS);
+        stats.loyalty_score = stats.loyalty_score.saturating_add(LOYALTY_BONUS).min(LOYALTY_SCORE_MAX);
         quality_delta = quality_delta.saturating_add(LOYALTY_BONUS as u32 * 100);
     }
 
     quality_delta = quality_delta.min(10000);
 
-    // Asymmetric EMA with multiple protections
-    let alpha = if quality_delta > stats.quality_score as u32 {
-        // Improving: apply probation, elastic recovery, veteran bonus, WUE, contradiction penalty
-        let base_alpha_up = if stats.quality_score < PROBATION_THRESHOLD {
-            if stats.diversity_ratio > HEALTHY_DIVERSITY_THRESHOLD {
-                ALPHA_QUALITY_UP
-            } else {
-                ALPHA_QUALITY_UP / PROBATION_DAMPENING
-            }
-        } else {
-            ALPHA_QUALITY_UP
-        };
+    // Determine if improving or degrading
+    let is_improving = quality_delta > stats.quality_score as u32;
 
-        // Elastic recovery when in crash/dip (capped to prevent abuse)
-        let alpha_with_elastic = if stats.ema_score_fast < stats.ema_score_slow {
-            (base_alpha_up * ELASTIC_RECOVERY_MULTIPLIER).min(ALPHA_QUALITY_MAX)
-        } else {
-            base_alpha_up
-        };
+    // Alpha calculation with all protections
+    let mut alpha = if is_improving {
+        let base_alpha = compute_alpha_up_v7(stats, ALPHA_QUALITY_UP);
 
-        // Veteran recovery bonus (capped to prevent abuse)
-        let alpha_with_veteran = if stats.confidence > VETERAN_CONFIDENCE_THRESHOLD {
-            (alpha_with_elastic * VETERAN_RECOVERY_BONUS).min(ALPHA_QUALITY_MAX)
-        } else {
-            alpha_with_elastic
-        };
-
-        // WUE weighting
+        // Apply existing WUE weighting
         let wue_weight = calculate_wue_weight(stats.diversity_ratio);
-        let alpha_with_wue = (alpha_with_veteran * wue_weight) / 100;
+        let alpha_with_wue = (base_alpha * wue_weight) / 100;
 
         // Contradiction penalty
         let alpha_with_contradiction = if stats.neg_pressure > NEG_PRESSURE_THRESHOLD
@@ -229,49 +398,26 @@ fn update_quality(
         };
 
         stats.neg_pressure = stats.neg_pressure.saturating_sub(NEG_PRESSURE_DECAY);
-        alpha_with_contradiction.max(1).min(50)
+        alpha_with_contradiction.max(2).min(V7_ALPHA_MAX)
     } else {
-        // Degrading: apply tier shielding, newcomer protection, burst amplifier, volatility shield, entropy gate
-        let base_alpha = if stats.trust_tier >= TIER_SHIELD_THRESHOLD {
-            ALPHA_QUALITY_DOWN / TIER_SHIELD_DAMPENING
-        } else if stats.feedback_count < NEWCOMER_SHIELD_THRESHOLD {
-            ALPHA_QUALITY_DOWN / TIER_SHIELD_DAMPENING
-        } else {
-            ALPHA_QUALITY_DOWN
-        };
-
-        // Burst amplifier (penalize burst during degradation)
-        let alpha_with_burst = if stats.burst_pressure > BURST_NEGATIVE_THRESHOLD
-            && stats.feedback_count > NEWCOMER_SHIELD_THRESHOLD {
-            (base_alpha * BURST_NEGATIVE_AMPLIFIER).min(100)
-        } else {
-            base_alpha
-        };
-
-        // Volatility shield
-        let volatility_dampener = (1 + stats.ema_volatility as u32 / VOLATILITY_SHIELD_DIVISOR)
-            .min(VOLATILITY_SHIELD_MAX);
-        let alpha_with_volatility = alpha_with_burst / volatility_dampener;
-
-        // Entropy gate
-        let entropy_dampener = (1 + stats.updates_since_hll_change as u32 / ENTROPY_GATE_DIVISOR as u32)
-            .min(ENTROPY_GATE_MAX_DAMPENING);
-        let alpha_with_entropy = alpha_with_volatility / entropy_dampener;
-
-        // Newcomer alpha cap
-        let final_alpha = if stats.trust_tier == 0 {
-            alpha_with_entropy.min(NEWCOMER_ALPHA_DOWN_CAP)
-        } else {
-            alpha_with_entropy
-        };
-
         stats.neg_pressure = stats.neg_pressure.saturating_add(NEG_PRESSURE_INCREMENT);
-        final_alpha.max(1)
+        compute_alpha_down_v8(stats, ALPHA_QUALITY_DOWN, current_slot, slot_delta)
     };
+
+    // During freeze, dampen BOTH directions symmetrically
+    if is_frozen && stats.freeze_epochs > 0 {
+        alpha = (alpha / 10).max(1);
+    }
 
     let old_quality = stats.quality_score;
     stats.quality_score = ((alpha * quality_delta
         + (100 - alpha) * stats.quality_score as u32) / 100) as u16;
+
+    // Enforce quality floor during freeze
+    if is_frozen && stats.freeze_epochs > 0 {
+        let floor_scaled = stats.quality_floor as u16 * 100;
+        stats.quality_score = stats.quality_score.max(floor_scaled);
+    }
 
     // Track quality velocity for circuit breaker
     let change_magnitude = old_quality.abs_diff(stats.quality_score);
@@ -279,8 +425,11 @@ fn update_quality(
 
     // Trigger circuit breaker if velocity exceeds threshold
     if stats.quality_velocity > QUALITY_VELOCITY_THRESHOLD {
+        if !is_frozen {
+            // New freeze: set floor at 80% of current quality
+            stats.quality_floor = ((stats.quality_score as u32 * 8) / 1000) as u8;
+        }
         stats.freeze_epochs = QUALITY_FREEZE_EPOCHS;
-        stats.quality_floor = (stats.quality_score / 100) as u8;
     }
 }
 
@@ -321,15 +470,16 @@ fn update_confidence(stats: &mut AtomStats, hll_est: u64) {
 }
 
 // ============================================================================
-// Trust Tier Classification
+// Trust Tier Classification with Vesting
 // ============================================================================
 
-/// Update trust tier with hysteresis to prevent oscillation gaming
-fn update_trust_tier(stats: &mut AtomStats) {
+/// Calculate raw tier based on quality/risk/confidence (without vesting)
+#[inline]
+fn calculate_raw_tier(stats: &AtomStats) -> u8 {
     let q = stats.quality_score;
     let r = stats.risk_score;
     let c = stats.confidence;
-    let current = stats.trust_tier;
+    let current = stats.tier_confirmed;
     let h = TIER_HYSTERESIS;
 
     let can_be_platinum = r <= TIER_PLATINUM.1 && c >= TIER_PLATINUM.2;
@@ -337,7 +487,7 @@ fn update_trust_tier(stats: &mut AtomStats) {
     let can_be_silver = r <= TIER_SILVER.1 && c >= TIER_SILVER.2;
     let can_be_bronze = r <= TIER_BRONZE.1 && c >= TIER_BRONZE.2;
 
-    stats.trust_tier = if can_be_platinum &&
+    if can_be_platinum &&
         (current == 4 && q >= TIER_PLATINUM.0.saturating_sub(h) ||
          current < 4 && q >= TIER_PLATINUM.0.saturating_add(h)) {
         4
@@ -355,7 +505,80 @@ fn update_trust_tier(stats: &mut AtomStats) {
         1
     } else {
         0
-    };
+    }
+}
+
+/// Update trust tier with vesting period for promotions
+fn update_trust_tier(stats: &mut AtomStats) {
+    let calculated_tier = calculate_raw_tier(stats).min(4);
+
+    // During freeze, reset candidature
+    if stats.freeze_epochs > 0 {
+        stats.tier_candidate = 0;
+        stats.tier_candidate_epoch = 0;
+        stats.trust_tier = stats.tier_confirmed;
+        return;
+    }
+
+    // Demotion is immediate
+    if calculated_tier < stats.tier_confirmed {
+        stats.tier_confirmed = calculated_tier;
+        stats.tier_candidate = 0;
+        stats.tier_candidate_epoch = 0;
+        stats.trust_tier = stats.tier_confirmed;
+        return;
+    }
+
+    // Promotion requires vesting
+    if calculated_tier > stats.tier_confirmed {
+        // Check loyalty before Platinum candidature
+        let can_candidate_platinum = if calculated_tier >= 4 {
+            stats.loyalty_score >= TIER_PLATINUM_MIN_LOYALTY
+        } else {
+            true
+        };
+
+        if !can_candidate_platinum {
+            // Not enough loyalty for Platinum, cap at Gold
+            let effective_tier = calculated_tier.min(3);
+            if effective_tier > stats.tier_confirmed {
+                if stats.tier_candidate != effective_tier {
+                    stats.tier_candidate = effective_tier;
+                    stats.tier_candidate_epoch = stats.current_epoch;
+                }
+            }
+        } else {
+            // Anti-oscillation: only reset timer if tier drops below candidate
+            if stats.tier_candidate == 0 {
+                stats.tier_candidate = calculated_tier;
+                stats.tier_candidate_epoch = stats.current_epoch;
+            } else if calculated_tier < stats.tier_candidate {
+                stats.tier_candidate = calculated_tier;
+                stats.tier_candidate_epoch = stats.current_epoch;
+            }
+        }
+
+        // Check vesting completion
+        let epochs_waiting = stats.current_epoch.saturating_sub(stats.tier_candidate_epoch);
+
+        if epochs_waiting >= TIER_VESTING_EPOCHS && stats.tier_candidate > 0 {
+            stats.tier_confirmed = stats.tier_candidate;
+
+            if calculated_tier > stats.tier_confirmed {
+                stats.tier_candidate = calculated_tier;
+                stats.tier_candidate_epoch = stats.current_epoch;
+            } else {
+                stats.tier_candidate = 0;
+                stats.tier_candidate_epoch = 0;
+            }
+        }
+    } else {
+        // Stable: reset candidature
+        stats.tier_candidate = 0;
+        stats.tier_candidate_epoch = 0;
+    }
+
+    stats.trust_tier = stats.tier_confirmed;
 }
 
 // ============================================================================
@@ -374,38 +597,58 @@ pub fn update_stats(
     // Domain-separated fingerprint (56-bit)
     let caller_fp = secure_fp56(client_hash, &stats.asset);
 
-    // Check if already in ring buffer (for burst detection)
+    // Check if already in ring buffer or bypass buffer
     let existing_entry = find_caller_entry(&stats.recent_callers, caller_fp);
-    let is_recent = existing_entry.is_some();
+    let existing_bypass = find_bypass_entry(&stats.bypass_fingerprints, caller_fp);
+    let is_known = existing_entry.is_some() || existing_bypass.is_some();
+    let is_revoked = existing_entry.map(|(_, _, revoked)| revoked).unwrap_or(false)
+        || existing_bypass.map(|(_, _, revoked)| revoked).unwrap_or(false);
+    let is_recent = is_known && !is_revoked;
 
-    // MRT-aware ring buffer update
-    let (_wrote_to_buffer, bypassed) = if let Some((idx, _old_score, _revoked)) = existing_entry {
-        // Update in place if found
-        stats.recent_callers[idx] = encode_caller_entry(caller_fp, score, false);
+    // MRT-aware ring buffer update (preserve revoked status when updating)
+    let (_wrote_to_buffer, bypassed) = if let Some((idx, _old_score, was_revoked)) = existing_entry {
+        stats.recent_callers[idx] = encode_caller_entry(caller_fp, score, was_revoked);
+        (true, false)
+    } else if let Some((idx, _old_score, was_revoked)) = existing_bypass {
+        stats.bypass_fingerprints[idx] = encode_caller_entry(caller_fp, score, was_revoked);
         (true, false)
     } else {
         // Try to push with MRT protection
+        // Bypassed entries are now stored in bypass_fingerprints for revoke support
         push_caller_mrt(
             &mut stats.recent_callers,
             &mut stats.eviction_cursor,
             &mut stats.ring_base_slot,
             &mut stats.bypass_count,
+            &mut stats.bypass_fingerprints,
+            &mut stats.bypass_fp_cursor,
             caller_fp,
             score,
             current_slot,
         )
     };
 
-    // Track bypass for metrics
-    if bypassed {
+    // Track bypass for metrics (only for real bypasses)
+    if bypassed && _wrote_to_buffer {
         stats.bypass_score_avg = ((stats.bypass_score_avg as u16 + score as u16) / 2) as u8;
     }
 
-    // Sticky burst pressure
+    // Entry was dropped (bypass buffer saturated)
+    if bypassed && !_wrote_to_buffer {
+        stats.burst_pressure = stats.burst_pressure.saturating_add(BURST_INCREMENT * 2);
+        return false;
+    }
+
+    // Burst pressure tracking
     if is_recent {
         stats.burst_pressure = stats.burst_pressure.saturating_add(BURST_INCREMENT);
-    } else {
+    } else if !is_known {
         stats.burst_pressure = stats.burst_pressure.saturating_sub(BURST_DECAY_LINEAR);
+    }
+
+    // Revoked users don't affect stats
+    if is_revoked {
+        return false;
     }
 
     // Velocity-based burst detection
@@ -457,10 +700,12 @@ pub fn update_stats(
         stats.epoch_count = stats.epoch_count.saturating_add(1);
     }
 
-    // HLL update with slot-gating and salting
+    // HLL update with slot-gating and rotating salt
     let salted_hash = salt_hash_with_asset(client_hash, &stats.asset);
+    let slot_entropy = current_slot / HLL_SALT_ROTATION_PERIOD;
+    let effective_salt = stats.hll_salt ^ slot_entropy;
     let hll_changed = if slot_delta >= HLL_COOLDOWN_SLOTS || stats.feedback_count == 0 {
-        hll_add(&mut stats.hll_packed, &salted_hash, stats.hll_salt)
+        hll_add(&mut stats.hll_packed, &salted_hash, effective_salt)
     } else {
         false
     };
@@ -469,7 +714,7 @@ pub fn update_stats(
     // All updates
     let current_epoch = stats.current_epoch;
     update_ema(stats, score, slot_delta);
-    update_quality(stats, score, hll_changed, slot_delta, current_epoch);
+    update_quality(stats, score, hll_changed, slot_delta, current_epoch, current_slot);
     stats.risk_score = calculate_risk(stats, hll_est);
     stats.diversity_ratio = safe_div(hll_est * 255, stats.feedback_count.max(1)).min(255) as u8;
     update_confidence(stats, hll_est);
@@ -482,8 +727,7 @@ pub fn update_stats(
 // Migration Support
 // ============================================================================
 
-/// No migration needed - starting from scratch with schema v2
-/// Kept for potential future migrations
+/// Handle schema migrations if needed
 pub fn maybe_migrate(stats: &mut AtomStats) {
     if stats.schema_version != AtomStats::SCHEMA_VERSION {
         stats.schema_version = AtomStats::SCHEMA_VERSION;

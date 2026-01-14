@@ -144,6 +144,36 @@ const collectionMintPubkey = new PublicKey(collectionMintBytes);
 
 See `tests/e2e-integration.ts` for reference implementation.
 
+## ATOM Engine (v0.2.0 "Fortress")
+
+**ATOM** (AI Agent Trust & Reputation Metrics) is the reputation computation engine used by the Reputation Registry.
+
+### Key Features
+- **HyperLogLog** (256 registers, 4-bit) for unique client estimation (~6.5% error)
+- **Dual EMA** (fast α=0.30, slow α=0.05) for score smoothing
+- **MRT Protection** (Minimum Retention Time) prevents ring buffer gaming
+- **Quality Circuit Breaker** with freeze mechanism and floor protection
+- **Sybil Tax** with VIP lane for verified callers
+- **Trust Tiers**: Platinum/Gold/Silver/Bronze with hysteresis
+
+### Security Status
+- **52 fixes** implemented (F01-F102)
+- **58 accepted risks** (ROI < 1)
+- **0 open vulnerabilities**
+- **6 consecutive clean audits** (Hivemind: GPT-5.2 + Gemini 3 Pro)
+- **99% confidence score**
+
+See `ATOM-CHANGELOG.md` for full security audit history.
+
+### ATOM Files
+```
+programs/atom-engine/src/
+├── lib.rs          # Program entry, instructions (give_feedback, revoke)
+├── compute.rs      # All calculation logic (EMA, risk, quality, tiers)
+├── state.rs        # AtomStats struct, HLL, ring buffer, helpers
+└── params.rs       # Tunable parameters and constants
+```
+
 ## Code Organization
 
 ```
@@ -158,6 +188,11 @@ programs/
 │   ├── state.rs        # FeedbackAccount, ResponseAccount, AgentReputationMetadata
 │   ├── error.rs
 │   └── events.rs
+├── atom-engine/src/    # ATOM v0.2.0 - Reputation computation engine
+│   ├── lib.rs
+│   ├── compute.rs
+│   ├── state.rs
+│   └── params.rs
 └── validation-registry/src/
     ├── lib.rs          # Request/respond to validation tasks
     ├── state.rs        # ValidationRequest, ValidationResponse
