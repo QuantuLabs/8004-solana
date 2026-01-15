@@ -15,9 +15,9 @@
 
 ## v0.4.0 Highlights
 
-- **[ATOM](programs/atom-engine/README.md)** (Agent Trust On-chain Model): Reputation scoring with Sybil resistance
+- **[ATOM](programs/atom-engine/README.md)** (Agent Trust On-chain Model): Integrated reputation scoring with Sybil resistance
 - **Multi-Collection Registry**: Global registry with base + user-created collections (sharding)
-- **CPI Integration**: `give_feedback` / `revoke_feedback` → ATOM for real-time scoring
+- **Mandatory CPI**: All feedback operations require ATOM Engine for trust metrics
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 
@@ -65,9 +65,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 | Module | Description |
 |--------|-------------|
 | **Identity** | NFT-based agents (Metaplex Core), PDA metadata, immutable option |
-| **Reputation** | Feedback (0-100), revoke, responses → CPI to ATOM |
+| **Reputation** | Feedback (0-100), revoke, responses → **requires** ATOM Engine CPI |
 | **Validation** | Third-party verification, multi-validator, progressive (109B optimized) |
-| **ATOM** | HLL uniqueness, ring buffer burst detection, trust tiers |
+| **ATOM Engine** | Integrated Sybil resistance (HLL), burst detection, trust tiers (0-5) |
 
 ### Validation System
 
@@ -97,16 +97,16 @@ The validation module enables third-party validators to assess agent performance
 
 This implementation is **fully compliant** with the [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004), adapted for Solana's account-based architecture.
 
-### ✅ Fully Compliant Features
+### Fully Compliant Features
 
 | Module | Compliance | Details |
 |--------|-----------|---------|
-| **Identity Registry** | ✅ Complete | All core functions: `register()`, `setAgentURI()`, `setMetadata()`, `setAgentWallet()` with Ed25519 signature verification |
-| **Reputation Registry** | ✅ Complete | `giveFeedback()`, `revokeFeedback()`, `appendResponse()` with score range 0-100 |
-| **Validation Registry** | ✅ Complete | `validationRequest()`, `validationResponse()`, progressive validation, anti-self-validation |
-| **Immutability** | ✅ Complete | On-chain pointers/hashes cannot be deleted, audit trail integrity maintained |
+| **Identity Registry** | Complete | All core functions: `register()`, `setAgentURI()`, `setMetadata()`, `setAgentWallet()` with Ed25519 signature verification |
+| **Reputation Registry** | Complete | `giveFeedback()`, `revokeFeedback()`, `appendResponse()` with score range 0-100 |
+| **Validation Registry** | Complete | `validationRequest()`, `validationResponse()`, progressive validation, anti-self-validation |
+| **Immutability** | Complete | On-chain pointers/hashes cannot be deleted, audit trail integrity maintained |
 
-### 🔄 Solana-Specific Adaptations
+### Solana-Specific Adaptations
 
 **Event-Only Feedback Storage**
 - **Why:** Solana compute limits (1.4M CU) and cost optimization
@@ -119,14 +119,14 @@ This implementation is **fully compliant** with the [ERC-8004 specification](htt
 - **Validation:** PDA per validation (109B optimized, -27% rent vs v0.3.0)
 - **Agent IDs:** Pubkey (Metaplex Core asset) for native NFT integration
 
-### 🎯 Enhancements Beyond Spec
+### Key Differentiators
 
-- **ATOM Engine:** Sybil resistance via HyperLogLog, burst detection, trust tiers
+- **ATOM Engine Integration:** Mandatory Sybil resistance via HyperLogLog, burst detection, trust tiers (not in base spec)
 - **Multi-Collection Sharding:** Unlimited scalability via collection-based partitioning
 - **Immutable Metadata:** Optional flag for permanent certification records
 - **Cost Optimization:** 109B validation accounts (-27% vs initial design)
 
-### 📦 Required Components
+### Required Components
 
 - [TypeScript SDK](https://github.com/QuantuLabs/8004-solana-ts) - Client-side read functions (`getSummary()`, `readAllFeedback()`)
 - [Indexer](https://github.com/QuantuLabs/8004-solana-indexer) - Aggregation queries (standard Solana pattern)
