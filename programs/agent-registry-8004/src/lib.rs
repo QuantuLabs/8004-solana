@@ -17,6 +17,7 @@ pub use reputation::state::*;
 pub use reputation::events::*;
 
 pub use validation::contexts::*;
+pub use validation::state::*;
 pub use validation::events::*;
 
 pub use error::RegistryError;
@@ -158,6 +159,11 @@ pub mod agent_registry_8004 {
     // Validation Instructions
     // ============================================================================
 
+    /// Initialize the ValidationConfig (global validation registry state)
+    pub fn initialize_validation_config(ctx: Context<InitializeValidationConfig>) -> Result<()> {
+        validation::instructions::initialize_validation_config(ctx)
+    }
+
     /// Request validation for an agent
     pub fn request_validation(
         ctx: Context<RequestValidation>,
@@ -176,8 +182,10 @@ pub mod agent_registry_8004 {
     }
 
     /// Validator responds to a validation request
+    /// ERC-8004: Enables progressive validation - validators can update responses
     pub fn respond_to_validation(
         ctx: Context<RespondToValidation>,
+        validator_address: Pubkey,
         nonce: u32,
         response: u8,
         response_uri: String,
@@ -186,6 +194,7 @@ pub mod agent_registry_8004 {
     ) -> Result<()> {
         validation::instructions::respond_to_validation(
             ctx,
+            validator_address,
             nonce,
             response,
             response_uri,
@@ -193,4 +202,9 @@ pub mod agent_registry_8004 {
             tag,
         )
     }
+
+    // ERC-8004 Compliance: No close_validation() function
+    // Per specification: "On-chain pointers and hashes cannot be deleted,
+    // ensuring audit trail integrity." ValidationRequest PDAs are immutable
+    // and permanent for reputation data integrity.
 }

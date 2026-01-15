@@ -21,7 +21,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-iron-dome.ts tests/atom-entropy-backfire.ts tests/atom-hll-stuffing.ts tests/atom-griefing.ts tests/atom-phantom-swarm.ts tests/atom-security-audit.ts"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-iron-dome.ts tests/atom-entropy-backfire.ts tests/atom-hll-stuffing.ts tests/atom-griefing.ts tests/atom-phantom-swarm.ts tests/atom-security-audit.ts tests/validation-state-tests.ts"
 phantom = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-phantom-swarm.ts"
 security = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-security-audit.ts"
 entropy = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-entropy-backfire.ts"
@@ -32,6 +32,7 @@ revoke = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts
 full = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts"
 attacks = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/atom-attack-vectors.ts"
 costs = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/e2e-costs.ts"
+validation = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/validation-state-tests.ts"
 
 [test]
 startup_wait = 5000

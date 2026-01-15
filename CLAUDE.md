@@ -83,22 +83,20 @@ solana program deploy target/deploy/identity_registry.so \
 - Response PDA: `["response", agent_id, client.key(), feedback_index, response_index]`
 - Agent Reputation PDA: `["agent_reputation", agent_id]` - Cached aggregated stats
 
-**Validation Registry**:
-- Config PDA: `["config"]`
-- Validation Request PDA: `["validation_request", agent_id, validator.key(), request_index]`
-- Validation Response PDA: `["validation_response", agent_id, validator.key(), request_index]`
+**Validation Registry** (v3.0.0 Consolidated):
+- ValidationConfig PDA: `["validation_config"]` - Global state (authority, counters)
+- ValidationRequest PDA: `["validation", asset, validator_address, nonce]` - Single PDA for request+response (109 bytes, immutable)
 
 ### Cross-Program Security
 
-**CRITICAL**: Reputation and Validation registries MUST validate that agents exist in Identity Registry to prevent fake agent attacks. This is enforced via:
+**v3.0.0 Consolidation**: Validation Registry is now integrated into the main `agent-registry-8004` program, eliminating CPI overhead and attack surface.
 
-1. **CPI Account Constraint** - Verify Identity Registry program ID:
-```rust
-#[account(constraint = identity_registry_program.key() == IDENTITY_REGISTRY_ID)]
-pub identity_registry_program: Program<'info, IdentityRegistry>,
-```
+**Identity Verification**:
+- Validation instructions reference `AgentAccount` PDA directly (same program)
+- Additional Metaplex Core ownership verification via `get_core_owner()` for source-of-truth checks
+- No cross-program CPI required (validation is a module, not separate program)
 
-2. **Environment-Based Program IDs** - Uses Cargo features (devnet/localnet/mainnet) configured in Anchor.toml to set the correct hardcoded program ID at compile time.
+**Legacy (Pre-v3.0.0)**: Reputation Registry (still separate) validates agents via CPI with hardcoded program IDs using Cargo features.
 
 ### Permissionless Agent Registration
 
@@ -174,6 +172,85 @@ programs/atom-engine/src/
 └── params.rs       # Tunable parameters and constants
 ```
 
+## Validation Registry (v3.0.0 State On-Chain)
+
+**Validation** provides ERC-8004 compliant task validation and certification system with immutable on-chain state.
+
+### Architecture
+
+**Design Philosophy**: State on-chain (ValidationRequest PDAs) instead of events-only to enable direct on-chain queries of certifications without requiring off-chain indexers.
+
+**PDA Structure**:
+- **ValidationConfig**: `["validation_config"]` - Global state (authority, counters)
+- **ValidationRequest**: `["validation", asset, validator_address, nonce]` - Individual validation records (109 bytes, permanent)
+
+### Key Features
+- **ERC-8004 Immutability**: No close/delete function - validations are permanent audit trail
+- **Progressive Validation**: Validators can update responses multiple times (lastUpdate semantics)
+- **Self-Validation Protection**: Redundant checks (Anchor constraints + explicit Core owner verification)
+- **Optimized Storage**: 109 bytes per validation (27% cheaper than initial 150-byte design)
+- **Metaplex Core Integration**: Direct asset ownership verification via BaseAssetV1 parsing
+
+### State Management
+
+**On-Chain (ValidationRequest PDA - 109 bytes)**:
+- `asset: Pubkey` - Metaplex Core asset being validated
+- `validator_address: Pubkey` - Who can respond
+- `nonce: u32` - Enables multiple validations from same validator
+- `request_hash: [u8; 32]` - SHA-256 of request content
+- `response: u8` - Validation score 0-100 (0 is valid score, not "pending")
+- `responded_at: i64` - Timestamp of last response (0 if no response yet)
+
+**Events-Only (Rent Optimization)**:
+- `request_uri`, `response_uri` - IPFS/Arweave links (max 200 bytes)
+- `response_hash` - SHA-256 of response content
+- `tag` - Categorization string (max 32 bytes, e.g., "oasf-v0.8.0")
+- `created_at` - Request timestamp
+
+### Security Status
+- **1st Hivemind Audit**: 0 critical vulnerabilities ✅
+- **Auditors**: GPT-5.2 + Gemini 3 Pro
+- **Known Issues**:
+  - [MEDIUM] Global write lock contention on counters (performance trade-off for monitoring)
+  - [LOW] Validator UncheckedAccount not constrained (cosmetic, no security impact)
+
+### Cost Model
+- **Rent**: ~0.00120 SOL per validation (permanent, not recoverable)
+- **27% cheaper** than initial 150-byte design while maintaining full ERC-8004 compliance
+
+### Usage
+
+```typescript
+// Request validation
+await program.methods
+  .requestValidation(
+    validatorPubkey,
+    nonce, // u32 - allows multiple validations
+    requestUri, // IPFS link
+    requestHash // SHA-256
+  )
+  .accounts({ requester, payer, agentAccount, asset, validationRequest })
+  .rpc();
+
+// Validator responds
+await program.methods
+  .respondToValidation(
+    validatorAddress,
+    nonce,
+    85, // score 0-100
+    responseUri,
+    responseHash,
+    "oasf-v0.8.0" // tag
+  )
+  .accounts({ validator, agentAccount, asset, validationRequest })
+  .rpc();
+
+// Query validation
+const [validationPda] = getValidationRequestPda(asset, validator, nonce);
+const validation = await program.account.validationRequest.fetch(validationPda);
+console.log(`Score: ${validation.response}, Responded: ${validation.hasResponse()}`);
+```
+
 ## Code Organization
 
 ```
@@ -193,11 +270,13 @@ programs/
 │   ├── compute.rs
 │   ├── state.rs
 │   └── params.rs
-└── validation-registry/src/
-    ├── lib.rs          # Request/respond to validation tasks
-    ├── state.rs        # ValidationRequest, ValidationResponse
-    ├── error.rs
-    └── events.rs
+└── agent-registry-8004/src/validation/
+    ├── mod.rs          # Module exports
+    ├── state.rs        # ValidationConfig, ValidationRequest (state on-chain)
+    ├── contexts.rs     # Anchor account validation contexts
+    ├── instructions.rs # Core validation logic (request, respond)
+    ├── events.rs       # ValidationRequested, ValidationResponded
+    └── README.md       # Validation module documentation
 
 tests/
 ├── e2e-*.ts            # End-to-end integration tests
