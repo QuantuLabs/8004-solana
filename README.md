@@ -13,11 +13,12 @@
 | agent-registry-8004 | `HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT` |
 | atom-engine | `B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7` |
 
-## v0.4.0 Highlights
+## v0.5.0 Highlights
 
-- **[ATOM](programs/atom-engine/README.md)** (Agent Trust On-chain Model): Optional enhancement providing Sybil-resistant reputation scoring
-- **Multi-Collection Registry**: Global registry with base + user-created collections (sharding)
-- **ERC-8004 Addition**: ATOM Engine integration extends the base standard with trust metrics
+- **[ATOM v0.2.0 "Fortress"](programs/atom-engine/README.md)**: Production-ready with tier vesting and platinum loyalty gate
+- **Tier Vesting**: 8-epoch delay (~20 days) before tier promotion prevents Sybil attacks
+- **Platinum Loyalty Gate**: Requires 500+ loyalty score before platinum candidature
+- **ERC-8004 Compliant**: Fully compliant with validation system optimizations (109B)
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 
@@ -46,11 +47,11 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 |         B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7            |
 +-----------------------------------------------------------------+
 |  +---------------+ +------------------------------------------+ |
-|  | AtomConfig    | |              AtomStats (460 bytes)       | |
+|  | AtomConfig    | |              AtomStats (561 bytes)       | |
 |  +---------------+ +------------------------------------------+ |
 |  | - authority   | | - HLL[256] + salt (unique clients)       | |
 |  | - params      | | - ring buffer[24] (burst detection)      | |
-|  | - thresholds  | | - quality, risk, tier, confidence        | |
+|  | - thresholds  | | - tier vesting, loyalty, quality, risk   | |
 |  +---------------+ +------------------------------------------+ |
 +-----------------------------------------------------------------+
                              |
@@ -133,11 +134,11 @@ This implementation is **fully compliant** with the [ERC-8004 specification](htt
 
 See [ERC-8004 Spec](https://github.com/erc-8004/erc-8004-contracts/blob/master/ERC8004SPEC.md) for official specification.
 
-## Costs (v0.4.0)
+## Costs (v0.5.0)
 
 | Operation | Rent (SOL) | Notes |
 |-----------|------------|-------|
-| Register Agent | ~0.009 | AgentAccount (378B) + AtomStats (476B) + Core Asset |
+| Register Agent | ~0.010 | AgentAccount (378B) + AtomStats (561B) + Core Asset |
 | Give Feedback | ~0.00001 | Event-only, just tx fee |
 | Request Validation | ~0.0004 | ValidationRequest (109B) + event data (-27% vs v0.3.0) |
 | Respond to Validation | ~0.00001 | Updates existing account + event |
@@ -164,6 +165,7 @@ anchor test
 ## Roadmap
 
 - [x] v0.4.0 - ATOM Engine + Multi-collection
+- [x] v0.5.0 - ATOM v0.2.0 "Fortress" (production-ready)
 - [x] Off-chain indexer (Substreams-based)
 - [ ] Production indexer deployment
 - [ ] Mainnet deployment
@@ -175,4 +177,4 @@ anchor test
 
 ---
 
-MIT License | v0.4.0 | Last Updated: 2026-01-15
+MIT License | v0.5.0 | Last Updated: 2026-01-15
