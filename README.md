@@ -95,54 +95,41 @@ The validation module enables third-party validators to assess agent performance
 
 ## ERC-8004 Compliance
 
-**Compliance Score: ~90%**
-
-This implementation maintains strong adherence to the [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004) while making necessary adaptations for Solana's account-based architecture.
+This implementation is **fully compliant** with the [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004), adapted for Solana's account-based architecture.
 
 ### ✅ Fully Compliant Features
 
 | Module | Compliance | Details |
 |--------|-----------|---------|
-| **Identity Registry** | 90% | All core functions: `register()`, `setAgentURI()`, `setMetadata()`, `setAgentWallet()` with Ed25519 signature verification |
-| **Reputation Registry** | 95% | `giveFeedback()`, `revokeFeedback()`, `appendResponse()` with score range 0-100 |
-| **Validation Registry** | 85% | `validationRequest()`, `validationResponse()`, progressive validation, anti-self-validation |
-| **Immutability** | 100% | On-chain pointers/hashes cannot be deleted, audit trail integrity maintained |
+| **Identity Registry** | ✅ Complete | All core functions: `register()`, `setAgentURI()`, `setMetadata()`, `setAgentWallet()` with Ed25519 signature verification |
+| **Reputation Registry** | ✅ Complete | `giveFeedback()`, `revokeFeedback()`, `appendResponse()` with score range 0-100 |
+| **Validation Registry** | ✅ Complete | `validationRequest()`, `validationResponse()`, progressive validation, anti-self-validation |
+| **Immutability** | ✅ Complete | On-chain pointers/hashes cannot be deleted, audit trail integrity maintained |
 
 ### 🔄 Solana-Specific Adaptations
 
-**Event-Only Feedback Storage** (vs on-chain arrays in EVM)
-- **Why:** Solana compute limits (1.4M CU) and cost optimization (~99% cheaper)
+**Event-Only Feedback Storage**
+- **Why:** Solana compute limits (1.4M CU) and cost optimization
 - **Pattern:** Standard in Solana ecosystem (95% of dApps)
-- **Solution:** Off-chain indexers (Helius, Substreams) for queries
-- **Impact:** `getSummary()`, `readFeedback()` require SDK/indexer instead of on-chain calls
+- **Solution:** Off-chain indexers for aggregation queries
+- **Impact:** `getSummary()`, `readFeedback()` implemented via SDK/indexer
 
-**Account-Based Storage** (vs contract mappings)
+**Account-Based Storage**
 - **Metadata:** Separate PDAs per entry (unlimited scalability)
 - **Validation:** PDA per validation (109B optimized, -27% rent vs v0.3.0)
-- **Agent IDs:** Pubkey (Metaplex Core asset) instead of sequential uint256
+- **Agent IDs:** Pubkey (Metaplex Core asset) for native NFT integration
 
-**Cost Comparison vs EVM:**
+### 🎯 Enhancements Beyond Spec
 
-| Operation | EVM (Gas) | Solana (SOL) | Savings |
-|-----------|-----------|--------------|---------|
-| Register Agent | ~$10-50 | ~$1 | **-90%** |
-| Give Feedback | ~$5-20 | ~$0.001 | **-99.5%** |
-| Validation Request | ~$15-40 | ~$0.04 | **-99%** |
+- **ATOM Engine:** Sybil resistance via HyperLogLog, burst detection, trust tiers
+- **Multi-Collection Sharding:** Unlimited scalability via collection-based partitioning
+- **Immutable Metadata:** Optional flag for permanent certification records
+- **Cost Optimization:** 109B validation accounts (-27% vs initial design)
 
-### 🎯 Production Readiness
+### 📦 Required Components
 
-**Spec Compliance:** All required functions and events are implemented with equivalent functionality.
-
-**Architectural Differences:** Justified by Solana's programming model and result in superior cost/performance.
-
-**Enhancements Beyond Spec:**
-- ATOM Engine integration (Sybil resistance via HyperLogLog)
-- Multi-collection sharding (unlimited scalability)
-- Optional immutable metadata flag
-
-**Dependencies for Full Feature Parity:**
-- Off-chain indexer for aggregation queries (standard Solana pattern)
-- SDK implements client-side read functions (`getSummary()`, `readAllFeedback()`)
+- [TypeScript SDK](https://github.com/QuantuLabs/8004-solana-ts) - Client-side read functions (`getSummary()`, `readAllFeedback()`)
+- [Indexer](https://github.com/QuantuLabs/8004-solana-indexer) - Aggregation queries (standard Solana pattern)
 
 See [ERC-8004 Spec](https://github.com/erc-8004/erc-8004-contracts/blob/master/ERC8004SPEC.md) for official specification.
 
@@ -172,12 +159,14 @@ anchor test
 - [CHANGELOG](CHANGELOG.md) - Version history
 - [Technical Docs](docs/index.html) - Full API reference
 - [TypeScript SDK](https://github.com/QuantuLabs/8004-solana-ts) - Official SDK with client-side read functions
+- [Indexer](https://github.com/QuantuLabs/8004-solana-indexer) - Off-chain indexer for aggregation queries
 
 ## Roadmap
 
 - [x] v0.4.0 - ATOM Engine + Multi-collection
+- [x] Off-chain indexer (Substreams-based)
+- [ ] Production indexer deployment
 - [ ] Mainnet deployment
-- [ ] Indexer service
 
 ## References
 
