@@ -28,14 +28,15 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 |              agent-registry-8004 (Devnet)                        |
 |         HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT            |
 +-----------------------------------------------------------------+
-|  +---------------+ +----------------+ +----------------+         |
-|  | Identity      | | Reputation     | | Validation     |         |
-|  +---------------+ +----------------+ +----------------+         |
-|  | Agent NFTs    | | Feedback Events| | Validation Req |         |
-|  |  (Core)       | | Revocations    | | Responses      |         |
-|  | Metadata PDAs | | Responses      | | Multi-validator|         |
-|  | Asset = ID    | |       |        | | Progressive    |         |
-|  +---------------+ +-------+--------+ +----------------+         |
+|  +---------------+ +----------------+ +--------------------+     |
+|  | Identity      | | Reputation     | | Validation         |     |
+|  +---------------+ +----------------+ +--------------------+     |
+|  | Agent NFTs    | | Feedback Events| | ValidationConfig   |     |
+|  |  (Core)       | | Revocations    | | ValidationRequest  |     |
+|  | Metadata PDAs | | Responses      | |  (109B optimized)  |     |
+|  | Asset = ID    | |       |        | | Multi-validator    |     |
+|  |               | |       |        | | Progressive        |     |
+|  +---------------+ +-------+--------+ +--------------------+     |
 +-----------------------------------------------------------------+
                              |
                              | CPI (give_feedback, revoke_feedback)
@@ -65,8 +66,32 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 |--------|-------------|
 | **Identity** | NFT-based agents (Metaplex Core), PDA metadata, immutable option |
 | **Reputation** | Feedback (0-100), revoke, responses → CPI to ATOM |
-| **Validation** | Third-party verification, multi-validator, progressive |
+| **Validation** | Third-party verification, multi-validator, progressive (109B optimized) |
 | **ATOM** | HLL uniqueness, ring buffer burst detection, trust tiers |
+
+### Validation System
+
+The validation module enables third-party validators to assess agent performance:
+
+- **ValidationConfig** (global): Tracks total requests/responses, authority (49B)
+- **ValidationRequest** (per validation): Stores minimal on-chain state (109B)
+  - `asset` - Agent being validated
+  - `validator_address` - Who can respond
+  - `nonce` - Enables multiple validations from same validator
+  - `request_hash` - Integrity verification (SHA-256)
+  - `response` - Score 0-100 (0 = pending)
+  - `responded_at` - Unix timestamp (0 if no response)
+
+**Optimizations (v0.4.0):**
+- Reduced from 150B → 109B (-27% rent cost)
+- Moved to events: `response_hash`, `created_at`, `bump` (recalculable)
+- Maintains ERC-8004 compliance for progressive validation
+
+**PDA Seeds:**
+- ValidationConfig: `["validation_config"]`
+- ValidationRequest: `["validation", asset, validator_address, nonce]`
+
+**Important:** Self-validation is not allowed (agent owner cannot validate their own agent)
 
 ## Costs (v0.4.0)
 
@@ -74,7 +99,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 |-----------|------------|-------|
 | Register Agent | ~0.009 | AgentAccount (378B) + AtomStats (476B) + Core Asset |
 | Give Feedback | ~0.00001 | Event-only, just tx fee |
-| Request Validation | ~0.00001 | Event-only, just tx fee |
+| Request Validation | ~0.0004 | ValidationRequest (109B) + event data (-27% vs v0.3.0) |
+| Respond to Validation | ~0.00001 | Updates existing account + event |
+| Close Validation | 0 (refund) | Returns rent to closer |
 
 ## Quick Start
 
@@ -106,4 +133,4 @@ anchor test
 
 ---
 
-MIT License | v0.4.0 | Last Updated: 2026-01-12
+MIT License | v0.4.0 | Last Updated: 2026-01-15
