@@ -109,4 +109,6 @@ pub enum RegistryError {
     // ========== CPI Errors (6400-6409) ==========
     #[msg("Invalid program ID for CPI call")]
     InvalidProgram = 6400,
+    #[msg("Invalid AtomStats account - must be correct PDA for this asset")]
+    InvalidAtomStatsAccount = 6401,
 }

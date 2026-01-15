@@ -9,7 +9,9 @@ pub struct NewFeedback {
     pub feedback_index: u64,
     pub score: u8,
     pub feedback_hash: [u8; 32],
-    // Enriched fields from AtomStats
+    // Whether ATOM Engine was used for this feedback
+    pub atom_enabled: bool,
+    // Enriched fields from AtomStats (0 values if atom_enabled=false)
     pub new_trust_tier: u8,
     pub new_quality_score: u16,
     pub new_confidence: u16,
@@ -29,8 +31,10 @@ pub struct FeedbackRevoked {
     pub asset: Pubkey,
     pub client_address: Pubkey,
     pub feedback_index: u64,
-    // Enriched fields from revoke result
     pub original_score: u8,
+    // Whether ATOM Engine was used for this revocation
+    pub atom_enabled: bool,
+    // Enriched fields from revoke result (0 values if atom_enabled=false)
     pub had_impact: bool,
     pub new_trust_tier: u8,
     pub new_quality_score: u16,

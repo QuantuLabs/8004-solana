@@ -49,6 +49,17 @@ pub fn give_feedback(
 
     let asset = ctx.accounts.asset.key();
 
+    // SECURITY: Validate that atom_stats is the correct PDA for this asset
+    // This prevents bypass attacks where users pass fake accounts to skip ATOM
+    let (expected_atom_stats, _bump) = Pubkey::find_program_address(
+        &[b"atom_stats", asset.as_ref()],
+        &atom_engine::ID,
+    );
+    require!(
+        ctx.accounts.atom_stats.key() == expected_atom_stats,
+        RegistryError::InvalidAtomStatsAccount
+    );
+
     // Check if AtomStats is initialized
     // If not initialized (data.len() == 0 or wrong owner), skip ATOM Engine CPI
     let atom_stats_info = ctx.accounts.atom_stats.to_account_info();
@@ -106,6 +117,7 @@ pub fn give_feedback(
         feedback_index,
         score,
         feedback_hash,
+        atom_enabled: is_atom_initialized,
         new_trust_tier: update_result.trust_tier,
         new_quality_score: update_result.quality_score,
         new_confidence: update_result.confidence,
@@ -135,6 +147,17 @@ pub fn give_feedback(
 pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Result<()> {
     let asset = ctx.accounts.asset.key();
     let client = ctx.accounts.client.key();
+
+    // SECURITY: Validate that atom_stats is the correct PDA for this asset
+    // This prevents bypass attacks where users pass fake accounts to skip ATOM
+    let (expected_atom_stats, _bump) = Pubkey::find_program_address(
+        &[b"atom_stats", asset.as_ref()],
+        &atom_engine::ID,
+    );
+    require!(
+        ctx.accounts.atom_stats.key() == expected_atom_stats,
+        RegistryError::InvalidAtomStatsAccount
+    );
 
     // Check if AtomStats is initialized
     let atom_stats_info = ctx.accounts.atom_stats.to_account_info();
@@ -186,6 +209,7 @@ pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Res
         client_address: client,
         feedback_index,
         original_score: revoke_result.original_score,
+        atom_enabled: is_atom_initialized,
         had_impact: revoke_result.had_impact,
         new_trust_tier: revoke_result.new_trust_tier,
         new_quality_score: revoke_result.new_quality_score,
