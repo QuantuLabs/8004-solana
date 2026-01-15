@@ -138,10 +138,12 @@ See [ERC-8004 Spec](https://github.com/erc-8004/erc-8004-contracts/blob/master/E
 
 | Operation | Rent (SOL) | Notes |
 |-----------|------------|-------|
-| Register Agent | ~0.010 | AgentAccount (378B) + AtomStats (561B) + Core Asset |
-| Give Feedback | ~0.00001 | Event-only, just tx fee |
-| Request Validation | ~0.0004 | ValidationRequest (109B) + event data (-27% vs v0.3.0) |
-| Respond to Validation | ~0.00001 | Updates existing account + event |
+| Register Agent | ~0.006 | AgentAccount (378B) + Core Asset (~250B) |
+| Initialize ATOM Stats (optional) | ~0.005 | AtomStats (561B) - enables Sybil resistance |
+| Give Feedback (with ATOM) | ~0.000005 | Event-only + ATOM CPI, tx fee only |
+| Give Feedback (without ATOM) | ~0.000005 | Event-only, tx fee only (basic ERC-8004 compliant) |
+| Request Validation | ~0.002 | ValidationRequest (109B) + event data |
+| Respond to Validation | ~0.000005 | Updates existing account + event, tx fee only |
 | Close Validation | 0 (refund) | Returns rent to closer |
 
 ## Quick Start

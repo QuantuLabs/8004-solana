@@ -47,33 +47,57 @@ pub fn give_feedback(
         RegistryError::UriTooLong
     );
 
-    // Compute client hash for ATOM
-    let client_hash = keccak::hash(ctx.accounts.client.key().as_ref());
-
-    let cpi_accounts = atom_engine::cpi::accounts::UpdateStats {
-        payer: ctx.accounts.client.to_account_info(),
-        asset: ctx.accounts.asset.to_account_info(),
-        collection: ctx.accounts.collection.to_account_info(),
-        config: ctx.accounts.atom_config.to_account_info(),
-        stats: ctx.accounts.atom_stats.to_account_info(),
-        registry_authority: ctx.accounts.registry_authority.to_account_info(),
-        system_program: ctx.accounts.system_program.to_account_info(),
-    };
-
-    let bump = ctx.bumps.registry_authority;
-    let signer_seeds: &[&[&[u8]]] = &[&[ATOM_CPI_AUTHORITY_SEED, &[bump]]];
-
-    let cpi_ctx = CpiContext::new_with_signer(
-        ctx.accounts.atom_engine_program.to_account_info(),
-        cpi_accounts,
-        signer_seeds,
-    );
-
-    // Capture UpdateResult for enriched event
-    let cpi_result = atom_engine::cpi::update_stats(cpi_ctx, client_hash.0, score)?;
-    let update_result = cpi_result.get();
-
     let asset = ctx.accounts.asset.key();
+
+    // Check if AtomStats is initialized
+    // If not initialized (data.len() == 0 or wrong owner), skip ATOM Engine CPI
+    let atom_stats_info = ctx.accounts.atom_stats.to_account_info();
+    let is_atom_initialized = atom_stats_info.data_len() > 0
+        && *atom_stats_info.owner == atom_engine::ID;
+
+    let update_result = if is_atom_initialized {
+        // Validate ATOM Engine program ID
+        require!(
+            ctx.accounts.atom_engine_program.key() == atom_engine::ID,
+            RegistryError::InvalidProgram
+        );
+
+        // Compute client hash for ATOM
+        let client_hash = keccak::hash(ctx.accounts.client.key().as_ref());
+
+        let cpi_accounts = atom_engine::cpi::accounts::UpdateStats {
+            payer: ctx.accounts.client.to_account_info(),
+            asset: ctx.accounts.asset.to_account_info(),
+            collection: ctx.accounts.collection.to_account_info(),
+            config: ctx.accounts.atom_config.to_account_info(),
+            stats: atom_stats_info,
+            registry_authority: ctx.accounts.registry_authority.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
+        };
+
+        let bump = ctx.bumps.registry_authority;
+        let signer_seeds: &[&[&[u8]]] = &[&[ATOM_CPI_AUTHORITY_SEED, &[bump]]];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.atom_engine_program.to_account_info(),
+            cpi_accounts,
+            signer_seeds,
+        );
+
+        // Capture UpdateResult for enriched event
+        let cpi_result = atom_engine::cpi::update_stats(cpi_ctx, client_hash.0, score)?;
+        cpi_result.get()
+    } else {
+        // ATOM not initialized - return default values
+        atom_engine::UpdateResult {
+            trust_tier: 0,
+            quality_score: 0,
+            confidence: 0,
+            risk_score: 0,
+            diversity_ratio: 0,
+            hll_changed: false,
+        }
+    };
 
     // Enriched event with AtomStats results
     emit!(NewFeedback {
@@ -95,43 +119,66 @@ pub fn give_feedback(
     });
 
     msg!(
-        "Feedback #{} created: asset={}, client={}, score={}, tier={}",
+        "Feedback #{} created: asset={}, client={}, score={}, atom_enabled={}, tier={}",
         feedback_index,
         asset,
         ctx.accounts.client.key(),
         score,
+        is_atom_initialized,
         update_result.trust_tier
     );
 
     Ok(())
 }
 
-/// Revoke feedback calls CPI to atom-engine to update stats
+/// Revoke feedback calls CPI to atom-engine to update stats (optional)
 pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Result<()> {
     let asset = ctx.accounts.asset.key();
     let client = ctx.accounts.client.key();
 
-    let cpi_accounts = atom_engine::cpi::accounts::RevokeStats {
-        payer: ctx.accounts.client.to_account_info(),
-        asset: ctx.accounts.asset.to_account_info(),
-        config: ctx.accounts.atom_config.to_account_info(),
-        stats: ctx.accounts.atom_stats.to_account_info(),
-        registry_authority: ctx.accounts.registry_authority.to_account_info(),
-        system_program: ctx.accounts.system_program.to_account_info(),
+    // Check if AtomStats is initialized
+    let atom_stats_info = ctx.accounts.atom_stats.to_account_info();
+    let is_atom_initialized = atom_stats_info.data_len() > 0
+        && *atom_stats_info.owner == atom_engine::ID;
+
+    let revoke_result = if is_atom_initialized {
+        // Validate ATOM Engine program ID
+        require!(
+            ctx.accounts.atom_engine_program.key() == atom_engine::ID,
+            RegistryError::InvalidProgram
+        );
+
+        let cpi_accounts = atom_engine::cpi::accounts::RevokeStats {
+            payer: ctx.accounts.client.to_account_info(),
+            asset: ctx.accounts.asset.to_account_info(),
+            config: ctx.accounts.atom_config.to_account_info(),
+            stats: atom_stats_info,
+            registry_authority: ctx.accounts.registry_authority.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
+        };
+
+        let bump = ctx.bumps.registry_authority;
+        let signer_seeds: &[&[&[u8]]] = &[&[ATOM_CPI_AUTHORITY_SEED, &[bump]]];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.atom_engine_program.to_account_info(),
+            cpi_accounts,
+            signer_seeds,
+        );
+
+        // Capture RevokeResult for enriched event
+        let cpi_result = atom_engine::cpi::revoke_stats(cpi_ctx, client)?;
+        cpi_result.get()
+    } else {
+        // ATOM not initialized - return default values
+        atom_engine::RevokeResult {
+            original_score: 0,
+            had_impact: false,
+            new_trust_tier: 0,
+            new_quality_score: 0,
+            new_confidence: 0,
+        }
     };
-
-    let bump = ctx.bumps.registry_authority;
-    let signer_seeds: &[&[&[u8]]] = &[&[ATOM_CPI_AUTHORITY_SEED, &[bump]]];
-
-    let cpi_ctx = CpiContext::new_with_signer(
-        ctx.accounts.atom_engine_program.to_account_info(),
-        cpi_accounts,
-        signer_seeds,
-    );
-
-    // Capture RevokeResult for enriched event
-    let cpi_result = atom_engine::cpi::revoke_stats(cpi_ctx, client)?;
-    let revoke_result = cpi_result.get();
 
     // Enriched event with revoke results
     emit!(FeedbackRevoked {
@@ -146,10 +193,11 @@ pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Res
     });
 
     msg!(
-        "Feedback #{} revoked: asset={}, client={}, had_impact={}",
+        "Feedback #{} revoked: asset={}, client={}, atom_enabled={}, had_impact={}",
         feedback_index,
         asset,
         client,
+        is_atom_initialized,
         revoke_result.had_impact
     );
 
