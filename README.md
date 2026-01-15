@@ -15,9 +15,9 @@
 
 ## v0.4.0 Highlights
 
-- **[ATOM](programs/atom-engine/README.md)** (Agent Trust On-chain Model): Integrated reputation scoring with Sybil resistance
+- **[ATOM](programs/atom-engine/README.md)** (Agent Trust On-chain Model): Optional enhancement providing Sybil-resistant reputation scoring
 - **Multi-Collection Registry**: Global registry with base + user-created collections (sharding)
-- **Mandatory CPI**: All feedback operations require ATOM Engine for trust metrics
+- **ERC-8004 Addition**: ATOM Engine integration extends the base standard with trust metrics
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 
@@ -65,9 +65,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 | Module | Description |
 |--------|-------------|
 | **Identity** | NFT-based agents (Metaplex Core), PDA metadata, immutable option |
-| **Reputation** | Feedback (0-100), revoke, responses → **requires** ATOM Engine CPI |
+| **Reputation** | Feedback (0-100), revoke, responses with optional ATOM Engine integration |
 | **Validation** | Third-party verification, multi-validator, progressive (109B optimized) |
-| **ATOM Engine** | Integrated Sybil resistance (HLL), burst detection, trust tiers (0-5) |
+| **ATOM Engine** | Optional enhancement: Sybil resistance (HLL), burst detection, trust tiers (0-5) |
 
 ### Validation System
 
@@ -121,7 +121,7 @@ This implementation is **fully compliant** with the [ERC-8004 specification](htt
 
 ### Key Differentiators
 
-- **ATOM Engine Integration:** Mandatory Sybil resistance via HyperLogLog, burst detection, trust tiers (not in base spec)
+- **ATOM Engine Integration:** Optional addition to ERC-8004 providing Sybil resistance via HyperLogLog, burst detection, trust tiers (can be skipped via `skipAtomInit` flag)
 - **Multi-Collection Sharding:** Unlimited scalability via collection-based partitioning
 - **Immutable Metadata:** Optional flag for permanent certification records
 - **Cost Optimization:** 109B validation accounts (-27% vs initial design)
