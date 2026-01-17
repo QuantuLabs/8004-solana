@@ -115,7 +115,7 @@ pub struct RespondToValidation<'info> {
         seeds = [
             b"validation",
             asset.key().as_ref(),
-            validation_request.validator_address.as_ref(),
+            validator.key().as_ref(),
             nonce.to_le_bytes().as_ref()
         ],
         bump,
