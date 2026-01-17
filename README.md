@@ -3,15 +3,15 @@
 > Solana implementation of 8004 (Trustless Agents Registry)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Anchor](https://img.shields.io/badge/Anchor-0.32.1-blue)](https://github.com/coral-xyz/anchor)
+[![Anchor](https://img.shields.io/badge/Anchor-0.31.1-blue)](https://github.com/coral-xyz/anchor)
 [![Solana](https://img.shields.io/badge/Solana-Devnet-green)](https://solana.com)
 
 ## Programs (Devnet)
 
 | Program | Address |
 |---------|---------|
-| agent-registry-8004 | `HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT` |
-| atom-engine | `B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7` |
+| agent-registry-8004 | `6MuHv4dY4p9E4hSCEPr9dgbCSpMhq8x1vrUexbMVjfw1` |
+| atom-engine | `6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf` |
 
 ## v0.5.0 Highlights
 
@@ -27,7 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 ```
 +-----------------------------------------------------------------+
 |              agent-registry-8004 (Devnet)                        |
-|         HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT            |
+|         6MuHv4dY4p9E4hSCEPr9dgbCSpMhq8x1vrUexbMVjfw1            |
 +-----------------------------------------------------------------+
 |  +---------------+ +----------------+ +--------------------+     |
 |  | Identity      | | Reputation     | | Validation         |     |
@@ -44,7 +44,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
                              v
 +-----------------------------------------------------------------+
 |                    atom-engine (ATOM)                            |
-|         B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7            |
+|         6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf            |
 +-----------------------------------------------------------------+
 |  +---------------+ +------------------------------------------+ |
 |  | AtomConfig    | |              AtomStats (561 bytes)       | |

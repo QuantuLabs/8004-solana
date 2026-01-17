@@ -67,13 +67,21 @@ export function getConfigPda(programId: PublicKey): [PublicKey, number] {
 }
 
 /**
- * @deprecated ValidationStats removed in v0.3.0 - counters computed off-chain
+ * Derive ValidationConfig PDA: ["validation_config"]
+ * Required for request_validation and respond_to_validation instructions
  */
-export function getValidationStatsPda(programId: PublicKey): [PublicKey, number] {
+export function getValidationConfigPda(programId: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("validation_config")],
     programId
   );
+}
+
+/**
+ * @deprecated Use getValidationConfigPda instead
+ */
+export function getValidationStatsPda(programId: PublicKey): [PublicKey, number] {
+  return getValidationConfigPda(programId);
 }
 
 /**

@@ -14,6 +14,7 @@ import {
   getRootConfigPda,
   getRegistryConfigPda,
   getAtomConfigPda,
+  getValidationConfigPda,
 } from "./utils/helpers";
 
 describe("Initialize Localnet", () => {
@@ -99,6 +100,39 @@ describe("Initialize Localnet", () => {
     console.log("Registry initialized successfully!");
   });
 
+  it("Initialize ValidationConfig (if needed)", async () => {
+    const [validationConfigPda] = getValidationConfigPda(program.programId);
+
+    // Check if already initialized
+    const accountInfo = await provider.connection.getAccountInfo(validationConfigPda);
+    if (accountInfo !== null) {
+      console.log("ValidationConfig already initialized - skipping");
+      return;
+    }
+
+    console.log("Initializing ValidationConfig...");
+    console.log("  Config PDA:", validationConfigPda.toBase58());
+
+    const tx = await program.methods
+      .initializeValidationConfig()
+      .accounts({
+        config: validationConfigPda,
+        authority: provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    console.log("ValidationConfig Initialize tx:", tx);
+
+    // Verify initialization
+    const validationConfig = await program.account.validationConfig.fetch(validationConfigPda);
+    expect(validationConfig.authority.toBase58()).to.equal(provider.wallet.publicKey.toBase58());
+    expect(validationConfig.totalRequests.toString()).to.equal("0");
+    expect(validationConfig.totalResponses.toString()).to.equal("0");
+
+    console.log("ValidationConfig initialized successfully!");
+  });
+
   it("Initialize ATOM Engine (if needed)", async () => {
     const [atomConfigPda] = getAtomConfigPda(atomEngine.programId);
 
@@ -150,6 +184,18 @@ describe("Initialize Localnet", () => {
     console.log("  Collection:", registryConfig.collection.toBase58());
     console.log("  Registry Type:", registryConfig.registryType);
     console.log("  Base Index:", registryConfig.baseIndex);
+
+    // ValidationConfig
+    const [validationConfigPda] = getValidationConfigPda(program.programId);
+    try {
+      const validationConfig = await program.account.validationConfig.fetch(validationConfigPda);
+      console.log("\nValidation Config:");
+      console.log("  Authority:", validationConfig.authority.toBase58());
+      console.log("  Total Requests:", validationConfig.totalRequests.toString());
+      console.log("  Total Responses:", validationConfig.totalResponses.toString());
+    } catch (e) {
+      console.log("\nValidation Config: Not initialized");
+    }
 
     // ATOM Config
     const [atomConfigPda] = getAtomConfigPda(atomEngine.programId);
