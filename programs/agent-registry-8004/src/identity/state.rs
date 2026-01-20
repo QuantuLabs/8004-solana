@@ -80,6 +80,9 @@ pub struct AgentAccount {
     /// PDA bump seed
     pub bump: u8,
 
+    /// ATOM Engine enabled (irreversible once set to true)
+    pub atom_enabled: bool,
+
     /// Agent's operational wallet (set via Ed25519 signature verification)
     /// None = no wallet set, Some = wallet address
     pub agent_wallet: Option<Pubkey>,
@@ -98,6 +101,7 @@ pub struct AgentAccount {
 
 impl AgentAccount {
     /// Maximum URI length in bytes (used for validation)
+    /// MUST match #[max_len(200)] to prevent runtime serialization errors
     pub const MAX_URI_LENGTH: usize = 200;
 }
 
@@ -125,8 +129,8 @@ pub struct MetadataEntryPda {
     #[max_len(32)]
     pub metadata_key: String,
 
-    /// Metadata value (max 256 bytes, arbitrary binary data)
-    #[max_len(256)]
+    /// Metadata value (max 250 bytes, arbitrary binary data)
+    #[max_len(250)]
     pub metadata_value: Vec<u8>,
 }
 
@@ -135,6 +139,9 @@ impl MetadataEntryPda {
     pub const MAX_KEY_LENGTH: usize = 32;
 
     /// Maximum value length in bytes (used for validation)
-    pub const MAX_VALUE_LENGTH: usize = 256;
+    pub const MAX_VALUE_LENGTH: usize = 250;
 }
+
+// Modified:
+// - AgentAccount::MAX_URI_LENGTH changed from 250 to 200 to match #[max_len(200)] allocation
 
