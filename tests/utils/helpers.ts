@@ -14,7 +14,7 @@ export const MPL_CORE_PROGRAM_ID = new PublicKey(
 );
 
 export const ATOM_ENGINE_PROGRAM_ID = new PublicKey(
-  "B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7"
+  "6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf"
 );
 
 export const MAX_URI_LENGTH = 200;

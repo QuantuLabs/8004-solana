@@ -79,4 +79,12 @@ pub struct AgentRegisteredInRegistry {
     pub registry: Pubkey,
     pub collection: Pubkey,
     pub owner: Pubkey,
+    pub atom_enabled: bool,
+}
+
+/// Event emitted when ATOM is enabled for an agent (one-way)
+#[event]
+pub struct AtomEnabled {
+    pub asset: Pubkey,
+    pub enabled_by: Pubkey,
 }

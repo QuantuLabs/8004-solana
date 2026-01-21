@@ -49,6 +49,10 @@ pub enum RegistryError {
     TagTooLong = 6056,
     #[msg("At least one tag must be provided")]
     EmptyTags = 6057,
+    #[msg("ATOM stats not initialized - call initialize_atom_stats first")]
+    AtomStatsNotInitialized = 6058,
+    #[msg("ATOM already enabled for this agent")]
+    AtomAlreadyEnabled = 6059,
 
     // ========== Validation Errors (6100-6149) ==========
     #[msg("Request URI exceeds 200 bytes")]

@@ -46,8 +46,9 @@ pub struct FeedbackRevoked {
 #[event]
 pub struct ResponseAppended {
     pub asset: Pubkey,              // offset 0
-    pub feedback_index: u64,        // offset 32
-    pub responder: Pubkey,          // offset 40
-    pub response_hash: [u8; 32],    // offset 72 (moved up)
-    pub response_uri: String,       // offset 104 (variable, moved to end)
+    pub client: Pubkey,             // offset 32
+    pub feedback_index: u64,        // offset 64
+    pub responder: Pubkey,          // offset 72
+    pub response_hash: [u8; 32],    // offset 104
+    pub response_uri: String,       // offset 136 (variable)
 }

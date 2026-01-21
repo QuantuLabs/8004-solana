@@ -315,6 +315,16 @@ fn compute_alpha_down_v8(stats: &AtomStats, base_alpha: u32, current_slot: u64, 
         alpha = (alpha + (alpha >> 1)).min(V7_ALPHA_MAX);
     }
 
+    // ENTROPY GATE: Amplify alpha_down for repeat attackers (anti-griefing)
+    // When HLL stagnates (same wallets repeating), increase penalty impact
+    // Uses saturating_mul to safely increase impact of negative feedback from spammers
+    let entropy_amplifier = (1 + (stats.updates_since_hll_change as u32 / ENTROPY_GATE_DIVISOR as u32))
+        .min(ENTROPY_GATE_MAX_AMPLIFIER);
+
+    alpha = alpha
+        .saturating_mul(entropy_amplifier)
+        .min(ALPHA_QUALITY_MAX_AMPLIFIED);
+
     alpha
 }
 

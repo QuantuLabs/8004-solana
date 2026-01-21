@@ -11,11 +11,10 @@ use crate::error::RegistryError;
 #[derive(Accounts)]
 #[instruction(key_hash: [u8; 16], key: String, value: Vec<u8>, immutable: bool)]
 pub struct SetMetadataPda<'info> {
-    /// Uses max space for init, realloc in instruction handles actual sizing
     #[account(
         init_if_needed,
         payer = owner,
-        space = MetadataEntryPda::DISCRIMINATOR.len() + MetadataEntryPda::INIT_SPACE,
+        space = 8 + MetadataEntryPda::INIT_SPACE,
         seeds = [b"agent_meta", asset.key().as_ref(), key_hash.as_ref()],
         bump
     )]
@@ -464,4 +463,25 @@ pub struct Register<'info> {
     /// CHECK: Verified by address constraint
     #[account(address = mpl_core::ID)]
     pub mpl_core_program: UncheckedAccount<'info>,
+}
+
+/// Enable ATOM for an agent (one-way)
+#[derive(Accounts)]
+pub struct EnableAtom<'info> {
+    #[account(
+        mut,
+        seeds = [b"agent", asset.key().as_ref()],
+        bump = agent_account.bump
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    /// Core asset for ownership verification
+    /// CHECK: Verified via agent_account constraint
+    #[account(
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
+    )]
+    pub asset: UncheckedAccount<'info>,
+
+    /// Agent owner (must match Core asset owner)
+    pub owner: Signer<'info>,
 }

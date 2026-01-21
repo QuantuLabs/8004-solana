@@ -27,31 +27,30 @@ pub struct GiveFeedback<'info> {
     /// CHECK: Collection for the agent (passed to atom-engine for filtering)
     pub collection: UncheckedAccount<'info>,
 
+    pub system_program: Program<'info, System>,
+
     // === OPTIONAL: CPI to atom-engine ===
-    // If atom_stats is uninitialized (data.len() == 0), ATOM Engine CPI is skipped
-    // This allows agents to function without Sybil resistance if desired
+    // If atom_enabled is false, these accounts may be omitted
 
     /// AtomConfig PDA (owned by atom-engine)
     /// CHECK: Validated by atom-engine program (when atom_stats initialized)
-    pub atom_config: UncheckedAccount<'info>,
+    pub atom_config: Option<UncheckedAccount<'info>>,
 
     /// AtomStats PDA - OPTIONAL initialization
     /// If uninitialized, feedback works without ATOM Engine
     /// CHECK: Validated by atom-engine program (when initialized)
     #[account(mut)]
-    pub atom_stats: UncheckedAccount<'info>,
+    pub atom_stats: Option<UncheckedAccount<'info>>,
 
     /// CHECK: ATOM Engine program ID
-    pub atom_engine_program: UncheckedAccount<'info>,
+    pub atom_engine_program: Option<UncheckedAccount<'info>>,
 
     /// CHECK: Registry authority PDA for CPI signing
     #[account(
         seeds = [ATOM_CPI_AUTHORITY_SEED],
         bump,
     )]
-    pub registry_authority: UncheckedAccount<'info>,
-
-    pub system_program: Program<'info, System>,
+    pub registry_authority: Option<UncheckedAccount<'info>>,
 }
 
 /// RevokeFeedback calls CPI to atom-engine to revoke stats (optional)
@@ -73,37 +72,49 @@ pub struct RevokeFeedback<'info> {
     )]
     pub asset: UncheckedAccount<'info>,
 
+    pub system_program: Program<'info, System>,
+
     // === OPTIONAL: CPI to atom-engine ===
-    // If atom_stats is uninitialized, revoke works without ATOM Engine
+    // If atom_enabled is false, these accounts may be omitted
 
     /// AtomConfig PDA (owned by atom-engine)
     /// CHECK: Validated by atom-engine program (when atom_stats initialized)
-    pub atom_config: UncheckedAccount<'info>,
+    pub atom_config: Option<UncheckedAccount<'info>>,
 
     /// AtomStats PDA - OPTIONAL initialization
     /// If uninitialized, revoke works without ATOM Engine
     /// CHECK: Validated by atom-engine program (when initialized)
     #[account(mut)]
-    pub atom_stats: UncheckedAccount<'info>,
+    pub atom_stats: Option<UncheckedAccount<'info>>,
 
     /// CHECK: ATOM Engine program ID
-    pub atom_engine_program: UncheckedAccount<'info>,
+    pub atom_engine_program: Option<UncheckedAccount<'info>>,
 
     /// CHECK: Registry authority PDA for CPI signing
     #[account(
         seeds = [ATOM_CPI_AUTHORITY_SEED],
         bump,
     )]
-    pub registry_authority: UncheckedAccount<'info>,
-
-    pub system_program: Program<'info, System>,
+    pub registry_authority: Option<UncheckedAccount<'info>>,
 }
 
 #[derive(Accounts)]
-#[instruction(_feedback_index: u64, _response_uri: String, _response_hash: [u8; 32])]
+#[instruction(asset_key: Pubkey, _client_address: Pubkey, _feedback_index: u64, _response_uri: String, _response_hash: [u8; 32])]
 pub struct AppendResponse<'info> {
+    /// Responder must be agent owner or agent wallet
     pub responder: Signer<'info>,
 
-    /// CHECK: Just for event emission
+    /// Agent account for authorization check
+    #[account(
+        seeds = [b"agent", asset_key.as_ref()],
+        bump = agent_account.bump,
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    /// Core asset (for PDA derivation)
+    /// CHECK: Verified via agent_account constraint
+    #[account(
+        constraint = asset.key() == asset_key @ RegistryError::InvalidAsset
+    )]
     pub asset: UncheckedAccount<'info>,
 }

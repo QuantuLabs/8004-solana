@@ -24,7 +24,7 @@ pub struct InitializeValidationConfig<'info> {
 
 /// Request validation for an agent
 #[derive(Accounts)]
-#[instruction(validator_address: Pubkey, nonce: u32)]
+#[instruction(asset_key: Pubkey, validator_address: Pubkey, nonce: u32)]
 pub struct RequestValidation<'info> {
     /// ValidationConfig for tracking global counters
     #[account(
@@ -44,15 +44,16 @@ pub struct RequestValidation<'info> {
 
     /// Agent account (to verify ownership and get asset)
     #[account(
-        seeds = [b"agent", asset.key().as_ref()],
+        seeds = [b"agent", asset_key.as_ref()],
         bump = agent_account.bump,
     )]
     pub agent_account: Account<'info, AgentAccount>,
 
     /// Agent asset (Metaplex Core)
-    /// CHECK: Validated via agent_account.asset constraint
+    /// CHECK: Validated via constraints below
     #[account(
-        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset,
+        constraint = asset.key() == asset_key @ RegistryError::InvalidAsset
     )]
     pub asset: UncheckedAccount<'info>,
 
@@ -63,7 +64,7 @@ pub struct RequestValidation<'info> {
         space = 8 + ValidationRequest::SIZE,
         seeds = [
             b"validation",
-            asset.key().as_ref(),
+            asset_key.as_ref(),
             validator_address.as_ref(),
             nonce.to_le_bytes().as_ref()
         ],
@@ -79,7 +80,7 @@ pub struct RequestValidation<'info> {
 
 /// Respond to a validation request
 #[derive(Accounts)]
-#[instruction(_validator_address: Pubkey, nonce: u32)]
+#[instruction(asset_key: Pubkey, validator_address: Pubkey, nonce: u32)]
 pub struct RespondToValidation<'info> {
     /// ValidationConfig for tracking global counters
     #[account(
@@ -95,16 +96,17 @@ pub struct RespondToValidation<'info> {
 
     /// Agent account (to verify no self-validation)
     #[account(
-        seeds = [b"agent", asset.key().as_ref()],
+        seeds = [b"agent", asset_key.as_ref()],
         bump = agent_account.bump,
         constraint = agent_account.owner != validator.key() @ RegistryError::SelfValidationNotAllowed
     )]
     pub agent_account: Account<'info, AgentAccount>,
 
     /// Agent asset (Metaplex Core)
-    /// CHECK: Validated via agent_account.asset constraint
+    /// CHECK: Validated via constraints below
     #[account(
-        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset,
+        constraint = asset.key() == asset_key @ RegistryError::InvalidAsset
     )]
     pub asset: UncheckedAccount<'info>,
 
@@ -114,12 +116,13 @@ pub struct RespondToValidation<'info> {
         mut,
         seeds = [
             b"validation",
-            asset.key().as_ref(),
-            validator.key().as_ref(),
+            asset_key.as_ref(),
+            validator_address.as_ref(),
             nonce.to_le_bytes().as_ref()
         ],
         bump,
-        constraint = validation_request.validator_address == validator.key() @ RegistryError::Unauthorized
+        constraint = validation_request.validator_address == validator.key() @ RegistryError::Unauthorized,
+        constraint = validator.key() == validator_address @ RegistryError::Unauthorized
     )]
     pub validation_request: Account<'info, ValidationRequest>,
 }

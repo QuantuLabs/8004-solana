@@ -732,8 +732,11 @@ pub fn update_user_registry_metadata(
     Ok(())
 }
 
-/// Register agent in a specific registry (base or user)
-pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
+fn register_inner(
+    ctx: Context<Register>,
+    agent_uri: String,
+    atom_enabled: bool,
+) -> Result<()> {
     require!(
         agent_uri.len() <= AgentAccount::MAX_URI_LENGTH,
         RegistryError::UriTooLong
@@ -799,6 +802,7 @@ pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
     agent.owner = ctx.accounts.owner.key();
     agent.asset = asset;
     agent.bump = ctx.bumps.agent_account;
+    agent.atom_enabled = atom_enabled;
     agent.agent_wallet = None;
     agent.agent_uri = agent_uri;
     agent.nft_name = "Agent".to_string();
@@ -813,6 +817,7 @@ pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
         registry: registry_pda,
         collection: ctx.accounts.collection.key(),
         owner: ctx.accounts.owner.key(),
+        atom_enabled: agent.atom_enabled,
     });
 
     msg!(
@@ -820,6 +825,38 @@ pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
         registry_pda,
         ctx.accounts.collection.key()
     );
+
+    Ok(())
+}
+
+/// Register agent in a specific registry (base or user)
+pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
+    register_inner(ctx, agent_uri, true)
+}
+
+/// Register agent with explicit ATOM setting (default is true)
+pub fn register_with_options(
+    ctx: Context<Register>,
+    agent_uri: String,
+    atom_enabled: bool,
+) -> Result<()> {
+    register_inner(ctx, agent_uri, atom_enabled)
+}
+
+/// Enable ATOM for an agent (one-way)
+pub fn enable_atom(ctx: Context<EnableAtom>) -> Result<()> {
+    // Verify ownership via Core asset
+    verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
+
+    let agent = &mut ctx.accounts.agent_account;
+    require!(!agent.atom_enabled, RegistryError::AtomAlreadyEnabled);
+
+    agent.atom_enabled = true;
+
+    emit!(AtomEnabled {
+        asset: agent.asset,
+        enabled_by: ctx.accounts.owner.key(),
+    });
 
     Ok(())
 }

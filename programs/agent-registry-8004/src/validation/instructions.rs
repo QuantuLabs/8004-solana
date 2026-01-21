@@ -56,6 +56,7 @@ pub fn initialize_validation_config(ctx: Context<InitializeValidationConfig>) ->
 /// - request_hash: SHA-256 hash of request content for integrity
 pub fn request_validation(
     ctx: Context<RequestValidation>,
+    _asset_key: Pubkey,
     validator_address: Pubkey,
     nonce: u32,
     request_uri: String,
@@ -123,7 +124,8 @@ pub fn request_validation(
 /// Full metadata (response_hash, response_uri, tag) stored in events only for rent optimization.
 ///
 /// Args:
-/// - _validator_address: Validator address (used for PDA derivation in context)
+/// - asset_key: Asset pubkey (used for PDA derivation to avoid .key() allocation)
+/// - validator_address: Validator address (used for PDA derivation to avoid .key() allocation)
 /// - nonce: Nonce matching the ValidationRequest
 /// - response: Validation score 0-100 (ERC-8004: 0 is valid score, not "pending")
 /// - response_uri: IPFS/Arweave link to validation report (max 200 bytes)
@@ -131,6 +133,7 @@ pub fn request_validation(
 /// - tag: String tag for categorization (e.g., "oasf-v0.8.0", max 32 bytes)
 pub fn respond_to_validation(
     ctx: Context<RespondToValidation>,
+    _asset_key: Pubkey,
     _validator_address: Pubkey,
     nonce: u32,
     response: u8,

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7");
+declare_id!("6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf");
 
 /// Metaplex Core program ID
 pub const MPL_CORE_ID: Pubkey = pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
@@ -113,6 +113,7 @@ pub mod atom_engine {
     }
 
     /// Update config parameters (authority only)
+    /// NOTE: compute.rs currently uses compile-time params; config is metadata-only until wired.
     /// SECURITY: Added parameter bounds validation
     pub fn update_config(
         ctx: Context<UpdateConfig>,
@@ -256,12 +257,6 @@ pub mod atom_engine {
             collection: ctx.accounts.collection.key(),
         });
 
-        msg!(
-            "Stats initialized: asset={}, collection={}",
-            ctx.accounts.asset.key(),
-            ctx.accounts.collection.key()
-        );
-
         Ok(())
     }
 
@@ -295,14 +290,6 @@ pub mod atom_engine {
             quality_score: stats.quality_score,
             confidence: stats.confidence,
         });
-
-        msg!(
-            "Stats updated: asset={}, count={}, tier={}, risk={}",
-            ctx.accounts.asset.key(),
-            stats.feedback_count,
-            stats.trust_tier,
-            stats.risk_score
-        );
 
         // Return result for enriched events
         Ok(UpdateResult {
@@ -421,16 +408,10 @@ pub mod atom_engine {
             client: client_pubkey,
             original_score,
             had_impact,
+            new_trust_tier: stats.trust_tier,
             new_quality_score: stats.quality_score,
             new_confidence: stats.confidence,
         });
-
-        msg!(
-            "Stats revoke: asset={}, had_impact={}, original_score={}",
-            ctx.accounts.asset.key(),
-            had_impact,
-            original_score
-        );
 
         Ok(RevokeResult {
             original_score,

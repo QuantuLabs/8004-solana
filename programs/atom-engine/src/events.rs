@@ -51,6 +51,8 @@ pub struct StatsRevoked {
     pub original_score: u8,
     /// True if revoke had impact on stats (false = not found or already revoked)
     pub had_impact: bool,
+    /// Trust tier after revoke (0-4)
+    pub new_trust_tier: u8,
     /// Quality score after revoke (0-10000)
     pub new_quality_score: u16,
     /// Confidence after revoke (0-10000)

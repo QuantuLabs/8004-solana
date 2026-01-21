@@ -12,8 +12,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Program IDs
-const ATOM_PROGRAM_ID = new PublicKey("B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7");
-const AGENT_REGISTRY_PROGRAM_ID = new PublicKey("HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT");
+const ATOM_PROGRAM_ID = new PublicKey("6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf");
+const AGENT_REGISTRY_PROGRAM_ID = new PublicKey("6MuHv4dY4p9E4hSCEPr9dgbCSpMhq8x1vrUexbMVjfw1");
 const BPF_LOADER_UPGRADEABLE_ID = new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
 
 async function main() {

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT");
+declare_id!("6MuHv4dY4p9E4hSCEPr9dgbCSpMhq8x1vrUexbMVjfw1");
 
 pub mod error;
 pub mod identity;
@@ -38,6 +38,20 @@ pub mod agent_registry_8004 {
     /// Register agent in a specific registry (base or user)
     pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
         identity::instructions::register(ctx, agent_uri)
+    }
+
+    /// Register agent with explicit ATOM setting (default is true)
+    pub fn register_with_options(
+        ctx: Context<Register>,
+        agent_uri: String,
+        atom_enabled: bool,
+    ) -> Result<()> {
+        identity::instructions::register_with_options(ctx, agent_uri, atom_enabled)
+    }
+
+    /// Enable ATOM for an agent (one-way)
+    pub fn enable_atom(ctx: Context<EnableAtom>) -> Result<()> {
+        identity::instructions::enable_atom(ctx)
     }
 
     /// Set agent metadata as individual PDA (key_hash = SHA256(key)[0..16])
@@ -148,11 +162,13 @@ pub mod agent_registry_8004 {
     /// Append response to feedback
     pub fn append_response(
         ctx: Context<AppendResponse>,
+        asset_key: Pubkey,
+        client_address: Pubkey,
         feedback_index: u64,
         response_uri: String,
         response_hash: [u8; 32],
     ) -> Result<()> {
-        reputation::instructions::append_response(ctx, feedback_index, response_uri, response_hash)
+        reputation::instructions::append_response(ctx, asset_key, client_address, feedback_index, response_uri, response_hash)
     }
 
     // ============================================================================
@@ -167,6 +183,7 @@ pub mod agent_registry_8004 {
     /// Request validation for an agent
     pub fn request_validation(
         ctx: Context<RequestValidation>,
+        asset_key: Pubkey,
         validator_address: Pubkey,
         nonce: u32,
         request_uri: String,
@@ -174,6 +191,7 @@ pub mod agent_registry_8004 {
     ) -> Result<()> {
         validation::instructions::request_validation(
             ctx,
+            asset_key,
             validator_address,
             nonce,
             request_uri,
@@ -185,6 +203,7 @@ pub mod agent_registry_8004 {
     /// ERC-8004: Enables progressive validation - validators can update responses
     pub fn respond_to_validation(
         ctx: Context<RespondToValidation>,
+        asset_key: Pubkey,
         validator_address: Pubkey,
         nonce: u32,
         response: u8,
@@ -194,6 +213,7 @@ pub mod agent_registry_8004 {
     ) -> Result<()> {
         validation::instructions::respond_to_validation(
             ctx,
+            asset_key,
             validator_address,
             nonce,
             response,
