@@ -89,8 +89,8 @@ pub struct AgentAccount {
 
     // === Dynamic-size fields last ===
 
-    /// Agent URI (IPFS/Arweave/HTTP link, max 200 bytes)
-    #[max_len(200)]
+    /// Agent URI (IPFS/Arweave/HTTP link, max 250 bytes)
+    #[max_len(250)]
     pub agent_uri: String,
 
     /// NFT name (e.g., "Agent #123", max 32 bytes)
@@ -101,8 +101,8 @@ pub struct AgentAccount {
 
 impl AgentAccount {
     /// Maximum URI length in bytes (used for validation)
-    /// MUST match #[max_len(200)] to prevent runtime serialization errors
-    pub const MAX_URI_LENGTH: usize = 200;
+    /// MUST match #[max_len(250)] to prevent runtime serialization errors
+    pub const MAX_URI_LENGTH: usize = 250;
 }
 
 /// Individual metadata entry stored as separate PDA
@@ -142,6 +142,4 @@ impl MetadataEntryPda {
     pub const MAX_VALUE_LENGTH: usize = 250;
 }
 
-// Modified:
-// - AgentAccount::MAX_URI_LENGTH changed from 250 to 200 to match #[max_len(200)] allocation
 

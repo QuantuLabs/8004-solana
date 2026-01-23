@@ -3,11 +3,11 @@ use anchor_lang::prelude::*;
 #[error_code]
 pub enum RegistryError {
     // ========== Identity Errors (6000-6049) ==========
-    #[msg("URI exceeds 200 bytes")]
+    #[msg("URI exceeds 250 bytes")]
     UriTooLong = 6000,
     #[msg("Key exceeds 32 bytes")]
     KeyTooLong = 6001,
-    #[msg("Value exceeds 256 bytes")]
+    #[msg("Value exceeds 250 bytes")]
     ValueTooLong = 6002,
     #[msg("Metadata limit reached")]
     MetadataLimitReached = 6003,
@@ -35,7 +35,7 @@ pub enum RegistryError {
     // ========== Reputation Errors (6050-6099) ==========
     #[msg("Score must be 0-100")]
     InvalidScore = 6050,
-    #[msg("Response URI exceeds 200 bytes")]
+    #[msg("Response URI exceeds 250 bytes")]
     ResponseUriTooLong = 6051,
     #[msg("Feedback already revoked")]
     AlreadyRevoked = 6052,
@@ -49,13 +49,15 @@ pub enum RegistryError {
     TagTooLong = 6056,
     #[msg("At least one tag must be provided")]
     EmptyTags = 6057,
+    #[msg("Endpoint exceeds 250 bytes")]
+    EndpointTooLong = 6060,
     #[msg("ATOM stats not initialized - call initialize_atom_stats first")]
     AtomStatsNotInitialized = 6058,
     #[msg("ATOM already enabled for this agent")]
     AtomAlreadyEnabled = 6059,
 
     // ========== Validation Errors (6100-6149) ==========
-    #[msg("Request URI exceeds 200 bytes")]
+    #[msg("Request URI exceeds 250 bytes")]
     RequestUriTooLong = 6100,
     #[msg("Response must be 0-100")]
     InvalidResponse = 6101,

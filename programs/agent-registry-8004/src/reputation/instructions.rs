@@ -44,7 +44,7 @@ pub fn give_feedback(
     );
     require!(
         endpoint.len() <= MAX_ENDPOINT_LENGTH,
-        RegistryError::UriTooLong
+        RegistryError::EndpointTooLong
     );
 
     let asset = ctx.accounts.asset.key();
