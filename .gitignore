@@ -7,8 +7,8 @@ programs/**/*.so
 # Archive (backup before consolidation)
 programs/_archive/
 
-# IDL
-idl/
+# IDL (keep idl/ folder, ignore target/idl/)
+target/idl/
 
 # TypeScript
 node_modules/
@@ -65,9 +65,9 @@ PLAN-*.md
 *_PLAN.md
 audit_8004/
 
-# Generated IDL files (root level)
-agent_registry_8004.*
-atom_engine.*
+# Generated IDL/types at root (use idl/ folder instead)
+/agent_registry_8004.*
+/atom_engine.*
 
 # Temp scripts
 scripts/measure-costs*.ts

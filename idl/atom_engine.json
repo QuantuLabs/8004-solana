@@ -1,0 +1,1761 @@
+{
+  "address": "8BmzNSQ7G5y6C6W8tkqsb4TtqkkiircfcXviAsxnhhST",
+  "metadata": {
+    "name": "atom_engine",
+    "version": "0.2.1",
+    "spec": "0.1.0",
+    "description": "ATOM Engine - AI Agent Trust & Reputation Metrics for Solana"
+  },
+  "instructions": [
+    {
+      "name": "get_summary",
+      "docs": [
+        "Get summary for an agent (CPI-callable, returns Summary struct)",
+        "Other programs can call this via CPI to get reputation data"
+      ],
+      "discriminator": [
+        159,
+        2,
+        226,
+        186,
+        90,
+        59,
+        255,
+        104
+      ],
+      "accounts": [
+        {
+          "name": "asset"
+        },
+        {
+          "name": "stats",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  111,
+                  109,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "Summary"
+        }
+      }
+    },
+    {
+      "name": "initialize_config",
+      "docs": [
+        "Initialize the ATOM config (authority only, once)"
+      ],
+      "discriminator": [
+        208,
+        127,
+        21,
+        1,
+        194,
+        190,
+        196,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  111,
+                  109,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program_data",
+          "docs": [
+            "Program data account for upgrade authority verification",
+            "SECURITY: Only program deployer can initialize"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  79,
+                  164,
+                  251,
+                  18,
+                  72,
+                  147,
+                  131,
+                  166,
+                  82,
+                  254,
+                  206,
+                  184,
+                  117,
+                  255,
+                  240,
+                  102,
+                  59,
+                  34,
+                  148,
+                  58,
+                  64,
+                  197,
+                  185,
+                  24,
+                  192,
+                  38,
+                  122,
+                  153,
+                  131,
+                  219,
+                  73,
+                  98
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                2,
+                168,
+                246,
+                145,
+                78,
+                136,
+                161,
+                176,
+                226,
+                16,
+                21,
+                62,
+                247,
+                99,
+                174,
+                43,
+                0,
+                194,
+                185,
+                61,
+                22,
+                193,
+                36,
+                210,
+                192,
+                83,
+                122,
+                16,
+                4,
+                128,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "agent_registry_program",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "initialize_stats",
+      "docs": [
+        "Initialize stats for a new agent (only asset holder can initialize)",
+        "This ensures the agent owner pays for their own reputation account, not the first reviewer",
+        "Verifies ownership by reading Metaplex Core asset data (owner at offset 1)",
+        "SECURITY: Also verifies the asset and collection are owned by Metaplex Core program"
+      ],
+      "discriminator": [
+        144,
+        201,
+        117,
+        76,
+        127,
+        118,
+        176,
+        16
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Agent owner (must be the Metaplex Core asset holder)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "asset"
+        },
+        {
+          "name": "collection"
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  111,
+                  109,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "stats",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  111,
+                  109,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "revoke_stats",
+      "docs": [
+        "Revoke a feedback entry from the ring buffer",
+        "Called via CPI from agent-registry during revoke_feedback",
+        "SECURITY: Caller verified via PDA signer (registry_authority) in context constraints",
+        "",
+        "# Arguments",
+        "* `client_pubkey` - The pubkey of the client who gave the feedback",
+        "",
+        "# Returns",
+        "RevokeResult with original_score, had_impact, and new stats",
+        "",
+        "# Soft Fail Behavior",
+        "If feedback is not found (too old, ejected from ring buffer) or already revoked,",
+        "returns `had_impact: false` instead of erroring. This is intentional for UX."
+      ],
+      "discriminator": [
+        86,
+        178,
+        106,
+        195,
+        51,
+        236,
+        38,
+        104
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "asset"
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  111,
+                  109,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "stats",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  111,
+                  109,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry_authority",
+          "docs": [
+            "Registry authority PDA - must be signed by agent-registry program",
+            "Seeds: [\"atom_cpi_authority\"] derived from agent-registry program"
+          ],
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "client_pubkey",
+          "type": "pubkey"
+        }
+      ],
+      "returns": {
+        "defined": {
+          "name": "RevokeResult"
+        }
+      }
+    },
+    {
+      "name": "update_config",
+      "docs": [
+        "Update config parameters (authority only)",
+        "NOTE: compute.rs currently uses compile-time params; config is metadata-only until wired.",
+        "SECURITY: Added parameter bounds validation"
+      ],
+      "discriminator": [
+        29,
+        158,
+        252,
+        191,
+        10,
+        83,
+        219,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  111,
+                  109,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "alpha_fast",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "alpha_slow",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "alpha_volatility",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "alpha_arrival",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "weight_sybil",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "weight_burst",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "weight_stagnation",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "weight_shock",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "weight_volatility",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "weight_arrival",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "diversity_threshold",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "burst_threshold",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "shock_threshold",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "volatility_threshold",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "paused",
+          "type": {
+            "option": "bool"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_stats",
+      "docs": [
+        "Update stats for an agent (called via CPI from agent-registry during feedback)",
+        "Stats must already exist (created during agent registration via initialize_stats)",
+        "SECURITY: Caller verified via PDA signer (registry_authority) in context constraints",
+        "Returns UpdateResult for enriched events in agent-registry"
+      ],
+      "discriminator": [
+        145,
+        138,
+        9,
+        150,
+        178,
+        31,
+        158,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "asset"
+        },
+        {
+          "name": "collection"
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  111,
+                  109,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "stats",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  111,
+                  109,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry_authority",
+          "docs": [
+            "Registry authority PDA - must be signed by agent-registry program",
+            "Seeds: [\"atom_cpi_authority\"] derived from agent-registry program"
+          ],
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "client_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "score",
+          "type": "u8"
+        }
+      ],
+      "returns": {
+        "defined": {
+          "name": "UpdateResult"
+        }
+      }
+    }
+  ],
+  "accounts": [
+    {
+      "name": "AtomConfig",
+      "discriminator": [
+        239,
+        137,
+        245,
+        161,
+        255,
+        250,
+        190,
+        145
+      ]
+    },
+    {
+      "name": "AtomStats",
+      "discriminator": [
+        190,
+        187,
+        50,
+        59,
+        203,
+        39,
+        136,
+        244
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "ConfigInitialized",
+      "discriminator": [
+        181,
+        49,
+        200,
+        156,
+        19,
+        167,
+        178,
+        91
+      ]
+    },
+    {
+      "name": "ConfigUpdated",
+      "discriminator": [
+        40,
+        241,
+        230,
+        122,
+        11,
+        19,
+        198,
+        194
+      ]
+    },
+    {
+      "name": "StatsInitialized",
+      "discriminator": [
+        93,
+        122,
+        104,
+        161,
+        105,
+        216,
+        131,
+        61
+      ]
+    },
+    {
+      "name": "StatsRevoked",
+      "discriminator": [
+        79,
+        79,
+        219,
+        18,
+        199,
+        64,
+        242,
+        47
+      ]
+    },
+    {
+      "name": "StatsUpdated",
+      "discriminator": [
+        50,
+        144,
+        62,
+        38,
+        140,
+        148,
+        117,
+        62
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidScore",
+      "msg": "Invalid score: must be 0-100"
+    },
+    {
+      "code": 6001,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: only authority can perform this action"
+    },
+    {
+      "code": 6002,
+      "name": "UnauthorizedCaller",
+      "msg": "Unauthorized caller: only agent-registry can update stats"
+    },
+    {
+      "code": 6003,
+      "name": "ConfigAlreadyInitialized",
+      "msg": "Config already initialized"
+    },
+    {
+      "code": 6004,
+      "name": "Paused",
+      "msg": "Engine is paused"
+    },
+    {
+      "code": 6005,
+      "name": "StatsNotInitialized",
+      "msg": "Stats not initialized: call initialize_stats first"
+    },
+    {
+      "code": 6006,
+      "name": "NotAssetOwner",
+      "msg": "Not asset owner: only the Metaplex Core asset holder can initialize stats"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidAsset",
+      "msg": "Invalid asset: cannot read owner from asset data"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidCollection",
+      "msg": "Invalid collection: must be owned by Metaplex Core program"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidConfigParameter",
+      "msg": "Invalid config parameter: value out of allowed bounds"
+    },
+    {
+      "code": 6010,
+      "name": "FeedbackNotFound",
+      "msg": "Feedback not found in ring buffer (may be too old)"
+    },
+    {
+      "code": 6011,
+      "name": "AlreadyRevoked",
+      "msg": "Feedback already revoked"
+    }
+  ],
+  "types": [
+    {
+      "name": "AtomConfig",
+      "docs": [
+        "Configuration account for ATOM engine"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Authority that can update config"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "agent_registry_program",
+            "docs": [
+              "Agent registry program (authorized CPI caller)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "alpha_fast",
+            "type": "u16"
+          },
+          {
+            "name": "alpha_slow",
+            "type": "u16"
+          },
+          {
+            "name": "alpha_volatility",
+            "type": "u16"
+          },
+          {
+            "name": "alpha_arrival",
+            "type": "u16"
+          },
+          {
+            "name": "alpha_quality",
+            "type": "u16"
+          },
+          {
+            "name": "alpha_quality_up",
+            "type": "u16"
+          },
+          {
+            "name": "alpha_quality_down",
+            "type": "u16"
+          },
+          {
+            "name": "alpha_burst_up",
+            "type": "u16"
+          },
+          {
+            "name": "alpha_burst_down",
+            "type": "u16"
+          },
+          {
+            "name": "weight_sybil",
+            "type": "u8"
+          },
+          {
+            "name": "weight_burst",
+            "type": "u8"
+          },
+          {
+            "name": "weight_stagnation",
+            "type": "u8"
+          },
+          {
+            "name": "weight_shock",
+            "type": "u8"
+          },
+          {
+            "name": "weight_volatility",
+            "type": "u8"
+          },
+          {
+            "name": "weight_arrival",
+            "type": "u8"
+          },
+          {
+            "name": "diversity_threshold",
+            "type": "u8"
+          },
+          {
+            "name": "burst_threshold",
+            "type": "u8"
+          },
+          {
+            "name": "shock_threshold",
+            "type": "u16"
+          },
+          {
+            "name": "volatility_threshold",
+            "type": "u16"
+          },
+          {
+            "name": "arrival_fast_threshold",
+            "type": "u16"
+          },
+          {
+            "name": "tier_platinum_quality",
+            "type": "u16"
+          },
+          {
+            "name": "tier_platinum_risk",
+            "type": "u8"
+          },
+          {
+            "name": "tier_platinum_confidence",
+            "type": "u16"
+          },
+          {
+            "name": "tier_gold_quality",
+            "type": "u16"
+          },
+          {
+            "name": "tier_gold_risk",
+            "type": "u8"
+          },
+          {
+            "name": "tier_gold_confidence",
+            "type": "u16"
+          },
+          {
+            "name": "tier_silver_quality",
+            "type": "u16"
+          },
+          {
+            "name": "tier_silver_risk",
+            "type": "u8"
+          },
+          {
+            "name": "tier_silver_confidence",
+            "type": "u16"
+          },
+          {
+            "name": "tier_bronze_quality",
+            "type": "u16"
+          },
+          {
+            "name": "tier_bronze_risk",
+            "type": "u8"
+          },
+          {
+            "name": "tier_bronze_confidence",
+            "type": "u16"
+          },
+          {
+            "name": "cold_start_min",
+            "type": "u16"
+          },
+          {
+            "name": "cold_start_max",
+            "type": "u16"
+          },
+          {
+            "name": "cold_start_penalty_heavy",
+            "type": "u16"
+          },
+          {
+            "name": "cold_start_penalty_per_feedback",
+            "type": "u16"
+          },
+          {
+            "name": "uniqueness_bonus",
+            "type": "u16"
+          },
+          {
+            "name": "loyalty_bonus",
+            "type": "u16"
+          },
+          {
+            "name": "loyalty_min_slot_delta",
+            "type": "u32"
+          },
+          {
+            "name": "bonus_max_burst_pressure",
+            "type": "u8"
+          },
+          {
+            "name": "inactive_decay_per_epoch",
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": [
+                "u8",
+                5
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "AtomStats",
+      "docs": [
+        "Raw reputation metrics for an agent",
+        "Seeds: [\"atom_stats\", asset.key()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "collection",
+            "docs": [
+              "Collection this agent belongs to (offset 8 - primary filter)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "asset",
+            "docs": [
+              "Asset (agent NFT) this stats belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "first_feedback_slot",
+            "docs": [
+              "Slot of first feedback received"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_feedback_slot",
+            "docs": [
+              "Slot of most recent feedback"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "feedback_count",
+            "docs": [
+              "Total number of feedbacks received"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ema_score_fast",
+            "docs": [
+              "Fast EMA of scores (α=0.30), scale 0-10000"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "ema_score_slow",
+            "docs": [
+              "Slow EMA of scores (α=0.05), scale 0-10000"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "ema_volatility",
+            "docs": [
+              "Smoothed absolute deviation |fast - slow|, scale 0-10000"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "ema_arrival_log",
+            "docs": [
+              "EMA of ilog2(slot_delta), scale 0-1500"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "peak_ema",
+            "docs": [
+              "Historical peak of ema_score_slow"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_drawdown",
+            "docs": [
+              "Maximum drawdown (peak - current), scale 0-10000"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "epoch_count",
+            "docs": [
+              "Number of distinct epochs with activity"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "current_epoch",
+            "docs": [
+              "Current epoch number (slot / EPOCH_SLOTS)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "min_score",
+            "docs": [
+              "Minimum score ever received (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "max_score",
+            "docs": [
+              "Maximum score ever received (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "first_score",
+            "docs": [
+              "First score received (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "last_score",
+            "docs": [
+              "Most recent score received (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "hll_packed",
+            "docs": [
+              "HyperLogLog registers for unique client estimation (~6.5% error)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "hll_salt",
+            "docs": [
+              "Random salt for HLL to prevent cross-agent grinding attacks"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "recent_callers",
+            "docs": [
+              "Ring buffer of recent caller fingerprints (requires 25+ wallets for bypass)"
+            ],
+            "type": {
+              "array": [
+                "u64",
+                24
+              ]
+            }
+          },
+          {
+            "name": "burst_pressure",
+            "docs": [
+              "EMA of repeat caller pressure (0-255)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "updates_since_hll_change",
+            "docs": [
+              "Updates since last HLL register change"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "neg_pressure",
+            "docs": [
+              "Negative momentum pressure (0-255)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "eviction_cursor",
+            "docs": [
+              "Round Robin eviction cursor for ring buffer"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "ring_base_slot",
+            "docs": [
+              "Slot when current ring buffer window started (for MRT calculation)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "quality_velocity",
+            "docs": [
+              "Accumulated quality change magnitude this epoch"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "velocity_epoch",
+            "docs": [
+              "Epoch when velocity tracking started"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "freeze_epochs",
+            "docs": [
+              "Epochs remaining in quality freeze (0 = not frozen)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "quality_floor",
+            "docs": [
+              "Floor quality during freeze (0-100, used as quality_score/100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bypass_count",
+            "docs": [
+              "Number of bypassed writes in current window"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bypass_score_avg",
+            "docs": [
+              "Sum of bypassed scores (for averaging when merging)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bypass_fingerprints",
+            "docs": [
+              "Fingerprints of bypassed entries (for revoke support)",
+              "Stores last 10 bypassed FPs so they can still be revoked (matches MRT_MAX_BYPASS)"
+            ],
+            "type": {
+              "array": [
+                "u64",
+                10
+              ]
+            }
+          },
+          {
+            "name": "bypass_fp_cursor",
+            "docs": [
+              "Cursor for round-robin in bypass_fingerprints"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "loyalty_score",
+            "docs": [
+              "Cached loyalty score"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "quality_score",
+            "docs": [
+              "Cached quality score (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "risk_score",
+            "docs": [
+              "Last computed risk score (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "diversity_ratio",
+            "docs": [
+              "Last computed diversity ratio (0-255)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "trust_tier",
+            "docs": [
+              "Last computed trust tier (0-4: Unrated/Bronze/Silver/Gold/Platinum)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier_candidate",
+            "docs": [
+              "Tier candidate waiting for promotion (0-4)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier_candidate_epoch",
+            "docs": [
+              "Epoch when candidature started (for vesting calculation)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "tier_confirmed",
+            "docs": [
+              "Confirmed tier after vesting period (replaces trust_tier for logic)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "flags",
+            "docs": [
+              "Bit flags for edge cases"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "confidence",
+            "docs": [
+              "Confidence in metrics (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "schema_version",
+            "docs": [
+              "Schema version for future migrations"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConfigInitialized",
+      "docs": [
+        "Emitted when config is initialized"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "agent_registry_program",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConfigUpdated",
+      "docs": [
+        "Emitted when config is updated"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "version",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RevokeResult",
+      "docs": [
+        "Result of revoke_stats for enriched events",
+        "Returned to caller so agent-registry can emit detailed FeedbackRevoked event"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "original_score",
+            "docs": [
+              "Original score from the revoked feedback (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "had_impact",
+            "docs": [
+              "True if revoke had impact (false = feedback not found or already revoked)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "new_trust_tier",
+            "docs": [
+              "Trust tier after revoke (0-4)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "new_quality_score",
+            "docs": [
+              "Quality score after revoke (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "new_confidence",
+            "docs": [
+              "Confidence after revoke (0-10000)"
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatsInitialized",
+      "docs": [
+        "Emitted when stats are initialized for a new agent"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "collection",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatsRevoked",
+      "docs": [
+        "Emitted when a feedback is revoked"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset",
+            "docs": [
+              "Asset (agent NFT) public key"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "client",
+            "docs": [
+              "Client who gave the feedback"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "original_score",
+            "docs": [
+              "Original score from the revoked feedback (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "had_impact",
+            "docs": [
+              "True if revoke had impact on stats (false = not found or already revoked)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "new_trust_tier",
+            "docs": [
+              "Trust tier after revoke (0-4)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "new_quality_score",
+            "docs": [
+              "Quality score after revoke (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "new_confidence",
+            "docs": [
+              "Confidence after revoke (0-10000)"
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatsUpdated",
+      "docs": [
+        "Emitted when stats are updated for an agent"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset",
+            "docs": [
+              "Asset (agent NFT) public key"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "feedback_index",
+            "docs": [
+              "Feedback index"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "score",
+            "docs": [
+              "Score received (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "trust_tier",
+            "docs": [
+              "Computed trust tier (0-4)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "risk_score",
+            "docs": [
+              "Computed risk score (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "quality_score",
+            "docs": [
+              "Quality score (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "confidence",
+            "docs": [
+              "Confidence (0-10000)"
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Summary",
+      "docs": [
+        "Summary returned by get_summary instruction (CPI-friendly)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "collection",
+            "docs": [
+              "Collection this agent belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "asset",
+            "docs": [
+              "Asset (agent) this summary is for"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "trust_tier",
+            "docs": [
+              "Trust tier (0=Unrated, 1=Bronze, 2=Silver, 3=Gold, 4=Platinum)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "quality_score",
+            "docs": [
+              "Quality score (0-10000, represents 0.00-100.00)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "risk_score",
+            "docs": [
+              "Risk score (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "confidence",
+            "docs": [
+              "Confidence in metrics (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "feedback_count",
+            "docs": [
+              "Total feedback count"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "unique_clients",
+            "docs": [
+              "Estimated unique clients (HLL)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "diversity_ratio",
+            "docs": [
+              "Diversity ratio (0-255)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "ema_score_fast",
+            "docs": [
+              "Fast EMA of scores (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "ema_score_slow",
+            "docs": [
+              "Slow EMA of scores (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "loyalty_score",
+            "docs": [
+              "Loyalty score"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "first_feedback_slot",
+            "docs": [
+              "First feedback slot"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_feedback_slot",
+            "docs": [
+              "Last feedback slot"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UpdateResult",
+      "docs": [
+        "Result of update_stats for enriched events",
+        "Returned to caller so agent-registry can emit detailed NewFeedback event"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "trust_tier",
+            "docs": [
+              "Trust tier after update (0-4)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "quality_score",
+            "docs": [
+              "Quality score after update (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "confidence",
+            "docs": [
+              "Confidence after update (0-10000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "risk_score",
+            "docs": [
+              "Risk score after update (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "diversity_ratio",
+            "docs": [
+              "Diversity ratio after update (0-255)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "hll_changed",
+            "docs": [
+              "True if HLL register changed (likely new unique client)"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    }
+  ]
+}
