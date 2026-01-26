@@ -51,6 +51,8 @@ pub enum RegistryError {
     EmptyTags = 6057,
     #[msg("Endpoint exceeds 250 bytes")]
     EndpointTooLong = 6060,
+    #[msg("Invalid decimals (max 6)")]
+    InvalidDecimals = 6061,
     #[msg("ATOM stats not initialized - call initialize_atom_stats first")]
     AtomStatsNotInitialized = 6058,
     #[msg("ATOM already enabled for this agent")]

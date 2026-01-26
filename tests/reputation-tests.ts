@@ -1,10 +1,10 @@
 /**
- * Reputation Module Tests for Agent Registry 8004 v0.4.0
+ * Reputation Module Tests for Agent Registry 8004 v0.5.0
  * Tests feedback creation, revocation, and responses
- * v0.4.0: CPI to atom-engine for reputation stats
+ * v0.5.0: EVM-compatible value/valueDecimals, optional score
  */
 import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
+import { Program, BN } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
 import { AtomEngine } from "../target/types/atom_engine";
 import { Keypair, SystemProgram, PublicKey, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
@@ -41,7 +41,7 @@ async function fundKeypair(
   await provider.sendAndConfirm(tx);
 }
 
-describe("Reputation Module Tests (v0.4.0 CPI)", () => {
+describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -114,7 +114,21 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
       .signers([agentAsset])
       .rpc();
 
-    console.log("=== Reputation Tests Setup (v0.4.0 CPI) ===");
+    // Initialize ATOM stats for the agent (required before giving feedback)
+    await atomProgram.methods
+      .initializeStats()
+      .accounts({
+        owner: provider.wallet.publicKey,
+        asset: agentAsset.publicKey,
+        collection: collectionPubkey,
+        config: atomConfigPda,
+        stats: atomStatsPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    console.log("ATOM Stats initialized for agent");
+
+    console.log("=== Reputation Tests Setup (v0.5.0 EVM-Compatible) ===");
     console.log("Agent Registry:", program.programId.toBase58());
     console.log("ATOM Engine:", atomProgram.programId.toBase58());
     console.log("Agent Asset:", agentAsset.publicKey.toBase58());
@@ -127,18 +141,22 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
   // ============================================================================
   describe("Feedback Creation (CPI)", () => {
     it("giveFeedback() emits NewFeedback event and updates AtomStats", async () => {
-      const feedbackIndex = new anchor.BN(0);
+      const feedbackIndex = new BN(0);
+      const value = new BN(100);  // e.g., 1.00 with 2 decimals
+      const valueDecimals = 2;
       const score = 80;
 
       const tx = await program.methods
         .giveFeedback(
+          value,
+          valueDecimals,
           score,
+          Array.from(randomHash()),
+          feedbackIndex,
           "quality",
           "reliable",
           "https://agent.example.com/api",
-          "https://example.com/feedback/0",
-          Array.from(randomHash()),
-          feedbackIndex
+          "https://example.com/feedback/0"
         )
         .accounts({
           client: clientKeypair.publicKey,
@@ -164,18 +182,22 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     });
 
     it("giveFeedback() with score=0 (edge case)", async () => {
-      const feedbackIndex = new anchor.BN(1);
+      const feedbackIndex = new BN(1);
+      const value = new BN(0);
+      const valueDecimals = 0;
       const score = 0;
 
       await program.methods
         .giveFeedback(
+          value,
+          valueDecimals,
           score,
+          Array.from(randomHash()),
+          feedbackIndex,
           "poor",
           "issue",
           "https://agent.example.com/api",
-          "https://example.com/feedback/zero",
-          Array.from(randomHash()),
-          feedbackIndex
+          "https://example.com/feedback/zero"
         )
         .accounts({
           client: clientKeypair.publicKey,
@@ -192,18 +214,22 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     });
 
     it("giveFeedback() with score=100 (edge case)", async () => {
-      const feedbackIndex = new anchor.BN(2);
+      const feedbackIndex = new BN(2);
+      const value = new BN(1000000);  // 1.000000 with 6 decimals
+      const valueDecimals = 6;
       const score = 100;
 
       await program.methods
         .giveFeedback(
+          value,
+          valueDecimals,
           score,
+          Array.from(randomHash()),
+          feedbackIndex,
           "perfect",
           "excellent",
           "https://agent.example.com/api",
-          "https://example.com/feedback/perfect",
-          Array.from(randomHash()),
-          feedbackIndex
+          "https://example.com/feedback/perfect"
         )
         .accounts({
           client: clientKeypair.publicKey,
@@ -219,19 +245,63 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
         .rpc();
     });
 
+    it("giveFeedback() with score=null (no ATOM update)", async () => {
+      const feedbackIndex = new BN(3);
+      const value = new BN(500);
+      const valueDecimals = 2;
+
+      // Get current feedback count
+      const statsBefore = await atomProgram.account.atomStats.fetch(atomStatsPda);
+      const countBefore = statsBefore.feedbackCount.toNumber();
+
+      await program.methods
+        .giveFeedback(
+          value,
+          valueDecimals,
+          null,  // No ATOM update
+          Array.from(randomHash()),
+          feedbackIndex,
+          "info",
+          "only",
+          "https://agent.example.com/api",
+          "https://example.com/feedback/no-atom"
+        )
+        .accounts({
+          client: clientKeypair.publicKey,
+          asset: agentAsset.publicKey,
+          collection: collectionPubkey,
+          agentAccount: agentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([clientKeypair])
+        .rpc();
+
+      // Verify feedback count didn't change (no ATOM CPI)
+      const statsAfter = await atomProgram.account.atomStats.fetch(atomStatsPda);
+      expect(statsAfter.feedbackCount.toNumber()).to.equal(countBefore);
+      console.log("ATOM stats unchanged when score=null");
+    });
+
     it("giveFeedback() fails with score > 100", async () => {
-      const feedbackIndex = new anchor.BN(999);
+      const feedbackIndex = new BN(999);
+      const value = new BN(100);
+      const valueDecimals = 0;
 
       await expectAnchorError(
         program.methods
           .giveFeedback(
-            101,
+            value,
+            valueDecimals,
+            101,  // Invalid score
+            Array.from(randomHash()),
+            feedbackIndex,
             "invalid",
             "score",
             "https://agent.example.com/api",
-            "https://example.com/feedback/invalid",
-            Array.from(randomHash()),
-            feedbackIndex
+            "https://example.com/feedback/invalid"
           )
           .accounts({
             client: clientKeypair.publicKey,
@@ -249,18 +319,56 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
       );
     });
 
+    it("giveFeedback() fails with valueDecimals > 6", async () => {
+      const feedbackIndex = new BN(998);
+      const value = new BN(100);
+      const valueDecimals = 7;  // Max is 6
+
+      await expectAnchorError(
+        program.methods
+          .giveFeedback(
+            value,
+            valueDecimals,
+            50,
+            Array.from(randomHash()),
+            feedbackIndex,
+            "invalid",
+            "decimals",
+            "https://agent.example.com/api",
+            "https://example.com/feedback/bad-decimals"
+          )
+          .accounts({
+            client: clientKeypair.publicKey,
+            asset: agentAsset.publicKey,
+            collection: collectionPubkey,
+            agentAccount: agentPda,
+            atomConfig: atomConfigPda,
+            atomStats: atomStatsPda,
+            atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([clientKeypair])
+          .rpc(),
+        "InvalidDecimals"
+      );
+    });
+
     it("giveFeedback() with empty tags (allowed)", async () => {
-      const feedbackIndex = new anchor.BN(3);
+      const feedbackIndex = new BN(4);
+      const value = new BN(60);
+      const valueDecimals = 0;
 
       await program.methods
         .giveFeedback(
+          value,
+          valueDecimals,
           60,
+          Array.from(randomHash()),
+          feedbackIndex,
           "",
           "",
           "https://agent.example.com/api",
-          "https://example.com/feedback/empty-tags",
-          Array.from(randomHash()),
-          feedbackIndex
+          "https://example.com/feedback/empty-tags"
         )
         .accounts({
           client: clientKeypair.publicKey,
@@ -277,19 +385,23 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     });
 
     it("giveFeedback() fails with tag > 32 bytes", async () => {
-      const feedbackIndex = new anchor.BN(998);
+      const feedbackIndex = new BN(997);
       const longTag = stringOfLength(MAX_TAG_LENGTH + 1);
+      const value = new BN(50);
+      const valueDecimals = 0;
 
       await expectAnchorError(
         program.methods
           .giveFeedback(
+            value,
+            valueDecimals,
             50,
+            Array.from(randomHash()),
+            feedbackIndex,
             longTag,
             "valid",
             "https://agent.example.com/api",
-            "https://example.com/feedback/long-tag",
-            Array.from(randomHash()),
-            feedbackIndex
+            "https://example.com/feedback/long-tag"
           )
           .accounts({
             client: clientKeypair.publicKey,
@@ -307,20 +419,24 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
       );
     });
 
-    it("giveFeedback() fails with URI > 200 bytes", async () => {
-      const feedbackIndex = new anchor.BN(997);
+    it("giveFeedback() fails with URI > 250 bytes", async () => {
+      const feedbackIndex = new BN(996);
       const longUri = uriOfLength(MAX_URI_LENGTH + 1);
+      const value = new BN(50);
+      const valueDecimals = 0;
 
       await expectAnchorError(
         program.methods
           .giveFeedback(
+            value,
+            valueDecimals,
             50,
+            Array.from(randomHash()),
+            feedbackIndex,
             "tag1",
             "tag2",
             "https://agent.example.com/api",
-            longUri,
-            Array.from(randomHash()),
-            feedbackIndex
+            longUri
           )
           .accounts({
             client: clientKeypair.publicKey,
@@ -339,17 +455,21 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     });
 
     it("giveFeedback() accumulates stats correctly", async () => {
-      const feedbackIndex = new anchor.BN(4);
+      const feedbackIndex = new BN(5);
+      const value = new BN(75);
+      const valueDecimals = 0;
 
       await program.methods
         .giveFeedback(
+          value,
+          valueDecimals,
           75,
+          Array.from(randomHash()),
+          feedbackIndex,
           "good",
           "test",
           "https://agent.example.com/api",
-          "https://example.com/feedback/accumulate",
-          Array.from(randomHash()),
-          feedbackIndex
+          "https://example.com/feedback/accumulate"
         )
         .accounts({
           client: clientKeypair.publicKey,
@@ -369,6 +489,37 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
       expect(stats.feedbackCount.toNumber()).to.be.greaterThan(1);
       console.log("AtomStats after multiple feedbacks:", stats.feedbackCount.toNumber());
     });
+
+    it("giveFeedback() with negative value (allowed for EVM compatibility)", async () => {
+      const feedbackIndex = new BN(6);
+      const value = new BN(-100);  // Negative value for refunds, etc.
+      const valueDecimals = 2;
+
+      await program.methods
+        .giveFeedback(
+          value,
+          valueDecimals,
+          50,
+          Array.from(randomHash()),
+          feedbackIndex,
+          "refund",
+          "negative",
+          "https://agent.example.com/api",
+          "https://example.com/feedback/negative"
+        )
+        .accounts({
+          client: clientKeypair.publicKey,
+          asset: agentAsset.publicKey,
+          collection: collectionPubkey,
+          agentAccount: agentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([clientKeypair])
+        .rpc();
+    });
   });
 
   // ============================================================================
@@ -376,19 +527,23 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
   // ============================================================================
   describe("Self-Feedback Protection", () => {
     it("giveFeedback() fails if owner tries to rate own agent", async () => {
-      const feedbackIndex = new anchor.BN(100);
+      const feedbackIndex = new BN(100);
+      const value = new BN(95);
+      const valueDecimals = 0;
 
       // Owner tries to give feedback to their own agent
       await expectAnchorError(
         program.methods
           .giveFeedback(
+            value,
+            valueDecimals,
             95,
+            Array.from(randomHash()),
+            feedbackIndex,
             "self",
             "feedback",
             "https://agent.example.com/api",
-            "https://example.com/feedback/self",
-            Array.from(randomHash()),
-            feedbackIndex
+            "https://example.com/feedback/self"
           )
           .accounts({
             client: provider.wallet.publicKey, // Owner is client
@@ -438,18 +593,35 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
         .signers([revokeAgentAsset])
         .rpc();
 
+      // Initialize ATOM stats for revoke agent
+      await atomProgram.methods
+        .initializeStats()
+        .accounts({
+          owner: provider.wallet.publicKey,
+          asset: revokeAgentAsset.publicKey,
+          collection: collectionPubkey,
+          config: atomConfigPda,
+          stats: revokeAtomStatsPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
       // Create feedback to revoke
-      const feedbackIndex = new anchor.BN(0);
+      const feedbackIndex = new BN(0);
+      const value = new BN(90);
+      const valueDecimals = 0;
 
       await program.methods
         .giveFeedback(
+          value,
+          valueDecimals,
           90,
+          Array.from(randomHash()),
+          feedbackIndex,
           "high",
           "quality",
           "https://agent.example.com/api",
-          "https://example.com/feedback/to-revoke",
-          Array.from(randomHash()),
-          feedbackIndex
+          "https://example.com/feedback/to-revoke"
         )
         .accounts({
           client: revokeClientKeypair.publicKey,
@@ -466,13 +638,18 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     });
 
     it("revokeFeedback() emits FeedbackRevoked event", async () => {
-      const feedbackIndex = new anchor.BN(0);
+      const feedbackIndex = new BN(0);
 
       const tx = await program.methods
         .revokeFeedback(feedbackIndex)
         .accounts({
           client: revokeClientKeypair.publicKey,
           asset: revokeAgentAsset.publicKey,
+          agentAccount: revokeAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: revokeAtomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([revokeClientKeypair])
         .rpc();
@@ -485,18 +662,22 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
       // Events-only: program doesn't enforce signer == original client
       // Indexer is responsible for validation
       const fakeClient = Keypair.generate();
-      const feedbackIndex = new anchor.BN(1);
+      const feedbackIndex = new BN(1);
+      const value = new BN(85);
+      const valueDecimals = 0;
 
       // First create a feedback
       await program.methods
         .giveFeedback(
+          value,
+          valueDecimals,
           85,
+          Array.from(randomHash()),
+          feedbackIndex,
           "test",
           "revoke",
           "https://agent.example.com/api",
-          "https://example.com/feedback/non-author",
-          Array.from(randomHash()),
-          feedbackIndex
+          "https://example.com/feedback/non-author"
         )
         .accounts({
           client: revokeClientKeypair.publicKey,
@@ -517,6 +698,11 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
         .accounts({
           client: fakeClient.publicKey,
           asset: revokeAgentAsset.publicKey,
+          agentAccount: revokeAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: revokeAtomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([fakeClient])
         .rpc();
@@ -524,7 +710,7 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     });
 
     it("revokeFeedback() can be called multiple times (events-only)", async () => {
-      const feedbackIndex = new anchor.BN(0);
+      const feedbackIndex = new BN(0);
 
       // Events-only: multiple revoke events allowed, indexer handles
       await program.methods
@@ -532,6 +718,11 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
         .accounts({
           client: revokeClientKeypair.publicKey,
           asset: revokeAgentAsset.publicKey,
+          agentAccount: revokeAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: revokeAtomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([revokeClientKeypair])
         .rpc();
@@ -547,7 +738,7 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     let responseAgentPda: PublicKey;
     let responseAtomStatsPda: PublicKey;
     let responseClientKeypair: Keypair;
-    const feedbackIndex = new anchor.BN(0);
+    const feedbackIndex = new BN(0);
 
     before(async () => {
       responseAgentAsset = Keypair.generate();
@@ -572,16 +763,34 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
         .signers([responseAgentAsset])
         .rpc();
 
+      // Initialize ATOM stats for response agent
+      await atomProgram.methods
+        .initializeStats()
+        .accounts({
+          owner: provider.wallet.publicKey,
+          asset: responseAgentAsset.publicKey,
+          collection: collectionPubkey,
+          config: atomConfigPda,
+          stats: responseAtomStatsPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
       // Create feedback to respond to
+      const value = new BN(75);
+      const valueDecimals = 0;
+
       await program.methods
         .giveFeedback(
+          value,
+          valueDecimals,
           75,
+          Array.from(randomHash()),
+          feedbackIndex,
           "feedback",
           "test",
           "https://agent.example.com/api",
-          "https://example.com/feedback/for-response",
-          Array.from(randomHash()),
-          feedbackIndex
+          "https://example.com/feedback/for-response"
         )
         .accounts({
           client: responseClientKeypair.publicKey,
@@ -600,6 +809,8 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     it("appendResponse() emits ResponseAppended event", async () => {
       const tx = await program.methods
         .appendResponse(
+          responseAgentAsset.publicKey,
+          responseClientKeypair.publicKey,
           feedbackIndex,
           "https://example.com/response/0",
           Array.from(randomHash())
@@ -617,6 +828,8 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
       for (let i = 1; i <= 3; i++) {
         await program.methods
           .appendResponse(
+            responseAgentAsset.publicKey,
+            responseClientKeypair.publicKey,
             feedbackIndex,
             `https://example.com/response/${i}`,
             Array.from(randomHash())
@@ -629,12 +842,14 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
       }
     });
 
-    it("appendResponse() fails with URI > 200 bytes", async () => {
+    it("appendResponse() fails with URI > 250 bytes", async () => {
       const longUri = uriOfLength(MAX_URI_LENGTH + 1);
 
       await expectAnchorError(
         program.methods
           .appendResponse(
+            responseAgentAsset.publicKey,
+            responseClientKeypair.publicKey,
             feedbackIndex,
             longUri,
             Array.from(randomHash())
@@ -651,6 +866,8 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     it("appendResponse() with empty URI (allowed)", async () => {
       await program.methods
         .appendResponse(
+          responseAgentAsset.publicKey,
+          responseClientKeypair.publicKey,
           feedbackIndex,
           "",
           Array.from(randomHash())
@@ -694,23 +911,40 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
         })
         .signers([idxAgentAsset])
         .rpc();
+
+      // Initialize ATOM stats for index test agent
+      await atomProgram.methods
+        .initializeStats()
+        .accounts({
+          owner: provider.wallet.publicKey,
+          asset: idxAgentAsset.publicKey,
+          collection: collectionPubkey,
+          config: atomConfigPda,
+          stats: idxAtomStatsPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
     });
 
     it("client can provide any index (events-only)", async () => {
       const indices = [0, 5, 10, 100, 999999];
 
       for (const idx of indices) {
-        const feedbackIndex = new anchor.BN(idx);
+        const feedbackIndex = new BN(idx);
+        const value = new BN(80);
+        const valueDecimals = 0;
 
         await program.methods
           .giveFeedback(
+            value,
+            valueDecimals,
             80,
+            Array.from(randomHash()),
+            feedbackIndex,
             `tag${idx}`,
             "test",
             "https://agent.example.com/api",
-            `https://example.com/feedback/idx-${idx}`,
-            Array.from(randomHash()),
-            feedbackIndex
+            `https://example.com/feedback/idx-${idx}`
           )
           .accounts({
             client: idxClientKeypair.publicKey,
@@ -728,7 +962,9 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
     });
 
     it("same index can be reused (events-only, indexer dedupes)", async () => {
-      const feedbackIndex = new anchor.BN(0);
+      const feedbackIndex = new BN(0);
+      const value = new BN(50);
+      const valueDecimals = 0;
 
       // Revoke first
       await program.methods
@@ -736,6 +972,11 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
         .accounts({
           client: idxClientKeypair.publicKey,
           asset: idxAgentAsset.publicKey,
+          agentAccount: idxAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: idxAtomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([idxClientKeypair])
         .rpc();
@@ -743,13 +984,15 @@ describe("Reputation Module Tests (v0.4.0 CPI)", () => {
       // Reuse index - events-only allows this
       await program.methods
         .giveFeedback(
+          value,
+          valueDecimals,
           50,
+          Array.from(randomHash()),
+          feedbackIndex,
           "reuse",
           "test",
           "https://agent.example.com/api",
-          "https://example.com/feedback/reuse",
-          Array.from(randomHash()),
-          feedbackIndex
+          "https://example.com/feedback/reuse"
         )
         .accounts({
           client: idxClientKeypair.publicKey,

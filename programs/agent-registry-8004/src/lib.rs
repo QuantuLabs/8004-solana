@@ -134,23 +134,27 @@ pub mod agent_registry_8004 {
     /// Give feedback to an agent
     pub fn give_feedback(
         ctx: Context<GiveFeedback>,
-        score: u8,
+        value: i64,
+        value_decimals: u8,
+        score: Option<u8>,
+        feedback_hash: [u8; 32],
+        feedback_index: u64,
         tag1: String,
         tag2: String,
         endpoint: String,
         feedback_uri: String,
-        feedback_hash: [u8; 32],
-        feedback_index: u64,
     ) -> Result<()> {
         reputation::instructions::give_feedback(
             ctx,
+            value,
+            value_decimals,
             score,
+            feedback_hash,
+            feedback_index,
             tag1,
             tag2,
             endpoint,
             feedback_uri,
-            feedback_hash,
-            feedback_index,
         )
     }
 

@@ -14,13 +14,13 @@ export const MPL_CORE_PROGRAM_ID = new PublicKey(
 );
 
 export const ATOM_ENGINE_PROGRAM_ID = new PublicKey(
-  "6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf"
+  "8BmzNSQ7G5y6C6W8tkqsb4TtqkkiircfcXviAsxnhhST"
 );
 
-export const MAX_URI_LENGTH = 200;
+export const MAX_URI_LENGTH = 250;
 export const MAX_TAG_LENGTH = 32;
 export const MAX_METADATA_KEY_LENGTH = 32;
-export const MAX_METADATA_VALUE_LENGTH = 256;
+export const MAX_METADATA_VALUE_LENGTH = 250;
 export const MAX_METADATA_ENTRIES = 1;
 
 // Agent wallet key hash: sha256("agentWallet")[0..8]
@@ -212,8 +212,9 @@ export function getValidationRequestPda(
 }
 
 /**
- * Derive metadata entry PDA: ["agent_meta", asset.key(), key_hash (8 bytes)]
+ * Derive metadata entry PDA: ["agent_meta", asset.key(), key_hash (16 bytes)]
  * v0.3.0: Uses asset (Pubkey) instead of agent_id
+ * key_hash is SHA256(key)[0..16] for collision resistance (2^128 space)
  */
 export function getMetadataEntryPda(
   asset: PublicKey,
@@ -224,7 +225,7 @@ export function getMetadataEntryPda(
     [
       Buffer.from("agent_meta"),
       asset.toBuffer(),
-      Buffer.from(keyHash.slice(0, 8)),
+      Buffer.from(keyHash.slice(0, 16)),
     ],
     programId
   );
@@ -298,12 +299,12 @@ export function buildWalletSetMessage(
 
 /**
  * Compute key hash for metadata PDA derivation
- * Returns first 8 bytes of SHA256(key)
+ * Returns first 16 bytes of SHA256(key) for collision resistance (2^128 space)
  */
 export function computeKeyHash(key: string): Uint8Array {
   const crypto = require("crypto");
   const hash = crypto.createHash("sha256").update(key).digest();
-  return new Uint8Array(hash.slice(0, 8));
+  return new Uint8Array(hash.slice(0, 16));
 }
 
 // ============================================================================

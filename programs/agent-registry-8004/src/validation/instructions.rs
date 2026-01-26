@@ -52,7 +52,7 @@ pub fn initialize_validation_config(ctx: Context<InitializeValidationConfig>) ->
 /// Args:
 /// - validator_address: Who can respond to this validation
 /// - nonce: Sequence number for multiple validations from same validator
-/// - request_uri: IPFS/Arweave link to validation request (max 200 bytes)
+/// - request_uri: IPFS/Arweave link to validation request (max 250 bytes)
 /// - request_hash: SHA-256 hash of request content for integrity
 pub fn request_validation(
     ctx: Context<RequestValidation>,
@@ -128,7 +128,7 @@ pub fn request_validation(
 /// - validator_address: Validator address (used for PDA derivation to avoid .key() allocation)
 /// - nonce: Nonce matching the ValidationRequest
 /// - response: Validation score 0-100 (ERC-8004: 0 is valid score, not "pending")
-/// - response_uri: IPFS/Arweave link to validation report (max 200 bytes)
+/// - response_uri: IPFS/Arweave link to validation report (max 250 bytes)
 /// - response_hash: SHA-256 hash of response content
 /// - tag: String tag for categorization (e.g., "oasf-v0.8.0", max 32 bytes)
 pub fn respond_to_validation(

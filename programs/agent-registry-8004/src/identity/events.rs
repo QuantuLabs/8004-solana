@@ -73,6 +73,7 @@ pub struct UserRegistryCreated {
 }
 
 /// Event emitted when agent is registered in a specific registry
+/// Field order: fixed-size first (Pubkey, bool), variable-size last (String)
 #[event]
 pub struct AgentRegisteredInRegistry {
     pub asset: Pubkey,
@@ -80,6 +81,7 @@ pub struct AgentRegisteredInRegistry {
     pub collection: Pubkey,
     pub owner: Pubkey,
     pub atom_enabled: bool,
+    pub agent_uri: String,
 }
 
 /// Event emitted when ATOM is enabled for an agent (one-way)

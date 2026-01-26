@@ -84,17 +84,12 @@ pub fn set_metadata_pda(
         entry.bump = ctx.bumps.metadata_entry;
     }
 
-    // Emit event (value truncated to 64 bytes)
-    let truncated_value = if value.len() > 64 {
-        value[..64].to_vec()
-    } else {
-        value
-    };
+    // Emit event with full value (max 250 bytes, validated above)
     emit!(MetadataSet {
         asset,
         immutable,
         key: key.clone(),
-        value: truncated_value,
+        value,
     });
 
     msg!("Metadata '{}' set for asset {} (immutable: {})", key, asset, immutable);
@@ -624,7 +619,7 @@ pub fn rotate_base_registry(ctx: Context<RotateBaseRegistry>) -> Result<()> {
 // ============================================================================
 
 const MAX_COLLECTION_NAME_LENGTH: usize = 32;
-const MAX_COLLECTION_URI_LENGTH: usize = 200;
+const MAX_COLLECTION_URI_LENGTH: usize = 250;
 
 /// Create a user registry (anyone can create their own shard)
 pub fn create_user_registry(
@@ -818,6 +813,7 @@ fn register_inner(
         collection: ctx.accounts.collection.key(),
         owner: ctx.accounts.owner.key(),
         atom_enabled: agent.atom_enabled,
+        agent_uri: agent.agent_uri.clone(),
     });
 
     msg!(

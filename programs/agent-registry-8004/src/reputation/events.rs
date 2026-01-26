@@ -7,18 +7,17 @@ pub struct NewFeedback {
     pub asset: Pubkey,
     pub client_address: Pubkey,
     pub feedback_index: u64,
-    pub score: u8,
+    pub value: i64,
+    pub value_decimals: u8,
+    pub score: Option<u8>,
     pub feedback_hash: [u8; 32],
-    // Whether ATOM Engine was used for this feedback
     pub atom_enabled: bool,
-    // Enriched fields from AtomStats (0 values if atom_enabled=false)
     pub new_trust_tier: u8,
     pub new_quality_score: u16,
     pub new_confidence: u16,
     pub new_risk_score: u8,
     pub new_diversity_ratio: u8,
     pub is_unique_client: bool,
-    // Variable-size fields last
     pub tag1: String,
     pub tag2: String,
     pub endpoint: String,

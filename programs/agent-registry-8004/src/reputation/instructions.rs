@@ -21,13 +21,15 @@ fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
 
 pub fn give_feedback(
     ctx: Context<GiveFeedback>,
-    score: u8,
+    value: i64,
+    value_decimals: u8,
+    score: Option<u8>,
+    feedback_hash: [u8; 32],
+    feedback_index: u64,
     tag1: String,
     tag2: String,
     endpoint: String,
     feedback_uri: String,
-    feedback_hash: [u8; 32],
-    feedback_index: u64,
 ) -> Result<()> {
     let core_owner = get_core_owner(&ctx.accounts.asset)?;
     require!(
@@ -35,7 +37,10 @@ pub fn give_feedback(
         RegistryError::SelfFeedbackNotAllowed
     );
 
-    require!(score <= 100, RegistryError::InvalidScore);
+    require!(value_decimals <= MAX_VALUE_DECIMALS, RegistryError::InvalidDecimals);
+    if let Some(s) = score {
+        require!(s <= 100, RegistryError::InvalidScore);
+    }
     require!(tag1.len() <= MAX_TAG_LENGTH, RegistryError::TagTooLong);
     require!(tag2.len() <= MAX_TAG_LENGTH, RegistryError::TagTooLong);
     require!(
@@ -79,7 +84,8 @@ pub fn give_feedback(
         }
     }
 
-    let update_result = if is_atom_initialized {
+    let update_result = if is_atom_initialized && score.is_some() {
+        let s = score.unwrap();
         let atom_config = ctx
             .accounts
             .atom_config
@@ -102,13 +108,11 @@ pub fn give_feedback(
             .ok_or(RegistryError::AtomStatsNotInitialized)?
             .to_account_info();
 
-        // Validate ATOM Engine program ID
         require!(
             atom_engine_program.key() == atom_engine::ID,
             RegistryError::InvalidProgram
         );
 
-        // Compute client hash for ATOM
         let client_hash = keccak::hash(ctx.accounts.client.key().as_ref());
 
         let cpi_accounts = atom_engine::cpi::accounts::UpdateStats {
@@ -133,11 +137,9 @@ pub fn give_feedback(
             signer_seeds,
         );
 
-        // Capture UpdateResult for enriched event
-        let cpi_result = atom_engine::cpi::update_stats(cpi_ctx, client_hash.0, score)?;
+        let cpi_result = atom_engine::cpi::update_stats(cpi_ctx, client_hash.0, s)?;
         cpi_result.get()
     } else {
-        // ATOM not initialized - return default values
         atom_engine::UpdateResult {
             trust_tier: 0,
             quality_score: 0,
@@ -148,14 +150,15 @@ pub fn give_feedback(
         }
     };
 
-    // Enriched event with AtomStats results
     emit!(NewFeedback {
         asset,
         client_address: ctx.accounts.client.key(),
         feedback_index,
+        value,
+        value_decimals,
         score,
         feedback_hash,
-        atom_enabled: is_atom_initialized,
+        atom_enabled: is_atom_initialized && score.is_some(),
         new_trust_tier: update_result.trust_tier,
         new_quality_score: update_result.quality_score,
         new_confidence: update_result.confidence,
@@ -169,12 +172,12 @@ pub fn give_feedback(
     });
 
     msg!(
-        "Feedback #{} created: asset={}, client={}, score={}, atom_enabled={}, tier={}",
+        "Feedback #{} created: asset={}, client={}, score={:?}, atom_enabled={}, tier={}",
         feedback_index,
         asset,
         ctx.accounts.client.key(),
         score,
-        is_atom_initialized,
+        is_atom_initialized && score.is_some(),
         update_result.trust_tier
     );
 
