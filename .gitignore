@@ -59,3 +59,17 @@ twitter-thread-*.md
 
 # Local changelog
 ATOM-CHANGELOG.md
+
+# Temp planning files
+PLAN-*.md
+*_PLAN.md
+audit_8004/
+
+# Generated IDL files (root level)
+agent_registry_8004.*
+atom_engine.*
+
+# Temp scripts
+scripts/measure-costs*.ts
+scripts/start-localnet.sh
+tests/test-atom-optional.ts
