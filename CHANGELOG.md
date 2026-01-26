@@ -5,21 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - 2026-01-14
+## [0.5.0] - 2026-01-26
 
-### ATOM Engine v0.2.0 "Fortress" - Production Ready
-
-The ATOM Engine has reached production stability after extensive security audits.
+### Feedback System - Rich Metrics Support
 
 #### Added
-- **Tier Vesting** - 8 epoch (~20 days) delay before tier promotion to prevent Sybil attacks
-- **Platinum Loyalty Gate** - Requires 500+ loyalty score before Platinum candidature
+- **`value: i64`** - Raw metric value for revenues, latency, yields, etc.
+- **`value_decimals: u8`** - Decimal precision (0-6) for fixed-point representation
+- **`score: Option<u8>`** - Optional quality score (null = skip ATOM scoring)
+- **IDL files** - Published in `idl/` folder for integrators
+
+#### Changed
+- `give_feedback` instruction now accepts value/valueDecimals/optional score
+- `NewFeedback` event includes new fields
+
+### ATOM Engine v0.2.0 "Fortress"
+
+#### Added
+- **Tier Vesting** - 8 epoch (~20 days) delay before tier promotion
+- **Platinum Loyalty Gate** - Requires 500+ loyalty score
 - **Anti-Oscillation** - Tier fluctuations don't reset vesting timer
 
 #### State Changes
 - +4 bytes per agent (tier_candidate, tier_candidate_epoch, tier_confirmed)
-
-See `ATOM-CHANGELOG.md` for complete security audit history.
 
 ---
 
