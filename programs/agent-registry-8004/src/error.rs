@@ -47,7 +47,9 @@ pub enum RegistryError {
     InvalidFeedbackIndex = 6055,
     #[msg("Tag exceeds 32 bytes")]
     TagTooLong = 6056,
-    #[msg("At least one tag must be provided")]
+    /// RESERVED: Tags are optional per ERC-8004 spec
+    /// Error code kept for backwards compatibility with indexers/clients
+    #[msg("Reserved - tags are optional")]
     EmptyTags = 6057,
     #[msg("Endpoint exceeds 250 bytes")]
     EndpointTooLong = 6060,
