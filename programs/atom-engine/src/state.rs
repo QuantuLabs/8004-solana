@@ -290,7 +290,19 @@ pub struct AtomConfig {
 }
 
 impl AtomConfig {
-    pub const SIZE: usize = 8 + 32 + 32 + 18 + 6 + 8 + 20 + 8 + 10 + 2 + 8;
+    /// Account size calculation:
+    /// - Discriminator: 8
+    /// - authority + agent_registry_program: 32 + 32 = 64
+    /// - EMA params (9 x u16): 18
+    /// - Weights (6 x u8): 6
+    /// - Thresholds (2 x u8 + 3 x u16): 8
+    /// - Tier thresholds (4 x (u16 + u8 + u16)): 20
+    /// - Cold start (4 x u16): 8
+    /// - Bonus/Loyalty (2 x u16 + u32 + u8): 9
+    /// - Decay (u16): 2
+    /// - Meta (bump + version + paused + padding): 8
+    /// Total: 8 + 64 + 18 + 6 + 8 + 20 + 8 + 9 + 2 + 8 = 151
+    pub const SIZE: usize = 8 + 64 + 18 + 6 + 8 + 20 + 8 + 9 + 2 + 8;
 
     /// Initialize config with defaults from params.rs
     pub fn init_defaults(&mut self, authority: Pubkey, agent_registry_program: Pubkey, bump: u8) {
