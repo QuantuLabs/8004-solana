@@ -1,6 +1,9 @@
 use crate::params::*;
 use crate::state::*;
 
+// Re-export AtomConfig for convenience
+pub use crate::state::AtomConfig;
+
 // ============================================================================
 // ATOM Engine - Calculation Functions
 // ============================================================================
@@ -13,40 +16,42 @@ use crate::state::*;
 // ============================================================================
 
 /// Update all EMA values with new feedback
-fn update_ema(stats: &mut AtomStats, score: u8, slot_delta: u64) {
+fn update_ema(stats: &mut AtomStats, score: u8, slot_delta: u64, config: &AtomConfig) {
     let score_scaled = (score as u16) * 100;
 
     // Inactive decay: if slot_delta > 1 epoch, decay confidence
-    // Tiered decay based on dormancy severity
     if slot_delta > EPOCH_SLOTS {
         let epochs_inactive = (slot_delta / EPOCH_SLOTS).min(MAX_INACTIVE_EPOCHS) as u16;
-
         let decay_per_epoch = if epochs_inactive >= SEVERE_DORMANCY_EPOCHS as u16 {
-            INACTIVE_DECAY_PER_EPOCH * SEVERE_DORMANCY_MULTIPLIER
+            config.inactive_decay_per_epoch * SEVERE_DORMANCY_MULTIPLIER
         } else {
-            INACTIVE_DECAY_PER_EPOCH
+            config.inactive_decay_per_epoch
         };
-
         stats.confidence = stats.confidence.saturating_sub(epochs_inactive * decay_per_epoch);
     }
 
-    // Fast EMA (α = ALPHA_FAST/100)
-    stats.ema_score_fast = ((ALPHA_FAST * score_scaled as u32
-        + (100 - ALPHA_FAST) * stats.ema_score_fast as u32) / 100) as u16;
+    let alpha_fast = config.alpha_fast as u32;
+    let alpha_slow = config.alpha_slow as u32;
+    let alpha_vol = config.alpha_volatility as u32;
+    let alpha_arr = config.alpha_arrival as u32;
 
-    // Slow EMA (α = ALPHA_SLOW/100)
-    stats.ema_score_slow = ((ALPHA_SLOW * score_scaled as u32
-        + (100 - ALPHA_SLOW) * stats.ema_score_slow as u32) / 100) as u16;
+    // Fast EMA
+    stats.ema_score_fast = ((alpha_fast * score_scaled as u32
+        + (100 - alpha_fast) * stats.ema_score_fast as u32) / 100) as u16;
+
+    // Slow EMA
+    stats.ema_score_slow = ((alpha_slow * score_scaled as u32
+        + (100 - alpha_slow) * stats.ema_score_slow as u32) / 100) as u16;
 
     // Volatility EMA: |fast - slow|
     let deviation = stats.ema_score_fast.abs_diff(stats.ema_score_slow);
-    stats.ema_volatility = ((ALPHA_VOLATILITY * deviation as u32
-        + (100 - ALPHA_VOLATILITY) * stats.ema_volatility as u32) / 100) as u16;
+    stats.ema_volatility = ((alpha_vol * deviation as u32
+        + (100 - alpha_vol) * stats.ema_volatility as u32) / 100) as u16;
 
-    // Arrival rate EMA (ilog2 of slot delta, capped at 15)
+    // Arrival rate EMA
     let arrival_log = ilog2_safe(slot_delta).min(15) as u16 * 100;
-    stats.ema_arrival_log = ((ALPHA_ARRIVAL * arrival_log as u32
-        + (100 - ALPHA_ARRIVAL) * stats.ema_arrival_log as u32) / 100) as u16;
+    stats.ema_arrival_log = ((alpha_arr * arrival_log as u32
+        + (100 - alpha_arr) * stats.ema_arrival_log as u32) / 100) as u16;
 
     // Peak and drawdown tracking
     if stats.ema_score_slow > stats.peak_ema {
@@ -63,58 +68,55 @@ fn update_ema(stats: &mut AtomStats, score: u8, slot_delta: u64) {
 // ============================================================================
 
 /// Calculate risk score based on multiple signals
-fn calculate_risk(stats: &AtomStats, hll_est: u64) -> u8 {
+fn calculate_risk(stats: &AtomStats, hll_est: u64, config: &AtomConfig) -> u8 {
     let mut risk: u32 = 0;
     let n = stats.feedback_count.max(1);
-
-    // Sample-size modulation factor (0-100, ramps over 20 feedbacks)
     let size_mod = ((n * 5).min(100)) as u32;
 
-    // 1. SYBIL RISK - Low diversity = high risk
+    // 1. SYBIL RISK
     let diversity = safe_div(hll_est * 255, n).min(255) as u8;
-    if diversity < DIVERSITY_THRESHOLD {
+    if diversity < config.diversity_threshold {
         risk += safe_div_u32(
-            WEIGHT_SYBIL * (DIVERSITY_THRESHOLD - diversity) as u32 * size_mod,
+            config.weight_sybil as u32 * (config.diversity_threshold - diversity) as u32 * size_mod,
             100
         );
     }
 
-    // 2. BURST PRESSURE RISK - Repeated same caller
-    if stats.burst_pressure > BURST_THRESHOLD {
+    // 2. BURST PRESSURE RISK
+    if stats.burst_pressure > config.burst_threshold {
         risk += safe_div_u32(
-            WEIGHT_BURST * (stats.burst_pressure - BURST_THRESHOLD) as u32 * size_mod,
+            config.weight_burst as u32 * (stats.burst_pressure - config.burst_threshold) as u32 * size_mod,
             100
         );
     }
 
-    // 3. STAGNATION RISK - No new unique clients (wallet rotation)
+    // 3. STAGNATION RISK
     let stagnation_threshold = (hll_est / 10)
         .max(STAGNATION_THRESHOLD_MIN as u64)
         .min(STAGNATION_THRESHOLD_MAX as u64)
         .min(255) as u8;
-
     if stats.updates_since_hll_change > stagnation_threshold {
-        risk += WEIGHT_STAGNATION * (stats.updates_since_hll_change - stagnation_threshold) as u32;
+        risk += config.weight_stagnation as u32 * (stats.updates_since_hll_change - stagnation_threshold) as u32;
     }
 
-    // 4. SHOCK RISK - Fast/slow EMA divergence
+    // 4. SHOCK RISK
     let shock = stats.ema_score_fast.abs_diff(stats.ema_score_slow);
-    if shock > SHOCK_THRESHOLD {
+    if shock > config.shock_threshold {
         risk += safe_div_u32(
-            WEIGHT_SHOCK * ((shock - SHOCK_THRESHOLD) / 500) as u32 * size_mod,
+            config.weight_shock as u32 * ((shock - config.shock_threshold) / 500) as u32 * size_mod,
             100
         );
     }
 
-    // 5. VOLATILITY RISK - Inconsistent scores
-    if stats.ema_volatility > VOLATILITY_THRESHOLD {
-        risk += WEIGHT_VOLATILITY * ((stats.ema_volatility - VOLATILITY_THRESHOLD) / 500) as u32;
+    // 5. VOLATILITY RISK
+    if stats.ema_volatility > config.volatility_threshold {
+        risk += config.weight_volatility as u32 * ((stats.ema_volatility - config.volatility_threshold) / 500) as u32;
     }
 
-    // 6. ARRIVAL RATE RISK - Very fast feedback cadence
-    if stats.ema_arrival_log < ARRIVAL_FAST_THRESHOLD && n > 10 {
+    // 6. ARRIVAL RATE RISK
+    if stats.ema_arrival_log < config.arrival_fast_threshold && n > 10 {
         risk += safe_div_u32(
-            WEIGHT_ARRIVAL * (ARRIVAL_FAST_THRESHOLD - stats.ema_arrival_log) as u32,
+            config.weight_arrival as u32 * (config.arrival_fast_threshold - stats.ema_arrival_log) as u32,
             100
         ).min(10);
     }
@@ -350,6 +352,7 @@ fn update_quality(
     slot_delta: u64,
     current_epoch: u16,
     current_slot: u64,
+    config: &AtomConfig,
 ) {
     // Circuit breaker: dampen during freeze, never block negative
     let is_frozen = stats.freeze_epochs > 0;
@@ -373,17 +376,17 @@ fn update_quality(
     let mut quality_delta: u32 = (score as u32 * consistency / 100) * 100;
 
     // Uniqueness bonus
-    if hll_changed && stats.burst_pressure < BONUS_MAX_BURST_PRESSURE {
-        quality_delta = quality_delta.saturating_add(UNIQUENESS_BONUS as u32 * 100);
+    if hll_changed && stats.burst_pressure < config.bonus_max_burst_pressure {
+        quality_delta = quality_delta.saturating_add(config.uniqueness_bonus as u32 * 100);
         stats.updates_since_hll_change = 0;
     } else {
         stats.updates_since_hll_change = stats.updates_since_hll_change.saturating_add(1);
     }
 
     // Loyalty bonus (capped to prevent farming)
-    if !hll_changed && slot_delta > LOYALTY_MIN_SLOT_DELTA && stats.burst_pressure < BURST_THRESHOLD {
-        stats.loyalty_score = stats.loyalty_score.saturating_add(LOYALTY_BONUS).min(LOYALTY_SCORE_MAX);
-        quality_delta = quality_delta.saturating_add(LOYALTY_BONUS as u32 * 100);
+    if !hll_changed && slot_delta > config.loyalty_min_slot_delta as u64 && stats.burst_pressure < config.burst_threshold {
+        stats.loyalty_score = stats.loyalty_score.saturating_add(config.loyalty_bonus).min(LOYALTY_SCORE_MAX);
+        quality_delta = quality_delta.saturating_add(config.loyalty_bonus as u32 * 100);
     }
 
     quality_delta = quality_delta.min(10000);
@@ -393,13 +396,11 @@ fn update_quality(
 
     // Alpha calculation with all protections
     let mut alpha = if is_improving {
-        let base_alpha = compute_alpha_up_v7(stats, ALPHA_QUALITY_UP);
+        let base_alpha = compute_alpha_up_v7(stats, config.alpha_quality_up as u32);
 
-        // Apply existing WUE weighting
         let wue_weight = calculate_wue_weight(stats.diversity_ratio);
         let alpha_with_wue = (base_alpha * wue_weight) / 100;
 
-        // Contradiction penalty
         let alpha_with_contradiction = if stats.neg_pressure > NEG_PRESSURE_THRESHOLD
             && stats.diversity_ratio < HEALTHY_DIVERSITY_THRESHOLD {
             alpha_with_wue / NEG_PRESSURE_DAMPENING
@@ -411,7 +412,7 @@ fn update_quality(
         alpha_with_contradiction.max(2).min(V7_ALPHA_MAX)
     } else {
         stats.neg_pressure = stats.neg_pressure.saturating_add(NEG_PRESSURE_INCREMENT);
-        compute_alpha_down_v8(stats, ALPHA_QUALITY_DOWN, current_slot, slot_delta)
+        compute_alpha_down_v8(stats, config.alpha_quality_down as u32, current_slot, slot_delta)
     };
 
     // During freeze, dampen BOTH directions symmetrically
@@ -448,17 +449,17 @@ fn update_quality(
 // ============================================================================
 
 /// Update confidence using EMA (allows decrease when diversity drops)
-fn update_confidence(stats: &mut AtomStats, hll_est: u64) {
+fn update_confidence(stats: &mut AtomStats, hll_est: u64, config: &AtomConfig) {
     let n = stats.feedback_count;
 
     let count_factor = (n.min(100) * 60) as u32;
     let effective_unique = hll_est.min(n);
     let diversity_factor = (effective_unique * 40).min(5000) as u32;
 
-    let cold_penalty = if n < COLD_START_MIN {
-        COLD_START_PENALTY_HEAVY
-    } else if n < COLD_START_MAX {
-        (COLD_START_MAX - n) as u32 * COLD_START_PENALTY_PER_FEEDBACK
+    let cold_penalty = if n < config.cold_start_min as u64 {
+        config.cold_start_penalty_heavy as u32
+    } else if n < config.cold_start_max as u64 {
+        (config.cold_start_max as u64 - n) as u32 * config.cold_start_penalty_per_feedback as u32
     } else {
         0
     };
@@ -485,33 +486,33 @@ fn update_confidence(stats: &mut AtomStats, hll_est: u64) {
 
 /// Calculate raw tier based on quality/risk/confidence (without vesting)
 #[inline]
-fn calculate_raw_tier(stats: &AtomStats) -> u8 {
+fn calculate_raw_tier(stats: &AtomStats, config: &AtomConfig) -> u8 {
     let q = stats.quality_score;
     let r = stats.risk_score;
     let c = stats.confidence;
     let current = stats.tier_confirmed;
     let h = TIER_HYSTERESIS;
 
-    let can_be_platinum = r <= TIER_PLATINUM.1 && c >= TIER_PLATINUM.2;
-    let can_be_gold = r <= TIER_GOLD.1 && c >= TIER_GOLD.2;
-    let can_be_silver = r <= TIER_SILVER.1 && c >= TIER_SILVER.2;
-    let can_be_bronze = r <= TIER_BRONZE.1 && c >= TIER_BRONZE.2;
+    let can_be_platinum = r <= config.tier_platinum_risk && c >= config.tier_platinum_confidence;
+    let can_be_gold = r <= config.tier_gold_risk && c >= config.tier_gold_confidence;
+    let can_be_silver = r <= config.tier_silver_risk && c >= config.tier_silver_confidence;
+    let can_be_bronze = r <= config.tier_bronze_risk && c >= config.tier_bronze_confidence;
 
     if can_be_platinum &&
-        (current == 4 && q >= TIER_PLATINUM.0.saturating_sub(h) ||
-         current < 4 && q >= TIER_PLATINUM.0.saturating_add(h)) {
+        (current == 4 && q >= config.tier_platinum_quality.saturating_sub(h) ||
+         current < 4 && q >= config.tier_platinum_quality.saturating_add(h)) {
         4
     } else if can_be_gold &&
-        (current >= 3 && q >= TIER_GOLD.0.saturating_sub(h) ||
-         current < 3 && q >= TIER_GOLD.0.saturating_add(h)) {
+        (current >= 3 && q >= config.tier_gold_quality.saturating_sub(h) ||
+         current < 3 && q >= config.tier_gold_quality.saturating_add(h)) {
         3
     } else if can_be_silver &&
-        (current >= 2 && q >= TIER_SILVER.0.saturating_sub(h) ||
-         current < 2 && q >= TIER_SILVER.0.saturating_add(h)) {
+        (current >= 2 && q >= config.tier_silver_quality.saturating_sub(h) ||
+         current < 2 && q >= config.tier_silver_quality.saturating_add(h)) {
         2
     } else if can_be_bronze &&
-        (current >= 1 && q >= TIER_BRONZE.0.saturating_sub(h) ||
-         current < 1 && q >= TIER_BRONZE.0.saturating_add(h)) {
+        (current >= 1 && q >= config.tier_bronze_quality.saturating_sub(h) ||
+         current < 1 && q >= config.tier_bronze_quality.saturating_add(h)) {
         1
     } else {
         0
@@ -519,8 +520,8 @@ fn calculate_raw_tier(stats: &AtomStats) -> u8 {
 }
 
 /// Update trust tier with vesting period for promotions
-fn update_trust_tier(stats: &mut AtomStats) {
-    let calculated_tier = calculate_raw_tier(stats).min(4);
+fn update_trust_tier(stats: &mut AtomStats, config: &AtomConfig) {
+    let calculated_tier = calculate_raw_tier(stats, config).min(4);
 
     // During freeze, reset candidature
     if stats.freeze_epochs > 0 {
@@ -601,6 +602,7 @@ pub fn update_stats(
     client_hash: &[u8; 32],
     score: u8,
     current_slot: u64,
+    config: &AtomConfig,
 ) -> bool {
     let slot_delta = current_slot.saturating_sub(stats.last_feedback_slot);
 
@@ -723,12 +725,12 @@ pub fn update_stats(
 
     // All updates
     let current_epoch = stats.current_epoch;
-    update_ema(stats, score, slot_delta);
-    update_quality(stats, score, hll_changed, slot_delta, current_epoch, current_slot);
-    stats.risk_score = calculate_risk(stats, hll_est);
+    update_ema(stats, score, slot_delta, config);
+    update_quality(stats, score, hll_changed, slot_delta, current_epoch, current_slot, config);
+    stats.risk_score = calculate_risk(stats, hll_est, config);
     stats.diversity_ratio = safe_div(hll_est * 255, stats.feedback_count.max(1)).min(255) as u8;
-    update_confidence(stats, hll_est);
-    update_trust_tier(stats);
+    update_confidence(stats, hll_est, config);
+    update_trust_tier(stats, config);
 
     hll_changed
 }

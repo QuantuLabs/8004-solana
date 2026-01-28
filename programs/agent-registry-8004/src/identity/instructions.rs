@@ -192,6 +192,8 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
 }
 
 /// Sync agent owner from Core asset
+/// NOTE: Does NOT reset wallet - stale wallet protection is in append_response
+/// (wallet only valid when cached_owner == core_owner)
 pub fn sync_owner(ctx: Context<SyncOwner>) -> Result<()> {
     let agent = &mut ctx.accounts.agent_account;
     let new_owner = get_core_owner(&ctx.accounts.asset)?;
@@ -211,9 +213,27 @@ pub fn sync_owner(ctx: Context<SyncOwner>) -> Result<()> {
     Ok(())
 }
 
-/// Get agent owner
+/// Get agent owner (CACHED value - may be stale after external transfer)
+///
+/// WARNING: This returns the cached owner from AgentAccount, not the live Core owner.
+/// After an external NFT transfer (via Metaplex Core directly), this value becomes stale
+/// until sync_owner is called. For authoritative ownership, read the Core asset directly.
+///
+/// Use cases:
+/// - Quick lookup when staleness is acceptable
+/// - UI display (with note about potential staleness)
+///
+/// For authoritative ownership verification, use verify_core_owner() or read Core asset.
 pub fn owner_of(ctx: Context<OwnerOf>) -> Result<Pubkey> {
     Ok(ctx.accounts.agent_account.owner)
+}
+
+/// Get authoritative Core owner (reads directly from Metaplex Core asset)
+///
+/// This always returns the current owner regardless of cache state.
+/// Use this when authoritative ownership is required.
+pub fn core_owner_of(ctx: Context<CoreOwnerOf>) -> Result<Pubkey> {
+    get_core_owner(&ctx.accounts.asset)
 }
 
 /// Transfer agent with automatic owner sync
@@ -305,17 +325,31 @@ pub fn set_agent_wallet(
         &expected_message,
     )?;
 
-    // 5. Store wallet directly in AgentAccount (no rent cost!)
+    // 5. Store wallet and sync owner atomically
+    // SECURITY: Sync owner ensures append_response's wallet check passes
+    // (wallet only valid when cached_owner == core_owner)
     let agent = &mut ctx.accounts.agent_account;
     let old_wallet = agent.agent_wallet;
+    let old_owner = agent.owner;
+    let new_owner = ctx.accounts.owner.key();
+
     agent.agent_wallet = Some(new_wallet);
+    agent.owner = new_owner; // Implicit sync
 
     emit!(WalletUpdated {
         asset,
         old_wallet,
         new_wallet,
-        updated_by: ctx.accounts.owner.key(),
+        updated_by: new_owner,
     });
+
+    if old_owner != new_owner {
+        emit!(AgentOwnerSynced {
+            asset,
+            old_owner,
+            new_owner,
+        });
+    }
 
     msg!("Agent wallet set to {} (verified via Ed25519 signature)", new_wallet);
 
@@ -740,6 +774,40 @@ fn register_inner(
     let registry = &ctx.accounts.registry_config;
     let is_user_registry = registry.registry_type == RegistryType::User;
     let asset = ctx.accounts.asset.key();
+
+    // SECURITY: For Base registries, enforce current_base_registry rotation
+    // This prevents registration on deprecated base registries after rotation
+    if !is_user_registry {
+        let root_config = ctx
+            .accounts
+            .root_config
+            .as_ref()
+            .ok_or(RegistryError::RootConfigRequired)?;
+
+        // Verify root_config is the canonical PDA (not done in context due to Option)
+        let (expected_root_pda, expected_bump) = Pubkey::find_program_address(
+            &[b"root_config"],
+            &crate::ID,
+        );
+        require!(
+            root_config.key() == expected_root_pda,
+            RegistryError::InvalidRootConfig
+        );
+        require!(
+            root_config.bump == expected_bump,
+            RegistryError::InvalidRootConfig
+        );
+
+        let registry_pda = Pubkey::find_program_address(
+            &[b"registry_config", ctx.accounts.collection.key().as_ref()],
+            &crate::ID,
+        ).0;
+
+        require!(
+            registry_pda == root_config.current_base_registry,
+            RegistryError::RegistrationNotAllowed
+        );
+    }
 
     // Create Core asset with appropriate authority
     if is_user_registry {

@@ -144,7 +144,7 @@ pub struct SyncOwner<'info> {
     pub asset: UncheckedAccount<'info>,
 }
 
-/// Get owner of agent
+/// Get owner of agent (cached value - may be stale)
 #[derive(Accounts)]
 pub struct OwnerOf<'info> {
     #[account(
@@ -155,6 +155,14 @@ pub struct OwnerOf<'info> {
 
     /// Core asset (for PDA derivation)
     /// CHECK: Used for PDA derivation
+    pub asset: UncheckedAccount<'info>,
+}
+
+/// Get authoritative Core owner (reads live from Metaplex Core)
+#[derive(Accounts)]
+pub struct CoreOwnerOf<'info> {
+    /// Core asset to read owner from
+    /// CHECK: Validated in instruction (must be MPL Core owned)
     pub asset: UncheckedAccount<'info>,
 }
 
@@ -327,8 +335,10 @@ pub struct RotateBaseRegistry<'info> {
     )]
     pub root_config: Account<'info, RootConfig>,
 
-    /// New registry to rotate to (must be Base type)
+    /// New registry to rotate to (must be Base type and canonical PDA)
     #[account(
+        seeds = [b"registry_config", new_registry.collection.as_ref()],
+        bump = new_registry.bump,
         constraint = new_registry.registry_type == RegistryType::Base @ RegistryError::InvalidRegistryType
     )]
     pub new_registry: Account<'info, RegistryConfig>,
@@ -453,6 +463,11 @@ pub struct Register<'info> {
         bump
     )]
     pub user_collection_authority: Option<UncheckedAccount<'info>>,
+
+    /// Optional: Root config for Base registry validation
+    /// Required for Base registries to enforce current_base_registry rotation
+    /// CHECK: Seeds verified in instruction when registry_type == Base
+    pub root_config: Option<Account<'info, RootConfig>>,
 
     #[account(mut)]
     pub owner: Signer<'info>,

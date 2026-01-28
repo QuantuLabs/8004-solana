@@ -839,6 +839,7 @@ version = "0.2.1"
 dependencies = [
  "anchor-lang",
  "litesvm",
+ "mpl-core",
  "solana-program-test",
  "solana-sdk",
 ]

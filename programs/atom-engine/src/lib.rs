@@ -213,36 +213,37 @@ pub mod atom_engine {
     }
 
     /// Initialize stats for a new agent (only asset holder can initialize)
-    /// This ensures the agent owner pays for their own reputation account, not the first reviewer
-    /// Verifies ownership by reading Metaplex Core asset data (owner at offset 1)
-    /// SECURITY: Also verifies the asset and collection are owned by Metaplex Core program
     pub fn initialize_stats(ctx: Context<InitializeStats>) -> Result<()> {
-        // SECURITY: Verify asset is owned by Metaplex Core program
-        // This prevents attackers from creating fake accounts with their pubkey at offset 1
+        use mpl_core::accounts::BaseAssetV1;
+        use mpl_core::types::UpdateAuthority;
+
         require!(
             *ctx.accounts.asset.owner == MPL_CORE_ID,
             AtomError::InvalidAsset
         );
 
-        // SECURITY: Verify collection is also owned by Metaplex Core program
-        // This prevents attackers from passing arbitrary collection addresses
         require!(
             *ctx.accounts.collection.owner == MPL_CORE_ID,
             AtomError::InvalidCollection
         );
 
-        // Verify caller is the asset owner (Metaplex Core: owner at offset 1)
         let asset_data = ctx.accounts.asset.try_borrow_data()?;
-        require!(asset_data.len() >= 33, AtomError::InvalidAsset);
-
-        let owner_bytes: [u8; 32] = asset_data[1..33]
-            .try_into()
+        let asset = BaseAssetV1::from_bytes(&asset_data)
             .map_err(|_| AtomError::InvalidAsset)?;
-        let asset_owner = Pubkey::new_from_array(owner_bytes);
 
         require!(
-            asset_owner == ctx.accounts.owner.key(),
+            asset.owner == ctx.accounts.owner.key(),
             AtomError::NotAssetOwner
+        );
+
+        let asset_collection = match asset.update_authority {
+            UpdateAuthority::Collection(addr) => addr,
+            _ => return Err(AtomError::AssetNotInCollection.into()),
+        };
+
+        require!(
+            asset_collection == ctx.accounts.collection.key(),
+            AtomError::CollectionMismatch
         );
 
         let stats = &mut ctx.accounts.stats;
@@ -278,8 +279,14 @@ pub mod atom_engine {
         // Stats should already be initialized via initialize_stats
         require!(stats.schema_version > 0, AtomError::StatsNotInitialized);
 
-        // Update stats - returns hll_changed
-        let hll_changed = compute::update_stats(stats, &client_hash, score, clock.slot);
+        // Update stats with config parameters
+        let hll_changed = compute::update_stats(
+            stats,
+            &client_hash,
+            score,
+            clock.slot,
+            &ctx.accounts.config,
+        );
 
         emit!(StatsUpdated {
             asset: ctx.accounts.asset.key(),

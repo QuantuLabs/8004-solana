@@ -57,31 +57,26 @@ pub fn give_feedback(
     let atom_enabled = ctx.accounts.agent_account.atom_enabled;
     let mut is_atom_initialized = false;
 
+    // Check if ATOM stats are initialized (when atom_enabled)
+    // NOTE: If atom_enabled but stats not initialized, feedback still works but without ATOM scoring
+    // This prevents sellers from blocking all feedback by enabling ATOM but never initializing stats
     if atom_enabled {
-        let atom_stats = ctx
-            .accounts
-            .atom_stats
-            .as_ref()
-            .ok_or(RegistryError::AtomStatsNotInitialized)?;
+        if let Some(atom_stats) = ctx.accounts.atom_stats.as_ref() {
+            // SECURITY: Validate that atom_stats is the correct PDA for this asset
+            let (expected_atom_stats, _bump) = Pubkey::find_program_address(
+                &[b"atom_stats", asset.as_ref()],
+                &atom_engine::ID,
+            );
+            require!(
+                atom_stats.key() == expected_atom_stats,
+                RegistryError::InvalidAtomStatsAccount
+            );
 
-        // SECURITY: Validate that atom_stats is the correct PDA for this asset
-        // This prevents bypass attacks where users pass fake accounts to skip ATOM
-        let (expected_atom_stats, _bump) = Pubkey::find_program_address(
-            &[b"atom_stats", asset.as_ref()],
-            &atom_engine::ID,
-        );
-        require!(
-            atom_stats.key() == expected_atom_stats,
-            RegistryError::InvalidAtomStatsAccount
-        );
-
-        let atom_stats_info = atom_stats.to_account_info();
-        is_atom_initialized = atom_stats_info.data_len() > 0
-            && *atom_stats_info.owner == atom_engine::ID;
-
-        if !is_atom_initialized {
-            return Err(RegistryError::AtomStatsNotInitialized.into());
+            let atom_stats_info = atom_stats.to_account_info();
+            is_atom_initialized = atom_stats_info.data_len() > 0
+                && *atom_stats_info.owner == atom_engine::ID;
         }
+        // If atom_stats not provided or not initialized, feedback proceeds without ATOM scoring
     }
 
     let update_result = if is_atom_initialized && score.is_some() {
@@ -192,31 +187,25 @@ pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Res
     let atom_enabled = ctx.accounts.agent_account.atom_enabled;
     let mut is_atom_initialized = false;
 
+    // Check if ATOM stats are initialized (when atom_enabled)
+    // NOTE: If atom_enabled but stats not initialized, revoke still works but without ATOM update
     if atom_enabled {
-        let atom_stats = ctx
-            .accounts
-            .atom_stats
-            .as_ref()
-            .ok_or(RegistryError::AtomStatsNotInitialized)?;
+        if let Some(atom_stats) = ctx.accounts.atom_stats.as_ref() {
+            // SECURITY: Validate that atom_stats is the correct PDA for this asset
+            let (expected_atom_stats, _bump) = Pubkey::find_program_address(
+                &[b"atom_stats", asset.as_ref()],
+                &atom_engine::ID,
+            );
+            require!(
+                atom_stats.key() == expected_atom_stats,
+                RegistryError::InvalidAtomStatsAccount
+            );
 
-        // SECURITY: Validate that atom_stats is the correct PDA for this asset
-        // This prevents bypass attacks where users pass fake accounts to skip ATOM
-        let (expected_atom_stats, _bump) = Pubkey::find_program_address(
-            &[b"atom_stats", asset.as_ref()],
-            &atom_engine::ID,
-        );
-        require!(
-            atom_stats.key() == expected_atom_stats,
-            RegistryError::InvalidAtomStatsAccount
-        );
-
-        let atom_stats_info = atom_stats.to_account_info();
-        is_atom_initialized = atom_stats_info.data_len() > 0
-            && *atom_stats_info.owner == atom_engine::ID;
-
-        if !is_atom_initialized {
-            return Err(RegistryError::AtomStatsNotInitialized.into());
+            let atom_stats_info = atom_stats.to_account_info();
+            is_atom_initialized = atom_stats_info.data_len() > 0
+                && *atom_stats_info.owner == atom_engine::ID;
         }
+        // If atom_stats not provided or not initialized, revoke proceeds without ATOM update
     }
 
     let revoke_result = if is_atom_initialized {
@@ -317,11 +306,18 @@ pub fn append_response(
     response_hash: [u8; 32],
 ) -> Result<()> {
     let responder = ctx.accounts.responder.key();
-    let owner = ctx.accounts.agent_account.owner;
+
+    // SECURITY: Always validate against Core asset owner (not cached value)
+    let core_owner = get_core_owner(&ctx.accounts.asset)?;
+    let cached_owner = ctx.accounts.agent_account.owner;
     let agent_wallet = ctx.accounts.agent_account.agent_wallet;
 
-    let is_authorized = responder == owner ||
-                       (agent_wallet.is_some() && responder == agent_wallet.unwrap());
+    // Core owner can always respond
+    // Wallet can only respond if owner is synced (prevents stale wallet abuse)
+    let is_authorized = responder == core_owner ||
+        (agent_wallet.is_some() &&
+         cached_owner == core_owner &&  // Owner must be synced for wallet to be valid
+         responder == agent_wallet.unwrap());
 
     require!(is_authorized, RegistryError::Unauthorized);
 

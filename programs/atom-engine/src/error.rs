@@ -29,6 +29,15 @@ pub enum AtomError {
     #[msg("Invalid collection: must be owned by Metaplex Core program")]
     InvalidCollection,
 
+    #[msg("Asset not in a collection: UpdateAuthority must be Collection type")]
+    AssetNotInCollection,
+
+    #[msg("Collection mismatch: asset belongs to a different collection")]
+    CollectionMismatch,
+
+    #[msg("Invalid asset type: expected Metaplex Core AssetV1")]
+    InvalidAssetType,
+
     #[msg("Invalid config parameter: value out of allowed bounds")]
     InvalidConfigParameter,
 

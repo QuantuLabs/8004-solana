@@ -109,6 +109,10 @@ pub enum RegistryError {
     CollectionUriTooLong = 6254,
     #[msg("Cannot register in this registry")]
     RegistrationNotAllowed = 6255,
+    #[msg("Root config required for Base registry registration")]
+    RootConfigRequired = 6256,
+    #[msg("Invalid root config PDA")]
+    InvalidRootConfig = 6257,
 
     // ========== Anti-Gaming Errors (6300-6309) ==========
     #[msg("Self-feedback is not allowed - agent owner cannot give feedback to their own agent")]

@@ -80,9 +80,14 @@ pub mod agent_registry_8004 {
         identity::instructions::sync_owner(ctx)
     }
 
-    /// Get agent owner
+    /// Get agent owner (cached - may be stale after external transfer)
     pub fn owner_of(ctx: Context<OwnerOf>) -> Result<Pubkey> {
         identity::instructions::owner_of(ctx)
+    }
+
+    /// Get authoritative Core owner (reads live from Metaplex Core)
+    pub fn core_owner_of(ctx: Context<CoreOwnerOf>) -> Result<Pubkey> {
+        identity::instructions::core_owner_of(ctx)
     }
 
     /// Transfer agent with automatic owner sync
