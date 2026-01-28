@@ -110,14 +110,22 @@ describe("Initialize Localnet", () => {
       return;
     }
 
+    // Derive program data PDA for upgrade authority verification
+    const [programDataPda] = PublicKey.findProgramAddressSync(
+      [program.programId.toBuffer()],
+      new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111")
+    );
+
     console.log("Initializing ValidationConfig...");
     console.log("  Config PDA:", validationConfigPda.toBase58());
+    console.log("  Program Data:", programDataPda.toBase58());
 
     const tx = await program.methods
       .initializeValidationConfig()
       .accounts({
         config: validationConfigPda,
         authority: provider.wallet.publicKey,
+        programData: programDataPda,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
