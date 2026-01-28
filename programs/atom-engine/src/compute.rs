@@ -71,10 +71,10 @@ fn update_ema(stats: &mut AtomStats, score: u8, slot_delta: u64, config: &AtomCo
 fn calculate_risk(stats: &AtomStats, hll_est: u64, config: &AtomConfig) -> u8 {
     let mut risk: u32 = 0;
     let n = stats.feedback_count.max(1);
-    let size_mod = ((n * 5).min(100)) as u32;
+    let size_mod = (n.saturating_mul(5).min(100)) as u32;
 
     // 1. SYBIL RISK
-    let diversity = safe_div(hll_est * 255, n).min(255) as u8;
+    let diversity = safe_div(hll_est.saturating_mul(255), n).min(255) as u8;
     if diversity < config.diversity_threshold {
         risk += safe_div_u32(
             config.weight_sybil as u32 * (config.diversity_threshold - diversity) as u32 * size_mod,
@@ -452,9 +452,9 @@ fn update_quality(
 fn update_confidence(stats: &mut AtomStats, hll_est: u64, config: &AtomConfig) {
     let n = stats.feedback_count;
 
-    let count_factor = (n.min(100) * 60) as u32;
+    let count_factor = (n.min(100).saturating_mul(60)) as u32;
     let effective_unique = hll_est.min(n);
-    let diversity_factor = (effective_unique * 40).min(5000) as u32;
+    let diversity_factor = (effective_unique.saturating_mul(40)).min(5000) as u32;
 
     let cold_penalty = if n < config.cold_start_min as u64 {
         config.cold_start_penalty_heavy as u32
@@ -728,7 +728,7 @@ pub fn update_stats(
     update_ema(stats, score, slot_delta, config);
     update_quality(stats, score, hll_changed, slot_delta, current_epoch, current_slot, config);
     stats.risk_score = calculate_risk(stats, hll_est, config);
-    stats.diversity_ratio = safe_div(hll_est * 255, stats.feedback_count.max(1)).min(255) as u8;
+    stats.diversity_ratio = safe_div(hll_est.saturating_mul(255), stats.feedback_count.max(1)).min(255) as u8;
     update_confidence(stats, hll_est, config);
     update_trust_tier(stats, config);
 
