@@ -108,11 +108,9 @@ pub struct RespondToValidation<'info> {
     #[account(mut)]
     pub validator: Signer<'info>,
 
-    /// Agent account (to verify no self-validation)
     #[account(
         seeds = [b"agent", asset_key.as_ref()],
         bump = agent_account.bump,
-        constraint = agent_account.owner != validator.key() @ RegistryError::SelfValidationNotAllowed
     )]
     pub agent_account: Account<'info, AgentAccount>,
 

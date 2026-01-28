@@ -151,7 +151,7 @@ pub fn respond_to_validation(
     );
     require!(tag.len() <= MAX_TAG_LENGTH, RegistryError::TagTooLong);
 
-    // Prevent self-validation (redundant with context constraint, but explicit)
+    // Prevent self-validation
     let core_owner = get_core_owner(&ctx.accounts.asset)?;
     require!(
         core_owner != ctx.accounts.validator.key(),
