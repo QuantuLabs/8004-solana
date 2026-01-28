@@ -338,6 +338,12 @@ pub fn append_response(
     response_hash: [u8; 32],
 ) -> Result<()> {
     let responder = ctx.accounts.responder.key();
+    let feedback_count = ctx.accounts.agent_account.feedback_count;
+
+    require!(
+        feedback_index < feedback_count,
+        RegistryError::InvalidFeedbackIndex
+    );
 
     // SECURITY: Always validate against Core asset owner (not cached value)
     let core_owner = get_core_owner(&ctx.accounts.asset)?;
