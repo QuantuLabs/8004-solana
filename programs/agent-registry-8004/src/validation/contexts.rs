@@ -1,10 +1,12 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::bpf_loader_upgradeable;
 
 use crate::error::RegistryError;
 use crate::identity::state::AgentAccount;
 use super::state::{ValidationConfig, ValidationRequest};
 
 /// Initialize the ValidationConfig (global validation registry state)
+/// Only the program's upgrade authority can initialize to prevent squatting
 #[derive(Accounts)]
 pub struct InitializeValidationConfig<'info> {
     #[account(
@@ -16,8 +18,20 @@ pub struct InitializeValidationConfig<'info> {
     )]
     pub config: Account<'info, ValidationConfig>,
 
-    #[account(mut)]
+    /// Must be the program's upgrade authority
+    #[account(
+        mut,
+        constraint = program_data.upgrade_authority_address == Some(authority.key()) @ RegistryError::Unauthorized
+    )]
     pub authority: Signer<'info>,
+
+    /// Program data account containing upgrade authority
+    #[account(
+        seeds = [crate::ID.as_ref()],
+        bump,
+        seeds::program = bpf_loader_upgradeable::ID,
+    )]
+    pub program_data: Account<'info, ProgramData>,
 
     pub system_program: Program<'info, System>,
 }
