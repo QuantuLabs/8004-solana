@@ -33,8 +33,9 @@
         {
           "name": "agent_account",
           "docs": [
-            "Agent account for authorization check"
+            "Agent account for authorization check and hash-chain update"
           ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -418,6 +419,7 @@
         },
         {
           "name": "agent_account",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -522,10 +524,6 @@
               32
             ]
           }
-        },
-        {
-          "name": "feedback_index",
-          "type": "u64"
         },
         {
           "name": "tag1",
@@ -1473,9 +1471,6 @@
         },
         {
           "name": "agent_account",
-          "docs": [
-            "Agent account (to verify no self-validation)"
-          ],
           "pda": {
             "seeds": [
               {
@@ -1600,6 +1595,7 @@
         },
         {
           "name": "agent_account",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1682,6 +1678,15 @@
         {
           "name": "feedback_index",
           "type": "u64"
+        },
+        {
+          "name": "feedback_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -2859,6 +2864,45 @@
             }
           },
           {
+            "name": "feedback_digest",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "feedback_count",
+            "type": "u64"
+          },
+          {
+            "name": "response_digest",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "response_count",
+            "type": "u64"
+          },
+          {
+            "name": "revoke_digest",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "revoke_count",
+            "type": "u64"
+          },
+          {
             "name": "agent_uri",
             "docs": [
               "Agent URI (IPFS/Arweave/HTTP link, max 250 bytes)"
@@ -2998,6 +3042,19 @@
             "type": "u64"
           },
           {
+            "name": "feedback_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "slot",
+            "type": "u64"
+          },
+          {
             "name": "original_score",
             "type": "u8"
           },
@@ -3020,6 +3077,19 @@
           {
             "name": "new_confidence",
             "type": "u16"
+          },
+          {
+            "name": "new_revoke_digest",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "new_revoke_count",
+            "type": "u64"
           }
         ]
       }
@@ -3146,6 +3216,10 @@
             "type": "u64"
           },
           {
+            "name": "slot",
+            "type": "u64"
+          },
+          {
             "name": "value",
             "type": "i64"
           },
@@ -3195,6 +3269,19 @@
           {
             "name": "is_unique_client",
             "type": "bool"
+          },
+          {
+            "name": "new_feedback_digest",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "new_feedback_count",
+            "type": "u64"
           },
           {
             "name": "tag1",
@@ -3299,6 +3386,10 @@
             "type": "u64"
           },
           {
+            "name": "slot",
+            "type": "u64"
+          },
+          {
             "name": "responder",
             "type": "pubkey"
           },
@@ -3310,6 +3401,19 @@
                 32
               ]
             }
+          },
+          {
+            "name": "new_response_digest",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "new_response_count",
+            "type": "u64"
           },
           {
             "name": "response_uri",

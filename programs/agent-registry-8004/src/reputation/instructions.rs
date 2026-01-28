@@ -29,7 +29,6 @@ pub fn give_feedback(
     value_decimals: u8,
     score: Option<u8>,
     feedback_hash: [u8; 32],
-    feedback_index: u64,
     tag1: String,
     tag2: String,
     endpoint: String,
@@ -151,8 +150,10 @@ pub fn give_feedback(
 
     let slot = Clock::get()?.slot;
     let client = ctx.accounts.client.key();
-    let leaf = compute_feedback_leaf(&asset, &client, feedback_index, &feedback_hash, slot);
     let agent = &mut ctx.accounts.agent_account;
+    let feedback_index = agent.feedback_count;
+
+    let leaf = compute_feedback_leaf(&asset, &client, feedback_index, &feedback_hash, slot);
     agent.feedback_digest = chain_hash(&agent.feedback_digest, DOMAIN_FEEDBACK, &leaf);
     agent.feedback_count += 1;
 
@@ -160,6 +161,7 @@ pub fn give_feedback(
         asset,
         client_address: client,
         feedback_index,
+        slot,
         value,
         value_decimals,
         score,
@@ -193,9 +195,18 @@ pub fn give_feedback(
 }
 
 /// Revoke feedback calls CPI to atom-engine to update stats (optional)
-pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Result<()> {
+pub fn revoke_feedback(
+    ctx: Context<RevokeFeedback>,
+    feedback_index: u64,
+    feedback_hash: [u8; 32],
+) -> Result<()> {
     let asset = ctx.accounts.asset.key();
     let client = ctx.accounts.client.key();
+
+    require!(
+        feedback_index < ctx.accounts.agent_account.feedback_count,
+        RegistryError::InvalidFeedbackIndex
+    );
 
     let atom_enabled = ctx.accounts.agent_account.atom_enabled;
     let mut is_atom_initialized = false;
@@ -286,7 +297,7 @@ pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Res
     };
 
     let slot = Clock::get()?.slot;
-    let leaf = compute_revoke_leaf(&asset, &client, feedback_index, slot);
+    let leaf = compute_revoke_leaf(&asset, &client, feedback_index, &feedback_hash, slot);
     let agent = &mut ctx.accounts.agent_account;
     agent.revoke_digest = chain_hash(&agent.revoke_digest, DOMAIN_REVOKE, &leaf);
     agent.revoke_count += 1;
@@ -294,6 +305,8 @@ pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Res
         asset,
         client_address: client,
         feedback_index,
+        feedback_hash,
+        slot,
         original_score: revoke_result.original_score,
         atom_enabled: is_atom_initialized,
         had_impact: revoke_result.had_impact,
@@ -362,6 +375,7 @@ pub fn append_response(
         asset: asset_key,
         client: client_address,
         feedback_index,
+        slot,
         responder,
         response_hash,
         new_response_digest: agent.response_digest,

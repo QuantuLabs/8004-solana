@@ -133,7 +133,6 @@ pub mod agent_registry_8004 {
         value_decimals: u8,
         score: Option<u8>,
         feedback_hash: [u8; 32],
-        feedback_index: u64,
         tag1: String,
         tag2: String,
         endpoint: String,
@@ -145,7 +144,6 @@ pub mod agent_registry_8004 {
             value_decimals,
             score,
             feedback_hash,
-            feedback_index,
             tag1,
             tag2,
             endpoint,
@@ -154,8 +152,12 @@ pub mod agent_registry_8004 {
     }
 
     /// Revoke feedback
-    pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Result<()> {
-        reputation::instructions::revoke_feedback(ctx, feedback_index)
+    pub fn revoke_feedback(
+        ctx: Context<RevokeFeedback>,
+        feedback_index: u64,
+        feedback_hash: [u8; 32],
+    ) -> Result<()> {
+        reputation::instructions::revoke_feedback(ctx, feedback_index, feedback_hash)
     }
 
     /// Append response to feedback

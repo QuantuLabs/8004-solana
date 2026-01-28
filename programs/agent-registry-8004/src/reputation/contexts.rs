@@ -6,7 +6,7 @@ use crate::identity::state::AgentAccount;
 pub const ATOM_CPI_AUTHORITY_SEED: &[u8] = b"atom_cpi_authority";
 
 #[derive(Accounts)]
-#[instruction(_value: i64, _value_decimals: u8, _score: Option<u8>, _feedback_hash: [u8; 32], _feedback_index: u64, _tag1: String, _tag2: String, _endpoint: String, _feedback_uri: String)]
+#[instruction(_value: i64, _value_decimals: u8, _score: Option<u8>, _feedback_hash: [u8; 32], _tag1: String, _tag2: String, _endpoint: String, _feedback_uri: String)]
 pub struct GiveFeedback<'info> {
     #[account(mut)]
     pub client: Signer<'info>,
@@ -55,7 +55,7 @@ pub struct GiveFeedback<'info> {
 
 /// RevokeFeedback calls CPI to atom-engine to revoke stats (optional)
 #[derive(Accounts)]
-#[instruction(_feedback_index: u64)]
+#[instruction(_feedback_index: u64, _feedback_hash: [u8; 32])]
 pub struct RevokeFeedback<'info> {
     #[account(mut)]
     pub client: Signer<'info>,
