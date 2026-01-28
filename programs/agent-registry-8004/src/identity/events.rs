@@ -52,16 +52,7 @@ pub struct WalletUpdated {
 pub struct BaseRegistryCreated {
     pub registry: Pubkey,
     pub collection: Pubkey,
-    pub base_index: u32,
     pub created_by: Pubkey,
-}
-
-/// Event emitted when base registry is rotated
-#[event]
-pub struct BaseRegistryRotated {
-    pub old_registry: Pubkey,
-    pub new_registry: Pubkey,
-    pub rotated_by: Pubkey,
 }
 
 /// Event emitted when a user registry is created

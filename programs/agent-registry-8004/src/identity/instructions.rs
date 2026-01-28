@@ -521,29 +521,27 @@ fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
 // Scalability: Multi-Collection Sharding Instructions
 // ============================================================================
 
-/// Initialize the registry with root config and first base registry
+/// Initialize the registry with root config and base registry
 pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
     let root = &mut ctx.accounts.root_config;
     let registry = &mut ctx.accounts.registry_config;
 
     // Initialize root config
     root.authority = ctx.accounts.authority.key();
-    root.base_registry_count = 1;
     root.bump = ctx.bumps.root_config;
 
-    // Initialize first base registry
+    // Initialize base registry
     registry.collection = ctx.accounts.collection.key();
     registry.registry_type = RegistryType::Base;
     registry.authority = ctx.accounts.authority.key();
-    registry.base_index = 0;
     registry.bump = ctx.bumps.registry_config;
 
-    // Set current_base_registry
+    // Set base_registry
     let (registry_pda, _) = Pubkey::find_program_address(
         &[b"registry_config", ctx.accounts.collection.key().as_ref()],
         &crate::ID,
     );
-    root.current_base_registry = registry_pda;
+    root.base_registry = registry_pda;
 
     // Create Metaplex Core Collection
     CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
@@ -551,7 +549,7 @@ pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         .payer(&ctx.accounts.authority.to_account_info())
         .update_authority(Some(&registry.to_account_info()))
         .system_program(&ctx.accounts.system_program.to_account_info())
-        .name("8004 Base Registry #0".to_string())
+        .name("8004 Base Registry".to_string())
         .uri(String::new())
         .invoke_signed(&[&[
             b"registry_config",
@@ -562,88 +560,10 @@ pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
     emit!(BaseRegistryCreated {
         registry: registry_pda,
         collection: ctx.accounts.collection.key(),
-        base_index: 0,
         created_by: ctx.accounts.authority.key(),
     });
 
-    msg!("Root config initialized with base registry #0: {}", registry_pda);
-
-    Ok(())
-}
-
-/// Create a new base registry (authority only)
-pub fn create_base_registry(ctx: Context<CreateBaseRegistry>) -> Result<()> {
-    let root = &mut ctx.accounts.root_config;
-    let registry = &mut ctx.accounts.registry_config;
-
-    let new_base_index = root.base_registry_count;
-
-    // Initialize registry config
-    registry.collection = ctx.accounts.collection.key();
-    registry.registry_type = RegistryType::Base;
-    registry.authority = ctx.accounts.authority.key();
-    registry.base_index = new_base_index;
-    registry.bump = ctx.bumps.registry_config;
-
-    // Increment base registry count
-    root.base_registry_count = root
-        .base_registry_count
-        .checked_add(1)
-        .ok_or(RegistryError::Overflow)?;
-
-    // Create Metaplex Core Collection
-    CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
-        .collection(&ctx.accounts.collection.to_account_info())
-        .payer(&ctx.accounts.authority.to_account_info())
-        .update_authority(Some(&registry.to_account_info()))
-        .system_program(&ctx.accounts.system_program.to_account_info())
-        .name(format!("8004 Base Registry #{}", new_base_index))
-        .uri(String::new())
-        .invoke_signed(&[&[
-            b"registry_config",
-            ctx.accounts.collection.key().as_ref(),
-            &[ctx.bumps.registry_config],
-        ]])?;
-
-    let (registry_pda, _) = Pubkey::find_program_address(
-        &[b"registry_config", ctx.accounts.collection.key().as_ref()],
-        &crate::ID,
-    );
-
-    emit!(BaseRegistryCreated {
-        registry: registry_pda,
-        collection: ctx.accounts.collection.key(),
-        base_index: new_base_index,
-        created_by: ctx.accounts.authority.key(),
-    });
-
-    msg!("Base registry #{} created: {}", new_base_index, registry_pda);
-
-    Ok(())
-}
-
-/// Rotate to a new base registry (authority only)
-pub fn rotate_base_registry(ctx: Context<RotateBaseRegistry>) -> Result<()> {
-    let root = &mut ctx.accounts.root_config;
-
-    let old_registry = root.current_base_registry;
-    let (new_registry_pda, _) = Pubkey::find_program_address(
-        &[
-            b"registry_config",
-            ctx.accounts.new_registry.collection.as_ref(),
-        ],
-        &crate::ID,
-    );
-
-    root.current_base_registry = new_registry_pda;
-
-    emit!(BaseRegistryRotated {
-        old_registry,
-        new_registry: new_registry_pda,
-        rotated_by: ctx.accounts.authority.key(),
-    });
-
-    msg!("Base registry rotated: {} -> {}", old_registry, new_registry_pda);
+    msg!("Root config initialized with base registry: {}", registry_pda);
 
     Ok(())
 }
@@ -676,7 +596,6 @@ pub fn create_user_registry(
     registry.collection = ctx.accounts.collection.key();
     registry.registry_type = RegistryType::User;
     registry.authority = ctx.accounts.owner.key();
-    registry.base_index = 0;
     registry.bump = ctx.bumps.registry_config;
 
     CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
@@ -775,8 +694,7 @@ fn register_inner(
     let is_user_registry = registry.registry_type == RegistryType::User;
     let asset = ctx.accounts.asset.key();
 
-    // SECURITY: For Base registries, enforce current_base_registry rotation
-    // This prevents registration on deprecated base registries after rotation
+    // SECURITY: For Base registries, validate against root config
     if !is_user_registry {
         let root_config = ctx
             .accounts
@@ -804,7 +722,7 @@ fn register_inner(
         ).0;
 
         require!(
-            registry_pda == root_config.current_base_registry,
+            registry_pda == root_config.base_registry,
             RegistryError::RegistrationNotAllowed
         );
     }

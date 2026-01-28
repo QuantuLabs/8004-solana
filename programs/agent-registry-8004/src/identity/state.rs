@@ -19,18 +19,15 @@ impl Default for RegistryType {
     }
 }
 
-/// Root configuration - Global pointer to current base registry
+/// Root configuration - Global pointer to base registry
 /// Seeds: ["root_config"]
 #[account]
 #[derive(InitSpace)]
 pub struct RootConfig {
-    /// Current active base registry for new agent registrations
-    pub current_base_registry: Pubkey,
+    /// Base registry for new agent registrations
+    pub base_registry: Pubkey,
 
-    /// Number of base registries created (for indexing)
-    pub base_registry_count: u32,
-
-    /// Authority (can create base registries, rotate)
+    /// Authority (can create base registry)
     pub authority: Pubkey,
 
     /// PDA bump seed
@@ -51,9 +48,6 @@ pub struct RegistryConfig {
 
     /// Authority (protocol authority for Base, user for User)
     pub authority: Pubkey,
-
-    /// Base registry index (0, 1, 2...) - only meaningful for Base type
-    pub base_index: u32,
 
     /// PDA bump seed
     pub bump: u8,

@@ -104,16 +104,6 @@ pub mod agent_registry_8004 {
         identity::instructions::set_agent_wallet(ctx, new_wallet, deadline)
     }
 
-    /// Create a new base registry (authority only)
-    pub fn create_base_registry(ctx: Context<CreateBaseRegistry>) -> Result<()> {
-        identity::instructions::create_base_registry(ctx)
-    }
-
-    /// Rotate to a new base registry (authority only)
-    pub fn rotate_base_registry(ctx: Context<RotateBaseRegistry>) -> Result<()> {
-        identity::instructions::rotate_base_registry(ctx)
-    }
-
     /// Create a user registry (anyone can create their own shard)
     pub fn create_user_registry(
         ctx: Context<CreateUserRegistry>,

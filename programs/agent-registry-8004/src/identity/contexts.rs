@@ -287,65 +287,6 @@ pub struct Initialize<'info> {
     pub mpl_core_program: UncheckedAccount<'info>,
 }
 
-/// Create a new base registry (authority only)
-#[derive(Accounts)]
-pub struct CreateBaseRegistry<'info> {
-    #[account(
-        mut,
-        seeds = [b"root_config"],
-        bump = root_config.bump,
-        constraint = root_config.authority == authority.key() @ RegistryError::Unauthorized
-    )]
-    pub root_config: Account<'info, RootConfig>,
-
-    /// New base registry config
-    #[account(
-        init,
-        payer = authority,
-        space = RegistryConfig::DISCRIMINATOR.len() + RegistryConfig::INIT_SPACE,
-        seeds = [b"registry_config", collection.key().as_ref()],
-        bump
-    )]
-    pub registry_config: Account<'info, RegistryConfig>,
-
-    /// New collection to create
-    /// CHECK: Created by Metaplex Core CPI
-    #[account(mut)]
-    pub collection: Signer<'info>,
-
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-
-    /// Metaplex Core program
-    /// CHECK: Verified by address constraint
-    #[account(address = mpl_core::ID)]
-    pub mpl_core_program: UncheckedAccount<'info>,
-}
-
-/// Rotate to a new base registry (authority only)
-#[derive(Accounts)]
-pub struct RotateBaseRegistry<'info> {
-    #[account(
-        mut,
-        seeds = [b"root_config"],
-        bump = root_config.bump,
-        constraint = root_config.authority == authority.key() @ RegistryError::Unauthorized
-    )]
-    pub root_config: Account<'info, RootConfig>,
-
-    /// New registry to rotate to (must be Base type and canonical PDA)
-    #[account(
-        seeds = [b"registry_config", new_registry.collection.as_ref()],
-        bump = new_registry.bump,
-        constraint = new_registry.registry_type == RegistryType::Base @ RegistryError::InvalidRegistryType
-    )]
-    pub new_registry: Account<'info, RegistryConfig>,
-
-    pub authority: Signer<'info>,
-}
-
 /// Create a user registry (anyone can create their own shard)
 #[derive(Accounts)]
 #[instruction(collection_name: String, collection_uri: String)]
@@ -465,7 +406,7 @@ pub struct Register<'info> {
     pub user_collection_authority: Option<UncheckedAccount<'info>>,
 
     /// Optional: Root config for Base registry validation
-    /// Required for Base registries to enforce current_base_registry rotation
+    /// Required for Base registries to validate base_registry
     /// CHECK: Seeds verified in instruction when registry_type == Base
     pub root_config: Option<Account<'info, RootConfig>>,
 

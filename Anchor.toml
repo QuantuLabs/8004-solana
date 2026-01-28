@@ -17,11 +17,12 @@ atom_engine = "8BmzNSQ7G5y6C6W8tkqsb4TtqkkiircfcXviAsxnhhST"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
 attacks = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/atom-attack-vectors.ts"
+indexer = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/indexer-stress-test.ts"
 costs = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/e2e-costs.ts"
 entropy = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-entropy-backfire.ts"
 full = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts"
@@ -31,7 +32,7 @@ iron = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts t
 phantom = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-phantom-swarm.ts"
 revoke = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/revoke-e2e.ts"
 security = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-security-audit.ts"
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/reputation-tests.ts"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/indexer-stress-test.ts"
 validation = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/validation-state-tests.ts"
 
 [test]
@@ -41,7 +42,7 @@ upgradeable = true
 
 [test.validator]
 bind_address = "0.0.0.0"
-url = "https://api.mainnet-beta.solana.com"
+url = "https://api.devnet.solana.com"
 ledger = ".anchor/test-ledger"
 rpc_port = 8899
 
