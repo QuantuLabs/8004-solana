@@ -12,9 +12,9 @@ pub struct GiveFeedback<'info> {
     pub client: Signer<'info>,
 
     #[account(
+        mut,
         seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
-        constraint = agent_account.owner != client.key() @ RegistryError::SelfFeedbackNotAllowed
     )]
     pub agent_account: Account<'info, AgentAccount>,
 
@@ -61,6 +61,7 @@ pub struct RevokeFeedback<'info> {
     pub client: Signer<'info>,
 
     #[account(
+        mut,
         seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
     )]
@@ -104,8 +105,9 @@ pub struct AppendResponse<'info> {
     /// Responder must be agent owner or agent wallet
     pub responder: Signer<'info>,
 
-    /// Agent account for authorization check
+    /// Agent account for authorization check and hash-chain update
     #[account(
+        mut,
         seeds = [b"agent", asset_key.as_ref()],
         bump = agent_account.bump,
     )]

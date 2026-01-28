@@ -2,6 +2,10 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
 use mpl_core::accounts::BaseAssetV1;
 
+use super::chain::{
+    chain_hash, compute_feedback_leaf, compute_response_leaf, compute_revoke_leaf,
+    DOMAIN_FEEDBACK, DOMAIN_RESPONSE, DOMAIN_REVOKE,
+};
 use super::contexts::{*, ATOM_CPI_AUTHORITY_SEED};
 use super::events::*;
 use super::state::*;
@@ -145,9 +149,16 @@ pub fn give_feedback(
         }
     };
 
+    let slot = Clock::get()?.slot;
+    let client = ctx.accounts.client.key();
+    let leaf = compute_feedback_leaf(&asset, &client, feedback_index, &feedback_hash, slot);
+    let agent = &mut ctx.accounts.agent_account;
+    agent.feedback_digest = chain_hash(&agent.feedback_digest, DOMAIN_FEEDBACK, &leaf);
+    agent.feedback_count += 1;
+
     emit!(NewFeedback {
         asset,
-        client_address: ctx.accounts.client.key(),
+        client_address: client,
         feedback_index,
         value,
         value_decimals,
@@ -160,6 +171,8 @@ pub fn give_feedback(
         new_risk_score: update_result.risk_score,
         new_diversity_ratio: update_result.diversity_ratio,
         is_unique_client: update_result.hll_changed,
+        new_feedback_digest: agent.feedback_digest,
+        new_feedback_count: agent.feedback_count,
         tag1,
         tag2,
         endpoint,
@@ -170,7 +183,7 @@ pub fn give_feedback(
         "Feedback #{} created: asset={}, client={}, score={:?}, atom_enabled={}, tier={}",
         feedback_index,
         asset,
-        ctx.accounts.client.key(),
+        client,
         score,
         is_atom_initialized && score.is_some(),
         update_result.trust_tier
@@ -272,7 +285,11 @@ pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Res
         }
     };
 
-    // Enriched event with revoke results
+    let slot = Clock::get()?.slot;
+    let leaf = compute_revoke_leaf(&asset, &client, feedback_index, slot);
+    let agent = &mut ctx.accounts.agent_account;
+    agent.revoke_digest = chain_hash(&agent.revoke_digest, DOMAIN_REVOKE, &leaf);
+    agent.revoke_count += 1;
     emit!(FeedbackRevoked {
         asset,
         client_address: client,
@@ -283,6 +300,8 @@ pub fn revoke_feedback(ctx: Context<RevokeFeedback>, feedback_index: u64) -> Res
         new_trust_tier: revoke_result.new_trust_tier,
         new_quality_score: revoke_result.new_quality_score,
         new_confidence: revoke_result.new_confidence,
+        new_revoke_digest: agent.revoke_digest,
+        new_revoke_count: agent.revoke_count,
     });
 
     msg!(
@@ -326,12 +345,27 @@ pub fn append_response(
         RegistryError::ResponseUriTooLong
     );
 
+    let slot = Clock::get()?.slot;
+    let leaf = compute_response_leaf(
+        &asset_key,
+        &client_address,
+        feedback_index,
+        &responder,
+        &response_hash,
+        slot,
+    );
+    let agent = &mut ctx.accounts.agent_account;
+    agent.response_digest = chain_hash(&agent.response_digest, DOMAIN_RESPONSE, &leaf);
+    agent.response_count += 1;
+
     emit!(ResponseAppended {
         asset: asset_key,
         client: client_address,
         feedback_index,
         responder,
         response_hash,
+        new_response_digest: agent.response_digest,
+        new_response_count: agent.response_count,
         response_uri,
     });
 

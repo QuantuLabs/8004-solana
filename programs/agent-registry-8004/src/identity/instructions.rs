@@ -785,6 +785,12 @@ fn register_inner(
     agent.bump = ctx.bumps.agent_account;
     agent.atom_enabled = atom_enabled;
     agent.agent_wallet = None;
+    agent.feedback_digest = [0u8; 32];
+    agent.feedback_count = 0;
+    agent.response_digest = [0u8; 32];
+    agent.response_count = 0;
+    agent.revoke_digest = [0u8; 32];
+    agent.revoke_count = 0;
     agent.agent_uri = agent_uri;
     agent.nft_name = "Agent".to_string();
 

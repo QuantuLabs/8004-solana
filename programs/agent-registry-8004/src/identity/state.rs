@@ -81,6 +81,13 @@ pub struct AgentAccount {
     /// None = no wallet set, Some = wallet address
     pub agent_wallet: Option<Pubkey>,
 
+    pub feedback_digest: [u8; 32],
+    pub feedback_count: u64,
+    pub response_digest: [u8; 32],
+    pub response_count: u64,
+    pub revoke_digest: [u8; 32],
+    pub revoke_count: u64,
+
     // === Dynamic-size fields last ===
 
     /// Agent URI (IPFS/Arweave/HTTP link, max 250 bytes)
