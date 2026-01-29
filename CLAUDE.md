@@ -63,9 +63,8 @@ solana program deploy target/deploy/identity_registry.so \
 ```
 
 **Devnet Program IDs**:
-- Identity Registry: `CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss`
-- Reputation Registry: `Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr`
-- Validation Registry: `2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw`
+- Agent Registry 8004: `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N`
+- ATOM Engine: `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8`
 
 ## Critical Architecture Details
 
