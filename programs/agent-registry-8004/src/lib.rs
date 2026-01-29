@@ -168,8 +168,9 @@ pub mod agent_registry_8004 {
         feedback_index: u64,
         response_uri: String,
         response_hash: [u8; 32],
+        feedback_hash: [u8; 32],
     ) -> Result<()> {
-        reputation::instructions::append_response(ctx, asset_key, client_address, feedback_index, response_uri, response_hash)
+        reputation::instructions::append_response(ctx, asset_key, client_address, feedback_index, response_uri, response_hash, feedback_hash)
     }
 
     // ============================================================================

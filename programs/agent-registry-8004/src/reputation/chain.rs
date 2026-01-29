@@ -27,14 +27,16 @@ pub fn compute_response_leaf(
     feedback_index: u64,
     responder: &Pubkey,
     response_hash: &[u8; 32],
+    feedback_hash: &[u8; 32],
     slot: u64,
 ) -> [u8; 32] {
-    let mut data = Vec::with_capacity(32 + 32 + 8 + 32 + 32 + 8);
+    let mut data = Vec::with_capacity(32 + 32 + 8 + 32 + 32 + 32 + 8);
     data.extend_from_slice(asset.as_ref());
     data.extend_from_slice(client.as_ref());
     data.extend_from_slice(&feedback_index.to_le_bytes());
     data.extend_from_slice(responder.as_ref());
     data.extend_from_slice(response_hash);
+    data.extend_from_slice(feedback_hash);
     data.extend_from_slice(&slot.to_le_bytes());
     keccak::hash(&data).0
 }

@@ -336,6 +336,7 @@ pub fn append_response(
     feedback_index: u64,
     response_uri: String,
     response_hash: [u8; 32],
+    feedback_hash: [u8; 32],
 ) -> Result<()> {
     let responder = ctx.accounts.responder.key();
     let feedback_count = ctx.accounts.agent_account.feedback_count;
@@ -345,16 +346,13 @@ pub fn append_response(
         RegistryError::InvalidFeedbackIndex
     );
 
-    // SECURITY: Always validate against Core asset owner (not cached value)
     let core_owner = get_core_owner(&ctx.accounts.asset)?;
     let cached_owner = ctx.accounts.agent_account.owner;
     let agent_wallet = ctx.accounts.agent_account.agent_wallet;
 
-    // Core owner can always respond
-    // Wallet can only respond if owner is synced (prevents stale wallet abuse)
     let is_authorized = responder == core_owner ||
         (agent_wallet.is_some() &&
-         cached_owner == core_owner &&  // Owner must be synced for wallet to be valid
+         cached_owner == core_owner &&
          responder == agent_wallet.unwrap());
 
     require!(is_authorized, RegistryError::Unauthorized);
@@ -371,6 +369,7 @@ pub fn append_response(
         feedback_index,
         &responder,
         &response_hash,
+        &feedback_hash,
         slot,
     );
     let agent = &mut ctx.accounts.agent_account;
@@ -384,6 +383,7 @@ pub fn append_response(
         slot,
         responder,
         response_hash,
+        feedback_hash,
         new_response_digest: agent.response_digest,
         new_response_count: agent.response_count,
         response_uri,

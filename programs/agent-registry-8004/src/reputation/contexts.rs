@@ -100,7 +100,7 @@ pub struct RevokeFeedback<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(asset_key: Pubkey, _client_address: Pubkey, _feedback_index: u64, _response_uri: String, _response_hash: [u8; 32])]
+#[instruction(asset_key: Pubkey, _client_address: Pubkey, _feedback_index: u64, _response_uri: String, _response_hash: [u8; 32], _feedback_hash: [u8; 32])]
 pub struct AppendResponse<'info> {
     /// Responder must be agent owner or agent wallet
     pub responder: Signer<'info>,

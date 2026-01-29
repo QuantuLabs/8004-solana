@@ -48,7 +48,6 @@ pub struct FeedbackRevoked {
 }
 
 /// Event emitted when response is appended to feedback
-/// Field order optimized for indexing: fixed-size fields first, variable-size (String) last
 #[event]
 pub struct ResponseAppended {
     pub asset: Pubkey,
@@ -57,6 +56,7 @@ pub struct ResponseAppended {
     pub slot: u64,
     pub responder: Pubkey,
     pub response_hash: [u8; 32],
+    pub feedback_hash: [u8; 32],
     pub new_response_digest: [u8; 32],
     pub new_response_count: u64,
     pub response_uri: String,
