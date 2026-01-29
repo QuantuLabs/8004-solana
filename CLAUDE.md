@@ -97,6 +97,20 @@ solana program deploy target/deploy/identity_registry.so \
 
 **Legacy (Pre-v3.0.0)**: Reputation Registry (still separate) validates agents via CPI with hardcoded program IDs using Cargo features.
 
+### Hash-Chain Proof of Existence
+
+Feedbacks/responses/revokes are events-only (no on-chain PDAs) for rent optimization. To prove the indexer hasn't censored or modified events, we store rolling hash-chain digests in `AgentAccount`:
+
+```
+feedback_digest, feedback_count   (40 bytes)
+response_digest, response_count   (40 bytes)
+revoke_digest, revoke_count       (40 bytes)
+```
+
+Each operation updates its chain: `new_digest = keccak256(old_digest || domain || leaf_data)`.
+
+Clients verify by replaying all events and comparing final digest against on-chain value. No compact membership proofs—full replay required (+121 bytes rent per agent).
+
 ### Permissionless Agent Registration
 
 **Key Design**: Anyone can register agents (not just collection authority). This is achieved via:

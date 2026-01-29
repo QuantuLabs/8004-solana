@@ -1,7 +1,22 @@
+/**
+ * @deprecated This file is INCOMPATIBLE with agent-registry-8004 v0.5.0+
+ *
+ * The current program uses:
+ * - Inline metadata in AgentAccount (no separate PDAs)
+ * - agent_uri stored directly on AgentAccount
+ * - Metadata via off-chain registration files (IPFS/Arweave)
+ *
+ * Use the official SDK instead: npm install 8004-solana
+ * SDK repo: /Users/true/Documents/Pipeline/CasterCorp/agent0-ts-solana
+ *
+ * This file is kept for reference only. DO NOT USE.
+ */
+
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { Program } from "@coral-xyz/anchor";
 
 /**
+ * @deprecated Use 8004-solana SDK instead
  * Get PDA for metadata extension account
  * Seeds: ["metadata_ext", agent_mint, key]
  */
@@ -21,7 +36,7 @@ export function getMetadataExtPda(
 }
 
 /**
- * Set extended metadata (creates PDA if needed)
+ * @deprecated INCOMPATIBLE with current program. Use 8004-solana SDK.
  *
  * NOTE: This is a template for implementing extension PDAs.
  * Requires custom instruction implementation in the program.
@@ -72,7 +87,7 @@ export async function setExtendedMetadata(
 }
 
 /**
- * Get extended metadata value
+ * @deprecated INCOMPATIBLE with current program. Use 8004-solana SDK.
  *
  * NOTE: This is a template for implementing extension PDAs.
  * Requires custom account structure in the program.
@@ -146,7 +161,9 @@ export async function fetchMetadataFromIPFS(
 }
 
 /**
- * Helper to combine on-chain and off-chain metadata
+ * @deprecated INCOMPATIBLE with current program. Use 8004-solana SDK.
+ *
+ * Current program uses agent_uri (not tokenUri) and no inline metadata array.
  *
  * @param program - Anchor program instance
  * @param agentPda - Agent account PDA

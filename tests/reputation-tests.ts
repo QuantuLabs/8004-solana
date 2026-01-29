@@ -19,6 +19,7 @@ import {
   getAgentPda,
   getAtomConfigPda,
   getAtomStatsPda,
+  getRegistryAuthorityPda,
   randomHash,
   uriOfLength,
   stringOfLength,
@@ -54,6 +55,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
 
   // ATOM Engine PDAs
   let atomConfigPda: PublicKey;
+  let registryAuthorityPda: PublicKey;
 
   // Agent for reputation tests
   let agentAsset: Keypair;
@@ -66,6 +68,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
   before(async () => {
     [rootConfigPda] = getRootConfigPda(program.programId);
     [atomConfigPda] = getAtomConfigPda();
+    [registryAuthorityPda] = getRegistryAuthorityPda(program.programId);
 
     // Check if AtomConfig exists, if not initialize it
     const atomConfigInfo = await provider.connection.getAccountInfo(atomConfigPda);
@@ -73,7 +76,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       console.log("Initializing AtomConfig...");
       await atomProgram.methods
         .initializeConfig(program.programId)
-        .accounts({
+        .accountsPartial({
           authority: provider.wallet.publicKey,
           config: atomConfigPda,
           systemProgram: SystemProgram.programId,
@@ -102,7 +105,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
 
     await program.methods
       .register("https://example.com/agent/reputation-test")
-      .accounts({
+      .accountsPartial({
         registryConfig: registryConfigPda,
         agentAccount: agentPda,
         asset: agentAsset.publicKey,
@@ -118,7 +121,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     // Initialize ATOM stats for the agent (required before giving feedback)
     await atomProgram.methods
       .initializeStats()
-      .accounts({
+      .accountsPartial({
         owner: provider.wallet.publicKey,
         asset: agentAsset.publicKey,
         collection: collectionPubkey,
@@ -142,7 +145,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
   // ============================================================================
   describe("Feedback Creation (CPI)", () => {
     it("giveFeedback() emits NewFeedback event and updates AtomStats", async () => {
-      const feedbackIndex = new BN(0);
       const value = new BN(100);  // e.g., 1.00 with 2 decimals
       const valueDecimals = 2;
       const score = 80;
@@ -153,13 +155,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           valueDecimals,
           score,
           Array.from(randomHash()),
-          feedbackIndex,
           "quality",
           "reliable",
           "https://agent.example.com/api",
           "https://example.com/feedback/0"
         )
-        .accounts({
+        .accountsPartial({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
           collection: collectionPubkey,
@@ -167,6 +168,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           atomConfig: atomConfigPda,
           atomStats: atomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
@@ -183,7 +185,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() with score=0 (edge case)", async () => {
-      const feedbackIndex = new BN(1);
       const value = new BN(0);
       const valueDecimals = 0;
       const score = 0;
@@ -194,13 +195,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           valueDecimals,
           score,
           Array.from(randomHash()),
-          feedbackIndex,
           "poor",
           "issue",
           "https://agent.example.com/api",
           "https://example.com/feedback/zero"
         )
-        .accounts({
+        .accountsPartial({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
           collection: collectionPubkey,
@@ -208,6 +208,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           atomConfig: atomConfigPda,
           atomStats: atomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
@@ -215,7 +216,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() with score=100 (edge case)", async () => {
-      const feedbackIndex = new BN(2);
       const value = new BN(1000000);  // 1.000000 with 6 decimals
       const valueDecimals = 6;
       const score = 100;
@@ -226,13 +226,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           valueDecimals,
           score,
           Array.from(randomHash()),
-          feedbackIndex,
           "perfect",
           "excellent",
           "https://agent.example.com/api",
           "https://example.com/feedback/perfect"
         )
-        .accounts({
+        .accountsPartial({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
           collection: collectionPubkey,
@@ -240,6 +239,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           atomConfig: atomConfigPda,
           atomStats: atomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
@@ -247,7 +247,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() with score=null (no ATOM update)", async () => {
-      const feedbackIndex = new BN(3);
       const value = new BN(500);
       const valueDecimals = 2;
 
@@ -261,13 +260,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           valueDecimals,
           null,  // No ATOM update
           Array.from(randomHash()),
-          feedbackIndex,
           "info",
           "only",
           "https://agent.example.com/api",
           "https://example.com/feedback/no-atom"
         )
-        .accounts({
+        .accountsPartial({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
           collection: collectionPubkey,
@@ -275,6 +273,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           atomConfig: atomConfigPda,
           atomStats: atomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
@@ -287,7 +286,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() fails with score > 100", async () => {
-      const feedbackIndex = new BN(999);
       const value = new BN(100);
       const valueDecimals = 0;
 
@@ -298,13 +296,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             valueDecimals,
             101,  // Invalid score
             Array.from(randomHash()),
-            feedbackIndex,
             "invalid",
             "score",
             "https://agent.example.com/api",
             "https://example.com/feedback/invalid"
           )
-          .accounts({
+          .accountsPartial({
             client: clientKeypair.publicKey,
             asset: agentAsset.publicKey,
             collection: collectionPubkey,
@@ -312,6 +309,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             atomConfig: atomConfigPda,
             atomStats: atomStatsPda,
             atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
             systemProgram: SystemProgram.programId,
           })
           .signers([clientKeypair])
@@ -321,7 +319,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() fails with valueDecimals > 6", async () => {
-      const feedbackIndex = new BN(998);
       const value = new BN(100);
       const valueDecimals = 7;  // Max is 6
 
@@ -332,13 +329,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             valueDecimals,
             50,
             Array.from(randomHash()),
-            feedbackIndex,
             "invalid",
             "decimals",
             "https://agent.example.com/api",
             "https://example.com/feedback/bad-decimals"
           )
-          .accounts({
+          .accountsPartial({
             client: clientKeypair.publicKey,
             asset: agentAsset.publicKey,
             collection: collectionPubkey,
@@ -346,6 +342,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             atomConfig: atomConfigPda,
             atomStats: atomStatsPda,
             atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
             systemProgram: SystemProgram.programId,
           })
           .signers([clientKeypair])
@@ -355,7 +352,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() with empty tags (allowed)", async () => {
-      const feedbackIndex = new BN(4);
       const value = new BN(60);
       const valueDecimals = 0;
 
@@ -365,13 +361,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           valueDecimals,
           60,
           Array.from(randomHash()),
-          feedbackIndex,
           "",
           "",
           "https://agent.example.com/api",
           "https://example.com/feedback/empty-tags"
         )
-        .accounts({
+        .accountsPartial({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
           collection: collectionPubkey,
@@ -379,6 +374,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           atomConfig: atomConfigPda,
           atomStats: atomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
@@ -386,7 +382,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() fails with tag > 32 bytes", async () => {
-      const feedbackIndex = new BN(997);
       const longTag = stringOfLength(MAX_TAG_LENGTH + 1);
       const value = new BN(50);
       const valueDecimals = 0;
@@ -398,13 +393,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             valueDecimals,
             50,
             Array.from(randomHash()),
-            feedbackIndex,
             longTag,
             "valid",
             "https://agent.example.com/api",
             "https://example.com/feedback/long-tag"
           )
-          .accounts({
+          .accountsPartial({
             client: clientKeypair.publicKey,
             asset: agentAsset.publicKey,
             collection: collectionPubkey,
@@ -412,6 +406,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             atomConfig: atomConfigPda,
             atomStats: atomStatsPda,
             atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
             systemProgram: SystemProgram.programId,
           })
           .signers([clientKeypair])
@@ -421,7 +416,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() fails with URI > 250 bytes", async () => {
-      const feedbackIndex = new BN(996);
       const longUri = uriOfLength(MAX_URI_LENGTH + 1);
       const value = new BN(50);
       const valueDecimals = 0;
@@ -433,13 +427,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             valueDecimals,
             50,
             Array.from(randomHash()),
-            feedbackIndex,
             "tag1",
             "tag2",
             "https://agent.example.com/api",
             longUri
           )
-          .accounts({
+          .accountsPartial({
             client: clientKeypair.publicKey,
             asset: agentAsset.publicKey,
             collection: collectionPubkey,
@@ -447,6 +440,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             atomConfig: atomConfigPda,
             atomStats: atomStatsPda,
             atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
             systemProgram: SystemProgram.programId,
           })
           .signers([clientKeypair])
@@ -456,7 +450,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() accumulates stats correctly", async () => {
-      const feedbackIndex = new BN(5);
       const value = new BN(75);
       const valueDecimals = 0;
 
@@ -466,13 +459,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           valueDecimals,
           75,
           Array.from(randomHash()),
-          feedbackIndex,
           "good",
           "test",
           "https://agent.example.com/api",
           "https://example.com/feedback/accumulate"
         )
-        .accounts({
+        .accountsPartial({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
           collection: collectionPubkey,
@@ -480,6 +472,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           atomConfig: atomConfigPda,
           atomStats: atomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
@@ -492,7 +485,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     });
 
     it("giveFeedback() with negative value (allowed for EVM compatibility)", async () => {
-      const feedbackIndex = new BN(6);
       const value = new BN(-100);  // Negative value for refunds, etc.
       const valueDecimals = 2;
 
@@ -502,13 +494,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           valueDecimals,
           50,
           Array.from(randomHash()),
-          feedbackIndex,
           "refund",
           "negative",
           "https://agent.example.com/api",
           "https://example.com/feedback/negative"
         )
-        .accounts({
+        .accountsPartial({
           client: clientKeypair.publicKey,
           asset: agentAsset.publicKey,
           collection: collectionPubkey,
@@ -516,6 +507,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           atomConfig: atomConfigPda,
           atomStats: atomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([clientKeypair])
@@ -528,7 +520,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
   // ============================================================================
   describe("Self-Feedback Protection", () => {
     it("giveFeedback() fails if owner tries to rate own agent", async () => {
-      const feedbackIndex = new BN(100);
       const value = new BN(95);
       const valueDecimals = 0;
 
@@ -540,13 +531,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             valueDecimals,
             95,
             Array.from(randomHash()),
-            feedbackIndex,
             "self",
             "feedback",
             "https://agent.example.com/api",
             "https://example.com/feedback/self"
           )
-          .accounts({
+          .accountsPartial({
             client: provider.wallet.publicKey, // Owner is client
             asset: agentAsset.publicKey,
             collection: collectionPubkey,
@@ -554,6 +544,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             atomConfig: atomConfigPda,
             atomStats: atomStatsPda,
             atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
             systemProgram: SystemProgram.programId,
           })
           .rpc(),
@@ -570,6 +561,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     let revokeAgentPda: PublicKey;
     let revokeAtomStatsPda: PublicKey;
     let revokeClientKeypair: Keypair;
+    let revokeFeedbackHash: number[];
 
     before(async () => {
       revokeAgentAsset = Keypair.generate();
@@ -582,7 +574,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
 
       await program.methods
         .register("https://example.com/agent/revoke-test")
-        .accounts({
+        .accountsPartial({
           registryConfig: registryConfigPda,
           agentAccount: revokeAgentPda,
           asset: revokeAgentAsset.publicKey,
@@ -598,7 +590,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       // Initialize ATOM stats for revoke agent
       await atomProgram.methods
         .initializeStats()
-        .accounts({
+        .accountsPartial({
           owner: provider.wallet.publicKey,
           asset: revokeAgentAsset.publicKey,
           collection: collectionPubkey,
@@ -609,23 +601,22 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
         .rpc();
 
       // Create feedback to revoke
-      const feedbackIndex = new BN(0);
       const value = new BN(90);
       const valueDecimals = 0;
+      revokeFeedbackHash = Array.from(randomHash());
 
       await program.methods
         .giveFeedback(
           value,
           valueDecimals,
           90,
-          Array.from(randomHash()),
-          feedbackIndex,
+          revokeFeedbackHash,
           "high",
           "quality",
           "https://agent.example.com/api",
           "https://example.com/feedback/to-revoke"
         )
-        .accounts({
+        .accountsPartial({
           client: revokeClientKeypair.publicKey,
           asset: revokeAgentAsset.publicKey,
           collection: collectionPubkey,
@@ -633,6 +624,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           atomConfig: atomConfigPda,
           atomStats: revokeAtomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([revokeClientKeypair])
@@ -642,15 +634,16 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     it("revokeFeedback() emits FeedbackRevoked event", async () => {
       const feedbackIndex = new BN(0);
 
+      // New API signature: feedback_index, feedback_hash
       const tx = await program.methods
-        .revokeFeedback(feedbackIndex)
-        .accounts({
+        .revokeFeedback(feedbackIndex, revokeFeedbackHash)
+        .accountsPartial({
           client: revokeClientKeypair.publicKey,
           asset: revokeAgentAsset.publicKey,
-          agentAccount: revokeAgentPda,
           atomConfig: atomConfigPda,
           atomStats: revokeAtomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([revokeClientKeypair])
@@ -664,9 +657,12 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       // Events-only: program doesn't enforce signer == original client
       // Indexer is responsible for validation
       const fakeClient = Keypair.generate();
+      await fundKeypair(provider, fakeClient, 0.05 * anchor.web3.LAMPORTS_PER_SOL);
+
       const feedbackIndex = new BN(1);
       const value = new BN(85);
       const valueDecimals = 0;
+      const fakeHash = Array.from(randomHash());
 
       // First create a feedback
       await program.methods
@@ -674,36 +670,36 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           value,
           valueDecimals,
           85,
-          Array.from(randomHash()),
-          feedbackIndex,
+          fakeHash,
           "test",
           "revoke",
           "https://agent.example.com/api",
           "https://example.com/feedback/non-author"
         )
-        .accounts({
+        .accountsPartial({
           client: revokeClientKeypair.publicKey,
           asset: revokeAgentAsset.publicKey,
           collection: collectionPubkey,
-          agentAccount: revokeAgentPda,
           atomConfig: atomConfigPda,
           atomStats: revokeAtomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([revokeClientKeypair])
         .rpc();
 
+      // New API signature: feedback_index, feedback_hash
       // Events-only: this emits an event, indexer ignores if signer != client
       await program.methods
-        .revokeFeedback(feedbackIndex)
-        .accounts({
+        .revokeFeedback(feedbackIndex, fakeHash)
+        .accountsPartial({
           client: fakeClient.publicKey,
           asset: revokeAgentAsset.publicKey,
-          agentAccount: revokeAgentPda,
           atomConfig: atomConfigPda,
           atomStats: revokeAtomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([fakeClient])
@@ -714,16 +710,17 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     it("revokeFeedback() can be called multiple times (events-only)", async () => {
       const feedbackIndex = new BN(0);
 
+      // New API signature: feedback_index, feedback_hash
       // Events-only: multiple revoke events allowed, indexer handles
       await program.methods
-        .revokeFeedback(feedbackIndex)
-        .accounts({
+        .revokeFeedback(feedbackIndex, revokeFeedbackHash)
+        .accountsPartial({
           client: revokeClientKeypair.publicKey,
           asset: revokeAgentAsset.publicKey,
-          agentAccount: revokeAgentPda,
           atomConfig: atomConfigPda,
           atomStats: revokeAtomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([revokeClientKeypair])
@@ -741,6 +738,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     let responseAtomStatsPda: PublicKey;
     let responseClientKeypair: Keypair;
     const feedbackIndex = new BN(0);
+    let responseFeedbackHash: number[];
 
     before(async () => {
       responseAgentAsset = Keypair.generate();
@@ -753,7 +751,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
 
       await program.methods
         .register("https://example.com/agent/response-test")
-        .accounts({
+        .accountsPartial({
           registryConfig: registryConfigPda,
           agentAccount: responseAgentPda,
           asset: responseAgentAsset.publicKey,
@@ -769,7 +767,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       // Initialize ATOM stats for response agent
       await atomProgram.methods
         .initializeStats()
-        .accounts({
+        .accountsPartial({
           owner: provider.wallet.publicKey,
           asset: responseAgentAsset.publicKey,
           collection: collectionPubkey,
@@ -782,20 +780,20 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       // Create feedback to respond to
       const value = new BN(75);
       const valueDecimals = 0;
+      responseFeedbackHash = Array.from(randomHash());
 
       await program.methods
         .giveFeedback(
           value,
           valueDecimals,
           75,
-          Array.from(randomHash()),
-          feedbackIndex,
+          responseFeedbackHash,
           "feedback",
           "test",
           "https://agent.example.com/api",
           "https://example.com/feedback/for-response"
         )
-        .accounts({
+        .accountsPartial({
           client: responseClientKeypair.publicKey,
           asset: responseAgentAsset.publicKey,
           collection: collectionPubkey,
@@ -803,6 +801,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           atomConfig: atomConfigPda,
           atomStats: responseAtomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([responseClientKeypair])
@@ -816,9 +815,10 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           responseClientKeypair.publicKey,
           feedbackIndex,
           "https://example.com/response/0",
-          Array.from(randomHash())
+          Array.from(randomHash()),
+          responseFeedbackHash
         )
-        .accounts({
+        .accountsPartial({
           responder: provider.wallet.publicKey,
           asset: responseAgentAsset.publicKey,
         })
@@ -835,9 +835,10 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             responseClientKeypair.publicKey,
             feedbackIndex,
             `https://example.com/response/${i}`,
-            Array.from(randomHash())
+            Array.from(randomHash()),
+            responseFeedbackHash
           )
-          .accounts({
+          .accountsPartial({
             responder: provider.wallet.publicKey,
             asset: responseAgentAsset.publicKey,
           })
@@ -855,9 +856,10 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             responseClientKeypair.publicKey,
             feedbackIndex,
             longUri,
-            Array.from(randomHash())
+            Array.from(randomHash()),
+            responseFeedbackHash
           )
-          .accounts({
+          .accountsPartial({
             responder: provider.wallet.publicKey,
             asset: responseAgentAsset.publicKey,
           })
@@ -873,9 +875,10 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           responseClientKeypair.publicKey,
           feedbackIndex,
           "",
-          Array.from(randomHash())
+          Array.from(randomHash()),
+          responseFeedbackHash
         )
-        .accounts({
+        .accountsPartial({
           responder: provider.wallet.publicKey,
           asset: responseAgentAsset.publicKey,
         })
@@ -891,6 +894,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     let idxAgentPda: PublicKey;
     let idxAtomStatsPda: PublicKey;
     let idxClientKeypair: Keypair;
+    let idxZeroHash: number[];
 
     before(async () => {
       idxAgentAsset = Keypair.generate();
@@ -903,7 +907,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
 
       await program.methods
         .register("https://example.com/agent/index-test")
-        .accounts({
+        .accountsPartial({
           registryConfig: registryConfigPda,
           agentAccount: idxAgentPda,
           asset: idxAgentAsset.publicKey,
@@ -919,7 +923,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       // Initialize ATOM stats for index test agent
       await atomProgram.methods
         .initializeStats()
-        .accounts({
+        .accountsPartial({
           owner: provider.wallet.publicKey,
           asset: idxAgentAsset.publicKey,
           collection: collectionPubkey,
@@ -934,23 +938,25 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       const indices = [0, 5, 10, 100, 999999];
 
       for (const idx of indices) {
-        const feedbackIndex = new BN(idx);
         const value = new BN(80);
         const valueDecimals = 0;
+        const feedbackHash = Array.from(randomHash());
+        if (idx === 0) {
+          idxZeroHash = feedbackHash;
+        }
 
         await program.methods
           .giveFeedback(
             value,
             valueDecimals,
             80,
-            Array.from(randomHash()),
-            feedbackIndex,
+            feedbackHash,
             `tag${idx}`,
             "test",
             "https://agent.example.com/api",
             `https://example.com/feedback/idx-${idx}`
           )
-          .accounts({
+          .accountsPartial({
             client: idxClientKeypair.publicKey,
             asset: idxAgentAsset.publicKey,
             collection: collectionPubkey,
@@ -958,6 +964,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
             atomConfig: atomConfigPda,
             atomStats: idxAtomStatsPda,
             atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
             systemProgram: SystemProgram.programId,
           })
           .signers([idxClientKeypair])
@@ -972,14 +979,14 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
 
       // Revoke first
       await program.methods
-        .revokeFeedback(feedbackIndex)
-        .accounts({
+        .revokeFeedback(feedbackIndex, idxZeroHash)
+        .accountsPartial({
           client: idxClientKeypair.publicKey,
           asset: idxAgentAsset.publicKey,
-          agentAccount: idxAgentPda,
           atomConfig: atomConfigPda,
           atomStats: idxAtomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([idxClientKeypair])
@@ -992,20 +999,19 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
           valueDecimals,
           50,
           Array.from(randomHash()),
-          feedbackIndex,
           "reuse",
           "test",
           "https://agent.example.com/api",
           "https://example.com/feedback/reuse"
         )
-        .accounts({
+        .accountsPartial({
           client: idxClientKeypair.publicKey,
           asset: idxAgentAsset.publicKey,
           collection: collectionPubkey,
-          agentAccount: idxAgentPda,
           atomConfig: atomConfigPda,
           atomStats: idxAtomStatsPda,
           atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
           systemProgram: SystemProgram.programId,
         })
         .signers([idxClientKeypair])
