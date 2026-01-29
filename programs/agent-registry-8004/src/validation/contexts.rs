@@ -86,9 +86,6 @@ pub struct RequestValidation<'info> {
     )]
     pub validation_request: Account<'info, ValidationRequest>,
 
-    /// CHECK: Any pubkey is valid for validator
-    pub validator: UncheckedAccount<'info>,
-
     pub system_program: Program<'info, System>,
 }
 
