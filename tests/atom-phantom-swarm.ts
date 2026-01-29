@@ -67,7 +67,7 @@ describe("V35 Phantom Swarm Attack", () => {
     }
 
     const rootConfig = program.coder.accounts.decode("rootConfig", rootAccountInfo.data);
-    registryConfigPda = rootConfig.currentBaseRegistry;
+    registryConfigPda = rootConfig.baseRegistry;
 
     const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
     const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo!.data);

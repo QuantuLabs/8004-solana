@@ -44,7 +44,7 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
     const rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
     const rootConfig = program.coder.accounts.decode("rootConfig", rootAccountInfo!.data);
 
-    registryConfigPda = rootConfig.currentBaseRegistry;
+    registryConfigPda = rootConfig.baseRegistry;
     const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
     const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo!.data);
     collectionPubkey = registryConfig.collection;
@@ -151,7 +151,6 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
             requester: provider.wallet.publicKey,
             asset: testAgentAsset.publicKey,
             agentAccount: testAgentPda,
-            validator: provider.wallet.publicKey,
           })
           .rpc();
 
@@ -176,7 +175,6 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
           requester: provider.wallet.publicKey,
           asset: testAgentAsset.publicKey,
           agentAccount: testAgentPda,
-          validator: otherUser.publicKey,
         })
         .rpc();
 
@@ -199,7 +197,6 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
           requester: provider.wallet.publicKey,
           asset: testAgentAsset.publicKey,
           agentAccount: testAgentPda,
-          validator: otherUser.publicKey,
         })
         .rpc();
 
@@ -242,7 +239,6 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
           requester: provider.wallet.publicKey,
           asset: testAgentAsset.publicKey,
           agentAccount: testAgentPda,
-          validator: otherUser.publicKey,
         })
         .rpc();
 

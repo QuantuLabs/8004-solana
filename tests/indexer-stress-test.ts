@@ -208,7 +208,7 @@ describe("Indexer Stress Tests", function () {
     if (!rootInfo) throw new Error("RootConfig missing. Run init-localnet.ts first.");
 
     const rootConfig = program.coder.accounts.decode("rootConfig", rootInfo.data);
-    registryConfigPda = rootConfig.currentBaseRegistry;
+    registryConfigPda = rootConfig.baseRegistry;
 
     const registryInfo = await provider.connection.getAccountInfo(registryConfigPda);
     if (!registryInfo) throw new Error("RegistryConfig missing.");
@@ -537,7 +537,6 @@ describe("Indexer Stress Tests", function () {
               agentAccount: agent.agentPda,
               asset: agent.asset.publicKey,
               validationRequest: validationRequestPda,
-              validator: validator.publicKey,
               systemProgram: SystemProgram.programId,
             })
             .signers([agent.owner])

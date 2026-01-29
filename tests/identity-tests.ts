@@ -53,8 +53,8 @@ describe("Identity Module Tests", () => {
     const rootConfig = program.coder.accounts.decode("rootConfig", accountInfo!.data);
     console.log("DEBUG: Root config decoded, authority =", rootConfig.authority.toBase58());
 
-    // currentBaseRegistry IS the registryConfigPda (not the collection)
-    registryConfigPda = rootConfig.currentBaseRegistry;
+    // baseRegistry IS the registryConfigPda (not the collection)
+    registryConfigPda = rootConfig.baseRegistry;
     console.log("DEBUG: Registry Config PDA =", registryConfigPda.toBase58());
     const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
     const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo!.data);

@@ -51,7 +51,7 @@ describe("E2E Revoke Feedback v2.5", () => {
     // Get registry config
     [rootConfigPda] = getRootConfigPda(program.programId);
     const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
-    registryConfigPda = rootConfig.currentBaseRegistry;
+    registryConfigPda = rootConfig.baseRegistry;
     const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
     collectionPubkey = registryConfig.collection;
 

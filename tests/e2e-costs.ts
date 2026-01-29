@@ -222,7 +222,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
     [rootConfigPda] = getRootConfigPda(program.programId);
     const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
 
-    registryConfigPda = rootConfig.currentBaseRegistry;
+    registryConfigPda = rootConfig.baseRegistry;
     const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
     collectionPubkey = registryConfig.collection;
 
@@ -529,7 +529,6 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
               requester: provider.wallet.publicKey,
               asset: agent1Asset.publicKey,
               agentAccount: agent1Pda,
-              validator: thirdParty.publicKey,
             })
             .rpc();
         },
@@ -553,7 +552,6 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
           requester: provider.wallet.publicKey,
           asset: agent1Asset.publicKey,
           agentAccount: agent1Pda,
-          validator: thirdParty.publicKey,
         })
         .rpc();
 

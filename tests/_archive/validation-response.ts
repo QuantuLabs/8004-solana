@@ -393,7 +393,6 @@ describe("Validation Registry - Respond to Validation", () => {
       )
       .accounts({
         config: validationConfig,
-        validator: validator1.publicKey,
         validationRequest,
       })
       .signers([validator1])

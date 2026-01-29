@@ -132,7 +132,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
       .accounts({
         validation: validationPda,
         agent: agentPda,
-        validator: validator1.publicKey,
         agentOwner: agentOwner.publicKey,
         globalState: globalStatePda,
         identityRegistry: identityProgramId,
@@ -195,7 +194,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
         .accounts({
           validation: validationPda,
           agent: agentPda,
-          validator: validator.publicKey,
           agentOwner: agentOwner.publicKey,
           globalState: globalStatePda,
           identityRegistry: identityProgramId,
@@ -274,7 +272,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
       .accounts({
         validation: validationPda,
         agent: agentPda,
-        validator: validator1.publicKey,
         agentOwner: agentOwner.publicKey,
         globalState: globalStatePda,
         identityRegistry: identityProgramId,
@@ -342,7 +339,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
       .accounts({
         validation: validationPda,
         agent: agentPda,
-        validator: validator2.publicKey,
         agentOwner: agentOwner.publicKey,
         globalState: globalStatePda,
         identityRegistry: identityProgramId, // Correct registry
@@ -380,7 +376,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
         .accounts({
           validation: validationPda,
           agent: agentPda,
-          validator: validator3.publicKey,
           agentOwner: agentOwner.publicKey,
           globalState: globalStatePda,
           identityRegistry: identityProgramId,
@@ -441,7 +436,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
         .accounts({
           validation: validationPda,
           agent: agentPda,
-          validator: validator1.publicKey,
           agentOwner: agentOwner.publicKey,
           globalState: globalStatePda,
           identityRegistry: identityProgramId,
@@ -489,7 +483,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
       .accounts({
         validation: validationPda,
         agent: agentPda,
-        validator: validator2.publicKey,
         agentOwner: agentOwner.publicKey,
         globalState: globalStatePda,
         identityRegistry: identityProgramId,
@@ -538,7 +531,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
       .accounts({
         validation: validationPda,
         agent: agentPda,
-        validator: validator1.publicKey,
         agentOwner: agentOwner.publicKey,
         globalState: globalStatePda,
         identityRegistry: identityProgramId,
@@ -607,7 +599,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
       .accounts({
         validation: oldValidationPda,
         agent: agentPda,
-        validator: validator2.publicKey,
         agentOwner: agentOwner.publicKey,
         globalState: globalStatePda,
         identityRegistry: identityProgramId,
@@ -653,7 +644,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
       .accounts({
         validation: newValidationPda,
         agent: agentPda,
-        validator: validator2.publicKey,
         agentOwner: agentOwner.publicKey,
         globalState: globalStatePda,
         identityRegistry: identityProgramId,
@@ -699,7 +689,6 @@ describe("Validation Advanced & Cross-Registry Tests", () => {
         .accounts({
           validation: validationPda,
           agent: agentPda,
-          validator: validator3.publicKey,
           agentOwner: agentOwner.publicKey,
           globalState: globalStatePda,
           identityRegistry: identityProgramId,

@@ -133,7 +133,7 @@ describe("Program Stress Tests (Agent Registry)", function () {
     }
 
     const rootConfig = program.coder.accounts.decode("rootConfig", rootInfo.data);
-    registryConfigPda = rootConfig.currentBaseRegistry;
+    registryConfigPda = rootConfig.baseRegistry;
 
     const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
     if (!registryAccountInfo) {
@@ -406,7 +406,6 @@ describe("Program Stress Tests (Agent Registry)", function () {
             agentAccount: agent.agentPda,
             asset: agent.asset.publicKey,
             validationRequest: validationRequestPda,
-            validator: validator.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .signers([agent.owner])

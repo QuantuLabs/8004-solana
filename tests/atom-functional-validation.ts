@@ -188,7 +188,7 @@ describe("ATOM Functional Validation", function() {
 
     const rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
     const rootConfig = registryProgram.coder.accounts.decode("rootConfig", rootAccountInfo!.data);
-    registryConfigPda = rootConfig.currentBaseRegistry;
+    registryConfigPda = rootConfig.baseRegistry;
 
     const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
     const registryConfig = registryProgram.coder.accounts.decode("registryConfig", registryAccountInfo!.data);

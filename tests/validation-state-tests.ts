@@ -74,7 +74,7 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
     const rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
     const rootConfig = program.coder.accounts.decode("rootConfig", rootAccountInfo!.data);
 
-    registryConfigPda = rootConfig.currentBaseRegistry;
+    registryConfigPda = rootConfig.baseRegistry;
     const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
     const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo!.data);
     collectionPubkey = registryConfig.collection;
@@ -171,7 +171,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequestPda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -222,7 +221,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
             agentAccount: agentPda,
             asset: agentAsset.publicKey,
             validationRequest: validationRequestPda,
-            validator: validatorKeypair.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .rpc(),
@@ -263,7 +261,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequest1Pda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -283,7 +280,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequest2Pda,
-          validator: validator2.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -328,7 +324,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequest1Pda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -347,7 +342,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequest2Pda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -389,7 +383,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
             agentAccount: agentPda,
             asset: agentAsset.publicKey,
             validationRequest: validationRequestPda,
-            validator: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .rpc(),
@@ -421,7 +414,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequestPda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -480,7 +472,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequestPda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -548,7 +539,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequestPda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -599,7 +589,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequestPda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -650,7 +639,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequestPda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -731,7 +719,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequestPda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -789,7 +776,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequestPda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -826,7 +812,6 @@ describe("Validation Module Tests (State On-Chain v3.0.0)", () => {
           agentAccount: agentPda,
           asset: agentAsset.publicKey,
           validationRequest: validationRequestPda,
-          validator: validatorKeypair.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
