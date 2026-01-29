@@ -119,6 +119,7 @@ async function initializeAtomEngine(
   wallet: anchor.Wallet
 ): Promise<void> {
   const [atomConfigPda] = getAtomConfigPda(atomEngine.programId);
+  const [programDataPda] = getProgramDataPda(atomEngine.programId);
 
   // Check if already initialized
   const accountInfo = await atomEngine.provider.connection.getAccountInfo(atomConfigPda);
@@ -133,12 +134,14 @@ async function initializeAtomEngine(
   console.log("  📦 Initializing AtomConfig...");
   console.log("      PDA:", atomConfigPda.toBase58());
   console.log("      Registry Program:", registryProgramId.toBase58());
+  console.log("      Program Data:", programDataPda.toBase58());
 
   const tx = await atomEngine.methods
     .initializeConfig(registryProgramId)
     .accountsStrict({
       config: atomConfigPda,
       authority: wallet.publicKey,
+      programData: programDataPda,
       systemProgram: SystemProgram.programId,
     })
     .rpc();
