@@ -6,8 +6,8 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-agent_registry_8004 = "6MuHv4dY4p9E4hSCEPr9dgbCSpMhq8x1vrUexbMVjfw1"
-atom_engine = "6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf"
+agent_registry_8004 = "6RVsxoPbNnkk6F5FFSENNRmxpK8QZMyCXPR2tuiZ5JF6"
+atom_engine = "8BmzNSQ7G5y6C6W8tkqsb4TtqkkiircfcXviAsxnhhST"
 
 [programs.localnet]
 agent_registry_8004 = "6RVsxoPbNnkk6F5FFSENNRmxpK8QZMyCXPR2tuiZ5JF6"
@@ -22,12 +22,12 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 attacks = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/atom-attack-vectors.ts"
-indexer = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/indexer-stress-test.ts"
 costs = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/e2e-costs.ts"
 entropy = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-entropy-backfire.ts"
 full = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts"
 grief = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-griefing.ts"
 hll = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-hll-stuffing.ts"
+indexer = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/indexer-stress-test.ts"
 iron = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-iron-dome.ts"
 phantom = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-phantom-swarm.ts"
 revoke = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/revoke-e2e.ts"
