@@ -10,8 +10,8 @@
 
 | Program | Address |
 |---------|---------|
-| agent-registry-8004 | `6MuHv4dY4p9E4hSCEPr9dgbCSpMhq8x1vrUexbMVjfw1` |
-| atom-engine | `6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf` |
+| agent-registry-8004 | `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N` |
+| atom-engine | `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8` |
 
 ## v0.5.0 Highlights
 
@@ -27,7 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 ```
 +-----------------------------------------------------------------+
 |              agent-registry-8004 (Devnet)                        |
-|         6MuHv4dY4p9E4hSCEPr9dgbCSpMhq8x1vrUexbMVjfw1            |
+|         8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N            |
 +-----------------------------------------------------------------+
 |  +---------------+ +----------------+ +--------------------+     |
 |  | Identity      | | Reputation     | | Validation         |     |
@@ -44,7 +44,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
                              v
 +-----------------------------------------------------------------+
 |                    atom-engine (ATOM)                            |
-|         6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf            |
+|         AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8            |
 +-----------------------------------------------------------------+
 |  +---------------+ +------------------------------------------+ |
 |  | AtomConfig    | |              AtomStats (561 bytes)       | |
@@ -176,6 +176,16 @@ anchor test
 
 - [8004 Spec](https://eips.ethereum.org/EIPS/eip-8004)
 - [Forum Discussion](https://ethereum-magicians.org/t/erc-8004-trustless-agents/25098)
+
+## Community
+
+- **Website**: [qnt.sh](https://qnt.sh)
+- **Telegram**: [t.me/sol8004](https://t.me/sol8004)
+- **X**: [@Quantu_AI](https://x.com/Quantu_AI)
+
+## Acknowledgments
+
+Special thanks to [PayAI](https://payai.network) for supporting the mainnet deployment, Solana devs for early program reviews, and all 8004 contributors.
 
 ---
 
