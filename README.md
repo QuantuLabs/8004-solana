@@ -1,6 +1,6 @@
 # 8004 on Solana
 
-> Solana implementation of 8004 (Trustless Agents Registry)
+**The trust layer for AI agents.** Identity, reputation, and validation—all on-chain.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Anchor](https://img.shields.io/badge/Anchor-0.31.1-blue)](https://github.com/coral-xyz/anchor)
@@ -13,14 +13,13 @@
 | agent-registry-8004 | `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N` |
 | atom-engine | `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8` |
 
-## v0.5.0 Highlights
+## v0.5.0
 
-- **[ATOM v0.2.0 "Fortress"](programs/atom-engine/README.md)**: Production-ready with tier vesting and platinum loyalty gate
-- **Tier Vesting**: 8-epoch delay (~20 days) before tier promotion prevents Sybil attacks
-- **Platinum Loyalty Gate**: Requires 500+ loyalty score before platinum candidature
-- **ERC-8004 Compliant**: Fully compliant with validation system optimizations (109B)
+- **[ATOM v0.2.0](programs/atom-engine/README.md)**: Tier vesting (8 epochs), platinum loyalty gate (500+)
+- **Canonical feedback_index**: On-chain deduplication
+- **Hash-chain integrity**: `feedback_hash` in revoke/response leaves
 
-See [CHANGELOG.md](CHANGELOG.md) for version history.
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## Architecture
 
@@ -34,7 +33,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 |  +---------------+ +----------------+ +--------------------+     |
 |  | Agent NFTs    | | Feedback Events| | ValidationConfig   |     |
 |  |  (Core)       | | Revocations    | | ValidationRequest  |     |
-|  | Metadata PDAs | | Responses      | |  (109B optimized)  |     |
+|  | Metadata PDAs | | Responses      | |                    |     |
 |  | Asset = ID    | |       |        | | Multi-validator    |     |
 |  |               | |       |        | | Progressive        |     |
 |  +---------------+ +-------+--------+ +--------------------+     |
@@ -61,92 +60,81 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 +-----------------------------------------------------------------+
 ```
 
+### Hash-Chain Integrity
+
+Every feedback, response, and revocation is anchored on-chain via rolling hash digests. You don't have to trust indexers—you can verify them.
+
+```
+Feedback  ■─■─■─■─▶ feedback_digest
+Response  ■─■─■─▶ response_digest
+Revoke    ■─■─▶ revoke_digest
+```
+
 ## Features
 
 | Module | Description |
 |--------|-------------|
-| **Identity** | NFT-based agents (Metaplex Core), PDA metadata, immutable option |
-| **Reputation** | Feedback (0-100), revoke, responses with optional ATOM Engine integration |
-| **Validation** | Third-party verification, multi-validator, progressive (109B optimized) |
-| **ATOM Engine** | Optional enhancement: Sybil resistance (HLL), burst detection, trust tiers (0-5) |
+| **Identity** | Metaplex Core NFTs, PDA metadata, immutable option |
+| **Reputation** | Feedback (0-100), revoke, responses, ATOM Engine |
+| **Validation** | Third-party verification, multi-validator, progressive |
+| **ATOM Engine** | Sybil resistance (HLL), burst detection, trust tiers (0-4) |
 
-### Validation System
+### Validation
 
-The validation module enables third-party validators to assess agent performance:
+| Account | Seeds | Fields |
+|---------|-------|--------|
+| ValidationConfig | `["validation_config"]` | authority, counters |
+| ValidationRequest | `["validation", asset, validator, nonce]` | request_hash, response (0-100), responded_at |
 
-- **ValidationConfig** (global): Tracks total requests/responses, authority (49B)
-- **ValidationRequest** (per validation): Stores minimal on-chain state (109B)
-  - `asset` - Agent being validated
-  - `validator_address` - Who can respond
-  - `nonce` - Enables multiple validations from same validator
-  - `request_hash` - Integrity verification (SHA-256)
-  - `response` - Score 0-100 (0 = pending)
-  - `responded_at` - Unix timestamp (0 if no response)
-
-**Optimizations (v0.4.0):**
-- Reduced from 150B → 109B (-27% rent cost)
-- Moved to events: `response_hash`, `created_at`, `bump` (recalculable)
-- Maintains ERC-8004 compliance for progressive validation
-
-**PDA Seeds:**
-- ValidationConfig: `["validation_config"]`
-- ValidationRequest: `["validation", asset, validator_address, nonce]`
-
-**Important:** Self-validation is not allowed (agent owner cannot validate their own agent)
+Self-validation is blocked.
 
 ## ERC-8004 Compliance
 
-This implementation is **fully compliant** with the [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004), adapted for Solana's account-based architecture.
+Fully compliant with the [ERC-8004 spec](https://eips.ethereum.org/EIPS/eip-8004), adapted for Solana.
 
-### Fully Compliant Features
+| Module | Functions |
+|--------|-----------|
+| **Identity** | `register()`, `setAgentURI()`, `setMetadata()`, `setAgentWallet()` |
+| **Reputation** | `giveFeedback()`, `revokeFeedback()`, `appendResponse()` |
+| **Validation** | `validationRequest()`, `validationResponse()` |
 
-| Module | Compliance | Details |
-|--------|-----------|---------|
-| **Identity Registry** | Complete | All core functions: `register()`, `setAgentURI()`, `setMetadata()`, `setAgentWallet()` with Ed25519 signature verification |
-| **Reputation Registry** | Complete | `giveFeedback()`, `revokeFeedback()`, `appendResponse()` with score range 0-100 |
-| **Validation Registry** | Complete | `validationRequest()`, `validationResponse()`, progressive validation, anti-self-validation |
-| **Immutability** | Complete | On-chain pointers/hashes cannot be deleted, audit trail integrity maintained |
+### Solana Architecture
 
-### Solana-Specific Adaptations
+| Pattern | Implementation |
+|---------|----------------|
+| Feedback/Response/Revoke | Event-only with hash-chain proof |
+| Metadata | Separate PDAs per entry |
+| Validation | PDA per validation |
+| Agent IDs | Metaplex Core asset pubkey |
 
-**Event-Only Feedback Storage**
-- **Why:** Solana compute limits (1.4M CU) and cost optimization
-- **Pattern:** Standard in Solana ecosystem (95% of dApps)
-- **Solution:** Off-chain indexers for aggregation queries
-- **Impact:** `getSummary()`, `readFeedback()` implemented via SDK/indexer
+### Beyond the Spec
 
-**Account-Based Storage**
-- **Metadata:** Separate PDAs per entry (unlimited scalability)
-- **Validation:** PDA per validation (109B optimized, -27% rent vs v0.3.0)
-- **Agent IDs:** Pubkey (Metaplex Core asset) for native NFT integration
+| Feature | What it brings |
+|---------|----------------|
+| **ATOM Engine** | Sybil resistance, burst detection, 5-tier trust |
+| **Multi-Collection** | Scale with collection-based sharding |
+| **Immutable Metadata** | Lock critical data forever |
 
-### Key Differentiators
+### Get Started Fast
 
-- **ATOM Engine Integration:** Optional addition to ERC-8004 providing Sybil resistance via HyperLogLog, burst detection, trust tiers (can be skipped via `skipAtomInit` flag)
-- **Multi-Collection Sharding:** Unlimited scalability via collection-based partitioning
-- **Immutable Metadata:** Optional flag for permanent certification records
-- **Cost Optimization:** 109B validation accounts (-27% vs initial design)
+| Component | What you get |
+|-----------|--------------|
+| [TypeScript SDK](https://github.com/QuantuLabs/8004-solana-ts) | Full client library |
+| [Indexer](https://github.com/QuantuLabs/8004-solana-indexer) | Query all events |
 
-### Required Components
+## Costs
 
-- [TypeScript SDK](https://github.com/QuantuLabs/8004-solana-ts) - Client-side read functions (`getSummary()`, `readAllFeedback()`)
-- [Indexer](https://github.com/QuantuLabs/8004-solana-indexer) - Aggregation queries (standard Solana pattern)
-
-See [ERC-8004 Spec](https://github.com/erc-8004/erc-8004-contracts/blob/master/ERC8004SPEC.md) for official specification.
-
-## Costs (v0.5.0)
-
-| Operation | Rent (SOL) | Notes |
-|-----------|------------|-------|
-| Register Agent | ~0.006 | AgentAccount (378B) + Core Asset (~250B) |
-| Initialize ATOM Stats (optional) | ~0.005 | AtomStats (561B) - enables Sybil resistance |
-| Give Feedback (with ATOM) | ~0.000005 | Event-only + ATOM CPI, tx fee only |
-| Give Feedback (without ATOM) | ~0.000005 | Event-only, tx fee only (basic ERC-8004 compliant) |
-| Request Validation | ~0.002 | ValidationRequest (109B) + event data |
-| Respond to Validation | ~0.000005 | Updates existing account + event, tx fee only |
-| Close Validation | 0 (refund) | Returns rent to closer |
+| Operation | Rent (SOL) |
+|-----------|------------|
+| Register Agent | ~0.006 |
+| Initialize ATOM Stats | ~0.005 |
+| Give Feedback | ~0.000005 |
+| Request Validation | ~0.002 |
+| Respond to Validation | ~0.000005 |
 
 ## Quick Start
+
+Clone, build, test—you're up in minutes:
 
 ```bash
 git clone https://github.com/QuantuLabs/8004-solana.git
@@ -158,18 +146,16 @@ anchor test
 
 ## Documentation
 
-- [ATOM Engine](programs/atom-engine/README.md) - Reputation model details
-- [CHANGELOG](CHANGELOG.md) - Version history
-- [Technical Docs](docs/index.html) - Full API reference
-- [TypeScript SDK](https://github.com/QuantuLabs/8004-solana-ts) - Official SDK with client-side read functions
-- [Indexer](https://github.com/QuantuLabs/8004-solana-indexer) - Off-chain indexer for aggregation queries
+- [ATOM Engine](programs/atom-engine/README.md)
+- [CHANGELOG](CHANGELOG.md)
+- [TypeScript SDK](https://github.com/QuantuLabs/8004-solana-ts)
+- [Indexer](https://github.com/QuantuLabs/8004-solana-indexer)
 
 ## Roadmap
 
 - [x] v0.4.0 - ATOM Engine + Multi-collection
-- [x] v0.5.0 - ATOM v0.2.0 "Fortress" (production-ready)
-- [x] Off-chain indexer (Substreams-based)
-- [ ] Production indexer deployment
+- [x] v0.5.0 - ATOM v0.2.0 + Canonical dedup
+- [x] Substreams indexer
 - [ ] Mainnet deployment
 
 ## References
@@ -177,11 +163,11 @@ anchor test
 - [8004 Spec](https://eips.ethereum.org/EIPS/eip-8004)
 - [Forum Discussion](https://ethereum-magicians.org/t/erc-8004-trustless-agents/25098)
 
-## Community
+## Join Us
 
-- **Website**: [qnt.sh](https://qnt.sh)
-- **Telegram**: [t.me/sol8004](https://t.me/sol8004)
-- **X**: [@Quantu_AI](https://x.com/Quantu_AI)
+- [qnt.sh](https://qnt.sh)
+- [Telegram](https://t.me/sol8004)
+- [X @Quantu_AI](https://x.com/Quantu_AI)
 
 ## Acknowledgments
 
@@ -189,4 +175,4 @@ Special thanks to [PayAI](https://payai.network) for supporting the mainnet depl
 
 ---
 
-MIT License | v0.5.0 | Last Updated: 2026-01-15
+MIT License | v0.5.0 | 2026-01
