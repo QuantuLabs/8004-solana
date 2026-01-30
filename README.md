@@ -13,9 +13,9 @@
 | agent-registry-8004 | `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N` |
 | atom-engine | `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8` |
 
-## v0.5.0
+## v0.5.1
 
-- **[ATOM v0.2.0](programs/atom-engine/README.md)**: Tier vesting (8 epochs), platinum loyalty gate (500+)
+- **[ATOM v0.2.2](programs/atom-engine/README.md)**: Hardened EMA arithmetic, tier vesting (8 epochs), platinum loyalty gate (500+)
 - **Canonical feedback_index**: On-chain deduplication
 - **Hash-chain integrity**: `feedback_hash` in revoke/response leaves
 
@@ -155,6 +155,7 @@ anchor test
 
 - [x] v0.4.0 - ATOM Engine + Multi-collection
 - [x] v0.5.0 - ATOM v0.2.0 + Canonical dedup
+- [x] v0.5.1 - Security hardening
 - [x] Substreams indexer
 - [ ] Mainnet deployment
 
@@ -175,4 +176,4 @@ Special thanks to [PayAI](https://payai.network) for supporting the mainnet depl
 
 ---
 
-MIT License | v0.5.0 | 2026-01
+MIT License | v0.5.1 | 2026-01

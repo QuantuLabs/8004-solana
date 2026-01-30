@@ -59,9 +59,9 @@ const INDEXER_API_URL = process.env.INDEXER_API_URL || "http://localhost:3030";
 const RETURN_FUNDS = process.env.STRESS_RETURN_FUNDS !== "false";
 
 // Funding amounts
-const OWNER_SOL = 0.1;
-const CLIENT_SOL = 0.02;
-const VALIDATOR_SOL = 0.05;
+const OWNER_SOL = 0.3;
+const CLIENT_SOL = 0.05;
+const VALIDATOR_SOL = 0.1;
 
 // Pinata API
 async function uploadToPinata(data: object, name: string): Promise<string | null> {
@@ -164,6 +164,7 @@ describe("Indexer Stress Tests", function () {
     owner: Keypair;
     client: Keypair;
     index: anchor.BN;
+    feedbackHash: Uint8Array;
   };
   const feedbackRecords: FeedbackRecord[] = [];
 
@@ -333,6 +334,7 @@ describe("Indexer Stress Tests", function () {
             agentAccount: agentPda,
             asset: asset.publicKey,
             collection: collectionPubkey,
+            rootConfig: rootConfigPda,
             owner: owner.publicKey,
             systemProgram: SystemProgram.programId,
             mplCoreProgram: MPL_CORE_PROGRAM_ID,
@@ -401,22 +403,18 @@ describe("Indexer Stress Tests", function () {
 
   describe("Phase 3: High-Volume Feedback Generation", () => {
     it("generates feedbacks from multiple clients", async () => {
-      const feedbackIndexMap = new Map<string, number>();
-
-      const nextIndex = (asset: PublicKey, client: PublicKey): anchor.BN => {
-        const key = `${asset.toBase58()}:${client.toBase58()}`;
-        const next = feedbackIndexMap.get(key) ?? 0;
-        feedbackIndexMap.set(key, next + 1);
-        return new anchor.BN(next);
-      };
+      // Track global feedback index per agent (matches on-chain agent.feedback_count)
+      const agentFeedbackIndex = new Map<string, number>();
 
       for (const agent of agents) {
         for (let i = 0; i < STRESS_FEEDBACKS_PER_AGENT; i++) {
           const client = clients[i % clients.length];
-          const feedbackIndex = nextIndex(agent.asset.publicKey, client.publicKey);
+          const assetKey = agent.asset.publicKey.toBase58();
+          const currentIndex = agentFeedbackIndex.get(assetKey) ?? 0;
           const value = new anchor.BN(1000 + i * 10); // Raw metric
           const valueDecimals = 2;
           const score = 50 + (i % 50); // 50-99
+          const feedbackHash = randomHash();
 
           // Feedback metadata (could be IPFS)
           let feedbackUri = `https://stress.test/feedback/${agent.asset.publicKey.toBase58()}/${i}`;
@@ -443,8 +441,7 @@ describe("Indexer Stress Tests", function () {
               value,
               valueDecimals,
               score,
-              Array.from(randomHash()),
-              feedbackIndex,
+              Array.from(feedbackHash),
               "stress",
               "test",
               "https://stress.test/api",
@@ -469,8 +466,10 @@ describe("Indexer Stress Tests", function () {
             agentPda: agent.agentPda,
             owner: agent.owner,
             client,
-            index: feedbackIndex,
+            index: new anchor.BN(currentIndex),
+            feedbackHash,
           });
+          agentFeedbackIndex.set(assetKey, currentIndex + 1);
           totalFeedbacks++;
         }
         console.log(`  Agent ${agent.asset.publicKey.toBase58().slice(0, 8)}...: ${STRESS_FEEDBACKS_PER_AGENT} feedbacks`);
@@ -493,7 +492,8 @@ describe("Indexer Stress Tests", function () {
             rec.client.publicKey,
             rec.index,
             responseUri,
-            Array.from(randomHash())
+            Array.from(randomHash()),
+            Array.from(rec.feedbackHash)
           )
           .accounts({
             responder: rec.owner.publicKey,

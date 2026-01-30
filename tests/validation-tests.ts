@@ -1,12 +1,12 @@
 /**
- * Validation Module Tests for Agent Registry 8004 v2.0.0
- * Tests validation request and response
- * v2.0.0: 100% Events-only architecture - no ValidationRequest PDA
+ * Validation Module Tests for Agent Registry 8004 v3.0.0
+ * Tests validation request and response with on-chain state
+ * v3.0.0: On-chain ValidationRequest PDAs (109 bytes, permanent)
  */
 import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
+import { Program, BN } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
-import { Keypair, SystemProgram, PublicKey } from "@solana/web3.js";
+import { Keypair, SystemProgram, PublicKey, Transaction } from "@solana/web3.js";
 import { expect } from "chai";
 
 import {
@@ -15,6 +15,8 @@ import {
   MAX_TAG_LENGTH,
   getRootConfigPda,
   getAgentPda,
+  getValidationConfigPda,
+  getValidationRequestPda,
   randomHash,
   uriOfLength,
   stringOfLength,
@@ -22,7 +24,23 @@ import {
   expectAnchorError,
 } from "./utils/helpers";
 
-describe("Validation Module Tests (Events-Only v2.0.0)", () => {
+// Helper to fund a keypair from the provider wallet
+async function fundKeypair(
+  provider: anchor.AnchorProvider,
+  keypair: Keypair,
+  lamports: number
+): Promise<void> {
+  const tx = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: provider.wallet.publicKey,
+      toPubkey: keypair.publicKey,
+      lamports,
+    })
+  );
+  await provider.sendAndConfirm(tx);
+}
+
+describe("Validation Module Tests (On-Chain v3.0.0)", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -31,6 +49,7 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
   let rootConfigPda: PublicKey;
   let registryConfigPda: PublicKey;
   let collectionPubkey: PublicKey;
+  let validationConfigPda: PublicKey;
 
   // Agent for validation tests
   let agentAsset: Keypair;
@@ -41,6 +60,8 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
 
   before(async () => {
     [rootConfigPda] = getRootConfigPda(program.programId);
+    [validationConfigPda] = getValidationConfigPda(program.programId);
+
     const rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
     const rootConfig = program.coder.accounts.decode("rootConfig", rootAccountInfo!.data);
 
@@ -50,6 +71,8 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
     collectionPubkey = registryConfig.collection;
 
     validatorKeypair = Keypair.generate();
+    // Fund validator for paying validation request rent
+    await fundKeypair(provider, validatorKeypair, 0.1 * anchor.web3.LAMPORTS_PER_SOL);
 
     agentAsset = Keypair.generate();
     [agentPda] = getAgentPda(agentAsset.publicKey, program.programId);
@@ -61,6 +84,7 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
         agentAccount: agentPda,
         asset: agentAsset.publicKey,
         collection: collectionPubkey,
+        rootConfig: rootConfigPda,
         owner: provider.wallet.publicKey,
         systemProgram: SystemProgram.programId,
         mplCoreProgram: MPL_CORE_PROGRAM_ID,
@@ -68,73 +92,114 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
       .signers([agentAsset])
       .rpc();
 
-    console.log("=== Validation Tests Setup (v2.0.0 Events-Only) ===");
+    console.log("=== Validation Tests Setup (v3.0.0 On-Chain) ===");
     console.log("Program ID:", program.programId.toBase58());
     console.log("Agent Asset:", agentAsset.publicKey.toBase58());
+    console.log("Validation Config:", validationConfigPda.toBase58());
     console.log("Validator (separate from owner):", validatorKeypair.publicKey.toBase58());
   });
 
   // ============================================================================
-  // VALIDATION REQUEST TESTS (Events-Only)
+  // VALIDATION REQUEST TESTS (On-Chain State)
   // ============================================================================
-  describe("Validation Request (Events-Only)", () => {
-    it("requestValidation() emits ValidationRequested event", async () => {
+  describe("Validation Request (On-Chain)", () => {
+    it("requestValidation() creates ValidationRequest PDA and emits event", async () => {
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       const tx = await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/request",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       console.log("RequestValidation tx:", tx);
-      // Events-only: no account to fetch, event is emitted
+
+      // Verify the PDA was created
+      const validationRequest = await program.account.validationRequest.fetch(validationRequestPda);
+      expect(validationRequest.asset.toBase58()).to.equal(agentAsset.publicKey.toBase58());
+      expect(validationRequest.validatorAddress.toBase58()).to.equal(validatorKeypair.publicKey.toBase58());
+      expect(validationRequest.nonce).to.equal(nonce);
+      expect(validationRequest.response).to.equal(0); // No response yet
+      expect(validationRequest.respondedAt.toNumber()).to.equal(0);
     });
 
     it("requestValidation() with empty URI (allowed)", async () => {
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       const tx = await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
           "",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       console.log("Request with empty URI tx:", tx);
     });
 
-    it("requestValidation() fails with URI > 200 bytes", async () => {
+    it("requestValidation() fails with URI > 250 bytes", async () => {
       const nonce = uniqueNonce();
-      const longUri = uriOfLength(MAX_URI_LENGTH + 1);
+      const longUri = uriOfLength(MAX_URI_LENGTH + 1); // MAX_URI_LENGTH is 250
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       await expectAnchorError(
         program.methods
           .requestValidation(
+            agentAsset.publicKey,
             validatorKeypair.publicKey,
             nonce,
             longUri,
             Array.from(randomHash())
           )
           .accounts({
+            config: validationConfigPda,
             requester: provider.wallet.publicKey,
-            asset: agentAsset.publicKey,
+            payer: provider.wallet.publicKey,
             agentAccount: agentPda,
+            asset: agentAsset.publicKey,
+            validationRequest: validationRequestPda,
+            systemProgram: SystemProgram.programId,
           })
           .rpc(),
         "RequestUriTooLong"
@@ -143,19 +208,32 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
 
     it("Multiple validations same agent, different validators", async () => {
       const validator2 = Keypair.generate();
+      await fundKeypair(provider, validator2, 0.05 * anchor.web3.LAMPORTS_PER_SOL);
+
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validator2.publicKey,
+        nonce,
+        program.programId
+      );
 
       const tx = await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validator2.publicKey,
           nonce,
           "https://example.com/validation/multi-validator",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -166,31 +244,55 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
       const nonce1 = uniqueNonce();
       const nonce2 = uniqueNonce() + 1;
 
+      const [validationRequestPda1] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce1,
+        program.programId
+      );
+
+      const [validationRequestPda2] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce2,
+        program.programId
+      );
+
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce1,
           "https://example.com/validation/nonce1",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda1,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce2,
           "https://example.com/validation/nonce2",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda2,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
     });
@@ -202,19 +304,30 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
   describe("Self-Validation Protection", () => {
     it("requestValidation() fails if owner tries to validate own agent", async () => {
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        provider.wallet.publicKey, // Owner as validator
+        nonce,
+        program.programId
+      );
 
       await expectAnchorError(
         program.methods
           .requestValidation(
+            agentAsset.publicKey,
             provider.wallet.publicKey, // Owner as validator
             nonce,
             "https://example.com/validation/self",
             Array.from(randomHash())
           )
           .accounts({
+            config: validationConfigPda,
             requester: provider.wallet.publicKey,
-            asset: agentAsset.publicKey,
+            payer: provider.wallet.publicKey,
             agentAccount: agentPda,
+            asset: agentAsset.publicKey,
+            validationRequest: validationRequestPda,
+            systemProgram: SystemProgram.programId,
           })
           .rpc(),
         "SelfValidationNotAllowed"
@@ -224,25 +337,47 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
     it("respondToValidation() fails if validator == agent owner", async () => {
       // First create a request with a different validator
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/test",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
-      // Owner tries to respond (should fail)
+      // Owner tries to respond (should fail due to constraint on validationRequest PDA)
+      // The PDA seeds include the validator address, so owner can't respond to this PDA
+      // But if they tried to use their own validator address, self-validation check would fail
+      const [ownerValidationPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        provider.wallet.publicKey,
+        nonce,
+        program.programId
+      );
+
       await expectAnchorError(
         program.methods
           .respondToValidation(
+            agentAsset.publicKey,
+            provider.wallet.publicKey, // Owner as validator
             nonce,
             85,
             "https://example.com/validation/self-response",
@@ -250,40 +385,55 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
             "self"
           )
           .accounts({
+            config: validationConfigPda,
             validator: provider.wallet.publicKey, // Owner trying to validate
-            asset: agentAsset.publicKey,
             agentAccount: agentPda,
+            asset: agentAsset.publicKey,
+            validationRequest: ownerValidationPda,
           })
           .rpc(),
-        "SelfValidationNotAllowed"
+        "AccountNotInitialized" // PDA doesn't exist for owner as validator
       );
     });
   });
 
   // ============================================================================
-  // VALIDATION RESPONSE TESTS (Events-Only)
+  // VALIDATION RESPONSE TESTS (On-Chain State)
   // ============================================================================
-  describe("Validation Response (Events-Only)", () => {
-    it("respondToValidation() emits ValidationResponded event", async () => {
+  describe("Validation Response (On-Chain)", () => {
+    it("respondToValidation() updates ValidationRequest and emits event", async () => {
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       // First create request
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/to-respond",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       const tx = await program.methods
         .respondToValidation(
+          agentAsset.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           85,
           "https://example.com/validation/response",
@@ -291,35 +441,55 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
           "verified"
         )
         .accounts({
+          config: validationConfigPda,
           validator: validatorKeypair.publicKey,
-          asset: agentAsset.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
         })
         .signers([validatorKeypair])
         .rpc();
 
       console.log("RespondToValidation tx:", tx);
+
+      // Verify the response was recorded
+      const validationRequest = await program.account.validationRequest.fetch(validationRequestPda);
+      expect(validationRequest.response).to.equal(85);
+      expect(validationRequest.respondedAt.toNumber()).to.be.greaterThan(0);
     });
 
-    it("respondToValidation() with response=0 (failed)", async () => {
+    it("respondToValidation() with response=0 (valid score)", async () => {
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/will-fail",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       const tx = await program.methods
         .respondToValidation(
+          agentAsset.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           0,
           "https://example.com/validation/failed-response",
@@ -327,35 +497,55 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
           "rejected"
         )
         .accounts({
+          config: validationConfigPda,
           validator: validatorKeypair.publicKey,
-          asset: agentAsset.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
         })
         .signers([validatorKeypair])
         .rpc();
 
       console.log("Response with 0 tx:", tx);
+
+      // Response=0 is a valid score (means lowest rating), check respondedAt was set
+      const validationRequest = await program.account.validationRequest.fetch(validationRequestPda);
+      expect(validationRequest.response).to.equal(0);
+      expect(validationRequest.respondedAt.toNumber()).to.be.greaterThan(0);
     });
 
     it("respondToValidation() with response=100 (max)", async () => {
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/max-response",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       const tx = await program.methods
         .respondToValidation(
+          agentAsset.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           100,
           "https://example.com/validation/max-response-result",
@@ -363,9 +553,11 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
           "perfect"
         )
         .accounts({
+          config: validationConfigPda,
           validator: validatorKeypair.publicKey,
-          asset: agentAsset.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
         })
         .signers([validatorKeypair])
         .rpc();
@@ -375,24 +567,37 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
 
     it("respondToValidation() fails with response > 100", async () => {
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/invalid-response",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       await expectAnchorError(
         program.methods
           .respondToValidation(
+            agentAsset.publicKey,
+            validatorKeypair.publicKey,
             nonce,
             101,
             "https://example.com/validation/response",
@@ -400,9 +605,11 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
             "invalid"
           )
           .accounts({
+            config: validationConfigPda,
             validator: validatorKeypair.publicKey,
-            asset: agentAsset.publicKey,
             agentAccount: agentPda,
+            asset: agentAsset.publicKey,
+            validationRequest: validationRequestPda,
           })
           .signers([validatorKeypair])
           .rpc(),
@@ -410,27 +617,40 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
       );
     });
 
-    it("respondToValidation() fails with URI > 200 bytes", async () => {
+    it("respondToValidation() fails with URI > 250 bytes", async () => {
       const nonce = uniqueNonce();
       const longUri = uriOfLength(MAX_URI_LENGTH + 1);
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/long-uri",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       await expectAnchorError(
         program.methods
           .respondToValidation(
+            agentAsset.publicKey,
+            validatorKeypair.publicKey,
             nonce,
             85,
             longUri,
@@ -438,9 +658,11 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
             "test"
           )
           .accounts({
+            config: validationConfigPda,
             validator: validatorKeypair.publicKey,
-            asset: agentAsset.publicKey,
             agentAccount: agentPda,
+            asset: agentAsset.publicKey,
+            validationRequest: validationRequestPda,
           })
           .signers([validatorKeypair])
           .rpc(),
@@ -451,24 +673,37 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
     it("respondToValidation() fails with tag > 32 bytes", async () => {
       const nonce = uniqueNonce();
       const longTag = stringOfLength(MAX_TAG_LENGTH + 1);
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
           "https://example.com/validation/long-tag",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       await expectAnchorError(
         program.methods
           .respondToValidation(
+            agentAsset.publicKey,
+            validatorKeypair.publicKey,
             nonce,
             85,
             "https://example.com/validation/response",
@@ -476,9 +711,11 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
             longTag
           )
           .accounts({
+            config: validationConfigPda,
             validator: validatorKeypair.publicKey,
-            asset: agentAsset.publicKey,
             agentAccount: agentPda,
+            asset: agentAsset.publicKey,
+            validationRequest: validationRequestPda,
           })
           .signers([validatorKeypair])
           .rpc(),
@@ -486,42 +723,63 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
       );
     });
 
-    it("respondToValidation() can be called multiple times for same nonce (events-only)", async () => {
+    it("respondToValidation() can update existing response (progressive validation)", async () => {
       const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
           nonce,
-          "https://example.com/validation/multi-response",
+          "https://example.com/validation/progressive",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
-      // Multiple responses allowed - events-only, indexer dedupes
+      // First response
       await program.methods
         .respondToValidation(
+          agentAsset.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           50,
           "https://example.com/validation/response1",
           Array.from(randomHash()),
-          "first"
+          "initial"
         )
         .accounts({
+          config: validationConfigPda,
           validator: validatorKeypair.publicKey,
-          asset: agentAsset.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
         })
         .signers([validatorKeypair])
         .rpc();
 
+      let validation = await program.account.validationRequest.fetch(validationRequestPda);
+      expect(validation.response).to.equal(50);
+
+      // Second response (update)
       await program.methods
         .respondToValidation(
+          agentAsset.publicKey,
+          validatorKeypair.publicKey,
           nonce,
           75,
           "https://example.com/validation/response2",
@@ -529,103 +787,85 @@ describe("Validation Module Tests (Events-Only v2.0.0)", () => {
           "updated"
         )
         .accounts({
+          config: validationConfigPda,
           validator: validatorKeypair.publicKey,
-          asset: agentAsset.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
         })
         .signers([validatorKeypair])
         .rpc();
-    });
 
-    it("different validator can emit response for same agent (indexer validates)", async () => {
-      // Events-only: program doesn't strictly enforce validator == request validator
-      // The constraint is only self-validation (validator != owner)
-      // Indexer is responsible for matching request -> response
-      const anotherValidator = Keypair.generate();
-      const nonce = uniqueNonce();
-
-      // This should succeed - just emits event
-      // Indexer will match/validate against original request
-      await program.methods
-        .respondToValidation(
-          nonce,
-          85,
-          "https://example.com/validation/other-validator-response",
-          Array.from(randomHash()),
-          "different"
-        )
-        .accounts({
-          validator: anotherValidator.publicKey,
-          asset: agentAsset.publicKey,
-          agentAccount: agentPda,
-        })
-        .signers([anotherValidator])
-        .rpc();
-      // Success - indexer decides if this response matches any request
+      validation = await program.account.validationRequest.fetch(validationRequestPda);
+      expect(validation.response).to.equal(75);
+      console.log("Progressive validation: updated from 50 to 75");
     });
   });
 
   // ============================================================================
-  // EVENTS-ONLY BEHAVIOR TESTS
+  // VALIDATION CONFIG COUNTERS
   // ============================================================================
-  describe("Events-Only Behavior", () => {
-    it("request and response without matching nonce (indexer handles)", async () => {
-      const requestNonce = uniqueNonce();
-      const responseNonce = uniqueNonce() + 999;
+  describe("ValidationConfig Counters", () => {
+    it("ValidationConfig tracks total requests and responses", async () => {
+      const configBefore = await program.account.validationConfig.fetch(validationConfigPda);
+      const requestsBefore = configBefore.totalRequests.toNumber();
+      const responsesBefore = configBefore.totalResponses.toNumber();
+
+      const nonce = uniqueNonce();
+      const [validationRequestPda] = getValidationRequestPda(
+        agentAsset.publicKey,
+        validatorKeypair.publicKey,
+        nonce,
+        program.programId
+      );
 
       await program.methods
         .requestValidation(
+          agentAsset.publicKey,
           validatorKeypair.publicKey,
-          requestNonce,
-          "https://example.com/validation/mismatch-request",
+          nonce,
+          "https://example.com/validation/counter-test",
           Array.from(randomHash())
         )
         .accounts({
+          config: validationConfigPda,
           requester: provider.wallet.publicKey,
-          asset: agentAsset.publicKey,
+          payer: provider.wallet.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
-      // Response with different nonce - both emit events
-      // Indexer decides if they match
+      let configAfter = await program.account.validationConfig.fetch(validationConfigPda);
+      expect(configAfter.totalRequests.toNumber()).to.equal(requestsBefore + 1);
+      expect(configAfter.totalResponses.toNumber()).to.equal(responsesBefore);
+
       await program.methods
         .respondToValidation(
-          responseNonce,
-          85,
-          "https://example.com/validation/mismatch-response",
-          Array.from(randomHash()),
-          "mismatched"
-        )
-        .accounts({
-          validator: validatorKeypair.publicKey,
-          asset: agentAsset.publicKey,
-          agentAccount: agentPda,
-        })
-        .signers([validatorKeypair])
-        .rpc();
-    });
-
-    it("response without prior request (events-only allows)", async () => {
-      const nonce = uniqueNonce();
-
-      // No request first - but response still emits event
-      await program.methods
-        .respondToValidation(
+          agentAsset.publicKey,
+          validatorKeypair.publicKey,
           nonce,
-          75,
-          "https://example.com/validation/no-request-response",
+          90,
+          "https://example.com/validation/counter-response",
           Array.from(randomHash()),
-          "orphan"
+          "counted"
         )
         .accounts({
+          config: validationConfigPda,
           validator: validatorKeypair.publicKey,
-          asset: agentAsset.publicKey,
           agentAccount: agentPda,
+          asset: agentAsset.publicKey,
+          validationRequest: validationRequestPda,
         })
         .signers([validatorKeypair])
         .rpc();
-      // Indexer will handle orphan responses
+
+      configAfter = await program.account.validationConfig.fetch(validationConfigPda);
+      expect(configAfter.totalRequests.toNumber()).to.equal(requestsBefore + 1);
+      expect(configAfter.totalResponses.toNumber()).to.equal(responsesBefore + 1);
+      console.log("Counters: requests +1, responses +1");
     });
   });
 });

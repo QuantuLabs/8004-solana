@@ -27,7 +27,10 @@ fn update_ema(stats: &mut AtomStats, score: u8, slot_delta: u64, config: &AtomCo
         } else {
             config.inactive_decay_per_epoch
         };
-        stats.confidence = stats.confidence.saturating_sub(epochs_inactive * decay_per_epoch);
+        let decay_total = (epochs_inactive as u32)
+            .saturating_mul(decay_per_epoch as u32)
+            .min(u16::MAX as u32) as u16;
+        stats.confidence = stats.confidence.saturating_sub(decay_total);
     }
 
     let alpha_fast = config.alpha_fast as u32;

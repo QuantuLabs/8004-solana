@@ -1,5 +1,5 @@
 {
-  "address": "8BmzNSQ7G5y6C6W8tkqsb4TtqkkiircfcXviAsxnhhST",
+  "address": "AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8",
   "metadata": {
     "name": "atom_engine",
     "version": "0.2.1",
@@ -117,38 +117,38 @@
               {
                 "kind": "const",
                 "value": [
-                  79,
-                  164,
-                  251,
-                  18,
-                  72,
-                  147,
-                  131,
-                  166,
-                  82,
-                  254,
-                  206,
-                  184,
-                  117,
-                  255,
-                  240,
-                  102,
-                  59,
-                  34,
-                  148,
-                  58,
-                  64,
-                  197,
-                  185,
-                  24,
-                  192,
-                  38,
-                  122,
-                  153,
-                  131,
-                  219,
+                  140,
+                  150,
+                  177,
+                  101,
+                  134,
+                  30,
+                  94,
+                  175,
+                  237,
+                  65,
+                  167,
+                  16,
+                  7,
+                  57,
+                  194,
+                  175,
+                  136,
+                  253,
+                  66,
+                  76,
                   73,
-                  98
+                  118,
+                  28,
+                  98,
+                  43,
+                  225,
+                  136,
+                  144,
+                  174,
+                  180,
+                  99,
+                  169
                 ]
               }
             ],
@@ -206,10 +206,7 @@
     {
       "name": "initialize_stats",
       "docs": [
-        "Initialize stats for a new agent (only asset holder can initialize)",
-        "This ensures the agent owner pays for their own reputation account, not the first reviewer",
-        "Verifies ownership by reading Metaplex Core asset data (owner at offset 1)",
-        "SECURITY: Also verifies the asset and collection are owned by Metaplex Core program"
+        "Initialize stats for a new agent (only asset holder can initialize)"
       ],
       "discriminator": [
         144,
@@ -802,16 +799,31 @@
     },
     {
       "code": 6009,
+      "name": "AssetNotInCollection",
+      "msg": "Asset not in a collection: UpdateAuthority must be Collection type"
+    },
+    {
+      "code": 6010,
+      "name": "CollectionMismatch",
+      "msg": "Collection mismatch: asset belongs to a different collection"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidAssetType",
+      "msg": "Invalid asset type: expected Metaplex Core AssetV1"
+    },
+    {
+      "code": 6012,
       "name": "InvalidConfigParameter",
       "msg": "Invalid config parameter: value out of allowed bounds"
     },
     {
-      "code": 6010,
+      "code": 6013,
       "name": "FeedbackNotFound",
       "msg": "Feedback not found in ring buffer (may be too old)"
     },
     {
-      "code": 6011,
+      "code": 6014,
       "name": "AlreadyRevoked",
       "msg": "Feedback already revoked"
     }

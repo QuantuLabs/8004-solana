@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-01-30
+
+### Security
+
+- **Integer overflow fix** - EMA decay calculation in `compute.rs` now uses u32 widening with `saturating_mul` to prevent potential overflow when `epochs_inactive * decay_per_epoch` exceeds u16::MAX
+
+### Changed
+
+- ATOM Engine v0.2.2 with hardened arithmetic
+- Removed deprecated `sdk/metadata-helpers.ts` (use official SDK instead)
+
+---
+
 ## [0.5.0] - 2026-01-26
 
 ### Feedback System - Rich Metrics Support
@@ -28,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### State Changes
 - +4 bytes per agent (tier_candidate, tier_candidate_epoch, tier_confirmed)
+
+### Removed
+- **Base Registry Rotation** - Removed `rotate_base_registry` instruction (simplified architecture)
 
 ---
 
@@ -105,14 +121,12 @@ This version replaces `agent_id` (u64) with `asset` (Pubkey) as the unique ident
 | Instruction | Access | Description |
 |-------------|--------|-------------|
 | `initialize` | Authority | Initialize root config + first base registry |
-| `create_base_registry` | Authority | Create additional base registries |
-| `rotate_base_registry` | Authority | Switch active base registry |
 | `create_user_registry` | Anyone | Create custom user shard |
 | `update_user_registry_metadata` | Owner | Update user collection name/URI |
 | `register` | Anyone | Register agent in specific registry |
 
 #### Registry Types
-- **Base Registry**: Protocol-managed, indexed (0, 1, 2...), rotatable
+- **Base Registry**: Protocol-managed base registry (single canonical base)
 - **User Registry**: Custom shards, owned by creator, independent
 
 ### Changed

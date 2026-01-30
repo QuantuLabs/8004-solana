@@ -190,7 +190,7 @@ dependencies = [
 
 [[package]]
 name = "agent-registry-8004"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "atom-engine"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anchor-lang",
  "litesvm",
