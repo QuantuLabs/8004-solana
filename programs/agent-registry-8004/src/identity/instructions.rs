@@ -192,23 +192,40 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
 }
 
 /// Sync agent owner from Core asset
-/// NOTE: Does NOT reset wallet - stale wallet protection is in append_response
-/// (wallet only valid when cached_owner == core_owner)
+/// Automatically resets agent_wallet when ownership changes (security feature)
+/// Use case: After marketplace transfer, new owner calls this to sync + reset wallet
 pub fn sync_owner(ctx: Context<SyncOwner>) -> Result<()> {
     let agent = &mut ctx.accounts.agent_account;
     let new_owner = get_core_owner(&ctx.accounts.asset)?;
     let old_owner = agent.owner;
     let asset = agent.asset;
 
-    agent.owner = new_owner;
+    // Only update if owner changed
+    if old_owner != new_owner {
+        agent.owner = new_owner;
 
-    emit!(AgentOwnerSynced {
-        asset,
-        old_owner,
-        new_owner,
-    });
+        // Reset wallet on ownership change (security: prevents old owner's wallet from being used)
+        let old_wallet = agent.agent_wallet;
+        if old_wallet.is_some() {
+            agent.agent_wallet = None;
+            emit!(WalletUpdated {
+                asset,
+                old_wallet,
+                new_wallet: Pubkey::default(),
+                updated_by: new_owner,
+            });
+        }
 
-    msg!("Agent owner synced for asset {}: {} -> {}", asset, old_owner, new_owner);
+        emit!(AgentOwnerSynced {
+            asset,
+            old_owner,
+            new_owner,
+        });
+
+        msg!("Agent owner synced for asset {}: {} -> {} (wallet reset)", asset, old_owner, new_owner);
+    } else {
+        msg!("Agent owner unchanged for asset {}", asset);
+    }
 
     Ok(())
 }
