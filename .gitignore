@@ -74,3 +74,6 @@ scripts/measure-costs*.ts
 scripts/start-localnet.sh
 tests/test-atom-optional.ts
 keys/
+
+# Claude Code instructions
+CLAUDE.md
