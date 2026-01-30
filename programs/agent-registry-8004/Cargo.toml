@@ -1,6 +1,6 @@
 [package]
 name = "agent-registry-8004"
-version = "0.5.1"
+version = "0.5.2"
 description = "8004 AI Agent Identity & Reputation Registry (Consolidated)"
 edition = "2021"
 
