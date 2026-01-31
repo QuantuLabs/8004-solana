@@ -67,11 +67,15 @@ See **[SEAL v1 specification](docs/SEAL.md)** for hash computation and verificat
 
 ### SEAL v1 - Trustless Integrity
 
-On-chain `seal_hash` computation—clients can't lie about submitted data. See **[docs/SEAL.md](docs/SEAL.md)** for full specification.
+The program is the **sole source of truth**. On-chain `seal_hash` computation ensures both client-submitted data and indexer-stored data can be verified at any time against the blockchain.
 
 ```
-Client → Program (seal_hash on-chain) → Hash-Chain → Indexer → Verification
+Client ─┐
+        ├──► Program (seal_hash on-chain) ──► Hash-Chain ──► Verifiable
+Indexer ┘         ▲ source of truth
 ```
+
+See **[docs/SEAL.md](docs/SEAL.md)** for full specification.
 
 ## Features
 
