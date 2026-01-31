@@ -63,8 +63,6 @@ See [CHANGELOG.md](CHANGELOG.md).
 +-----------------------------------------------------------------+
 ```
 
-See **[SEAL v1 specification](docs/SEAL.md)** for hash computation and verification details.
-
 ### SEAL v1 - Trustless Integrity
 
 The program is the **sole source of truth**. On-chain `seal_hash` computation ensures both client-submitted data and indexer-stored data can be verified at any time against the blockchain.
