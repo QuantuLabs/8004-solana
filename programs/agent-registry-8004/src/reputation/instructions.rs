@@ -3,9 +3,10 @@ use anchor_lang::solana_program::keccak;
 use mpl_core::accounts::BaseAssetV1;
 
 use super::chain::{
-    chain_hash, compute_feedback_leaf, compute_response_leaf, compute_revoke_leaf,
+    chain_hash, compute_response_leaf, compute_revoke_leaf,
     DOMAIN_FEEDBACK, DOMAIN_RESPONSE, DOMAIN_REVOKE,
 };
+use super::seal::{compute_feedback_leaf_v1, compute_seal_hash};
 use super::contexts::{*, ATOM_CPI_AUTHORITY_SEED};
 use super::events::*;
 use super::state::*;
@@ -28,7 +29,7 @@ pub fn give_feedback(
     value: i64,
     value_decimals: u8,
     score: Option<u8>,
-    feedback_hash: [u8; 32],
+    feedback_file_hash: Option<[u8; 32]>,
     tag1: String,
     tag2: String,
     endpoint: String,
@@ -153,7 +154,29 @@ pub fn give_feedback(
     let agent = &mut ctx.accounts.agent_account;
     let feedback_index = agent.feedback_count;
 
-    let leaf = compute_feedback_leaf(&asset, &client, feedback_index, &feedback_hash, slot);
+    // SEAL v1: Compute content hash on-chain (trustless)
+    let seal_hash = compute_seal_hash(
+        value,
+        value_decimals,
+        score,
+        &tag1,
+        &tag2,
+        &endpoint,
+        &feedback_uri,
+        feedback_file_hash,
+    );
+
+    // SEAL v1: Compute leaf with domain separator
+    let asset_bytes = asset.to_bytes();
+    let client_bytes = client.to_bytes();
+    let leaf = compute_feedback_leaf_v1(
+        &asset_bytes,
+        &client_bytes,
+        feedback_index as u32,
+        &seal_hash,
+        slot,
+    );
+
     agent.feedback_digest = chain_hash(&agent.feedback_digest, DOMAIN_FEEDBACK, &leaf);
     agent.feedback_count += 1;
 
@@ -165,7 +188,8 @@ pub fn give_feedback(
         value,
         value_decimals,
         score,
-        feedback_hash,
+        feedback_file_hash,
+        seal_hash,
         atom_enabled: is_atom_initialized && score.is_some(),
         new_trust_tier: update_result.trust_tier,
         new_quality_score: update_result.quality_score,
@@ -195,10 +219,11 @@ pub fn give_feedback(
 }
 
 /// Revoke feedback calls CPI to atom-engine to update stats (optional)
+/// SEAL v1: Client must provide the seal_hash (can be recomputed using the same algorithm)
 pub fn revoke_feedback(
     ctx: Context<RevokeFeedback>,
     feedback_index: u64,
-    feedback_hash: [u8; 32],
+    seal_hash: [u8; 32],
 ) -> Result<()> {
     let asset = ctx.accounts.asset.key();
     let client = ctx.accounts.client.key();
@@ -297,7 +322,7 @@ pub fn revoke_feedback(
     };
 
     let slot = Clock::get()?.slot;
-    let leaf = compute_revoke_leaf(&asset, &client, feedback_index, &feedback_hash, slot);
+    let leaf = compute_revoke_leaf(&asset, &client, feedback_index, &seal_hash, slot);
     let agent = &mut ctx.accounts.agent_account;
     agent.revoke_digest = chain_hash(&agent.revoke_digest, DOMAIN_REVOKE, &leaf);
     agent.revoke_count += 1;
@@ -305,7 +330,7 @@ pub fn revoke_feedback(
         asset,
         client_address: client,
         feedback_index,
-        feedback_hash,
+        seal_hash,
         slot,
         original_score: revoke_result.original_score,
         atom_enabled: is_atom_initialized,
@@ -329,6 +354,7 @@ pub fn revoke_feedback(
     Ok(())
 }
 
+/// SEAL v1: Client provides seal_hash (the on-chain computed hash from the original feedback)
 pub fn append_response(
     ctx: Context<AppendResponse>,
     asset_key: Pubkey,
@@ -336,7 +362,7 @@ pub fn append_response(
     feedback_index: u64,
     response_uri: String,
     response_hash: [u8; 32],
-    feedback_hash: [u8; 32],
+    seal_hash: [u8; 32],
 ) -> Result<()> {
     let responder = ctx.accounts.responder.key();
     let feedback_count = ctx.accounts.agent_account.feedback_count;
@@ -369,7 +395,7 @@ pub fn append_response(
         feedback_index,
         &responder,
         &response_hash,
-        &feedback_hash,
+        &seal_hash,
         slot,
     );
     let agent = &mut ctx.accounts.agent_account;
@@ -383,7 +409,7 @@ pub fn append_response(
         slot,
         responder,
         response_hash,
-        feedback_hash,
+        seal_hash,
         new_response_digest: agent.response_digest,
         new_response_count: agent.response_count,
         response_uri,

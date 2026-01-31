@@ -127,12 +127,14 @@ pub mod agent_registry_8004 {
     // ============================================================================
 
     /// Give feedback to an agent
+    /// SEAL v1: feedback_file_hash is optional (hash of external file),
+    /// the program computes seal_hash on-chain for trustless integrity.
     pub fn give_feedback(
         ctx: Context<GiveFeedback>,
         value: i64,
         value_decimals: u8,
         score: Option<u8>,
-        feedback_hash: [u8; 32],
+        feedback_file_hash: Option<[u8; 32]>,
         tag1: String,
         tag2: String,
         endpoint: String,
@@ -143,7 +145,7 @@ pub mod agent_registry_8004 {
             value,
             value_decimals,
             score,
-            feedback_hash,
+            feedback_file_hash,
             tag1,
             tag2,
             endpoint,
@@ -152,15 +154,17 @@ pub mod agent_registry_8004 {
     }
 
     /// Revoke feedback
+    /// SEAL v1: Client provides seal_hash (can be recomputed using computeSealHash)
     pub fn revoke_feedback(
         ctx: Context<RevokeFeedback>,
         feedback_index: u64,
-        feedback_hash: [u8; 32],
+        seal_hash: [u8; 32],
     ) -> Result<()> {
-        reputation::instructions::revoke_feedback(ctx, feedback_index, feedback_hash)
+        reputation::instructions::revoke_feedback(ctx, feedback_index, seal_hash)
     }
 
     /// Append response to feedback
+    /// SEAL v1: Client provides seal_hash from the original feedback
     pub fn append_response(
         ctx: Context<AppendResponse>,
         asset_key: Pubkey,
@@ -168,9 +172,9 @@ pub mod agent_registry_8004 {
         feedback_index: u64,
         response_uri: String,
         response_hash: [u8; 32],
-        feedback_hash: [u8; 32],
+        seal_hash: [u8; 32],
     ) -> Result<()> {
-        reputation::instructions::append_response(ctx, asset_key, client_address, feedback_index, response_uri, response_hash, feedback_hash)
+        reputation::instructions::append_response(ctx, asset_key, client_address, feedback_index, response_uri, response_hash, seal_hash)
     }
 
     // ============================================================================
