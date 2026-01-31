@@ -13,11 +13,11 @@
 | agent-registry-8004 | `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N` |
 | atom-engine | `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8` |
 
-## v0.5.1
+## v0.6.0
 
+- **SEAL v1** (Solana Event Authenticity Layer): Trustless on-chain hash computation
 - **[ATOM v0.2.2](programs/atom-engine/README.md)**: Hardened EMA arithmetic, tier vesting (8 epochs), platinum loyalty gate (500+)
-- **Canonical feedback_index**: On-chain deduplication
-- **Hash-chain integrity**: `feedback_hash` in revoke/response leaves
+- **Hash-chain integrity**: Rolling digests for feedback, response, and revoke events
 
 See [CHANGELOG.md](CHANGELOG.md).
 
@@ -31,43 +31,46 @@ See [CHANGELOG.md](CHANGELOG.md).
 |  +---------------+ +----------------+ +--------------------+     |
 |  | Identity      | | Reputation     | | Validation         |     |
 |  +---------------+ +----------------+ +--------------------+     |
-|  | Agent NFTs    | | Feedback Events| | ValidationConfig   |     |
-|  |  (Core)       | | Revocations    | | ValidationRequest  |     |
-|  | Metadata PDAs | | Responses      | |                    |     |
-|  | Asset = ID    | |       |        | | Multi-validator    |     |
-|  |               | |       |        | | Progressive        |     |
-|  +---------------+ +-------+--------+ +--------------------+     |
+|  | Agent NFTs    | | SEAL v1 Events | | ValidationConfig   |     |
+|  |  (Core)       | | Hash-Chains    | | ValidationRequest  |     |
+|  | Metadata PDAs | | seal_hash      | | Multi-validator    |     |
+|  +---------------+ +----------------+ +--------------------+     |
 +-----------------------------------------------------------------+
-                             |
-                             | CPI (give_feedback, revoke_feedback)
-                             v
+          |                    |                    |
+          | CPI                | Events             | Events
+          v                    v                    v
 +-----------------------------------------------------------------+
 |                    atom-engine (ATOM)                            |
 |         AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8            |
 +-----------------------------------------------------------------+
-|  +---------------+ +------------------------------------------+ |
-|  | AtomConfig    | |              AtomStats (561 bytes)       | |
-|  +---------------+ +------------------------------------------+ |
-|  | - authority   | | - HLL[256] + salt (unique clients)       | |
-|  | - params      | | - ring buffer[24] (burst detection)      | |
-|  | - thresholds  | | - tier vesting, loyalty, quality, risk   | |
-|  +---------------+ +------------------------------------------+ |
+|  HLL[256] + ring buffer[24] + tier vesting + quality/risk       |
 +-----------------------------------------------------------------+
-                             |
+          |                    |
+          |                    v
+          |     +---------------------------------+
+          |     |           Indexer               |
+          |     |   (Supabase / Substreams)       |
+          |     +---------------------------------+
+          |     | Events → DB (seal_hash stored) |
+          |     | Hash-chain verification        |
+          |     | REST API for queries           |
+          |     +---------------------------------+
+          |                    |
+          v                    v
 +-----------------------------------------------------------------+
 |                      Metaplex Core                               |
 |         (Collection + Agent Assets)                              |
 +-----------------------------------------------------------------+
 ```
 
-### Hash-Chain Integrity
+See **[SEAL v1 specification](docs/SEAL.md)** for hash computation and verification details.
 
-Every feedback, response, and revocation is anchored on-chain via rolling hash digests. You don't have to trust indexers—you can verify them.
+### SEAL v1 - Trustless Integrity
+
+On-chain `seal_hash` computation—clients can't lie about submitted data. See **[docs/SEAL.md](docs/SEAL.md)** for full specification.
 
 ```
-Feedback  ■─■─■─■─▶ feedback_digest
-Response  ■─■─■─▶ response_digest
-Revoke    ■─■─▶ revoke_digest
+Client → Program (seal_hash on-chain) → Hash-Chain → Indexer → Verification
 ```
 
 ## Features
@@ -156,6 +159,7 @@ anchor test
 - [x] v0.4.0 - ATOM Engine + Multi-collection
 - [x] v0.5.0 - ATOM v0.2.0 + Canonical dedup
 - [x] v0.5.1 - Security hardening
+- [x] v0.6.0 - SEAL v1 (trustless on-chain hash)
 - [x] Substreams indexer
 - [ ] Mainnet deployment
 
@@ -176,4 +180,4 @@ Special thanks to [PayAI](https://payai.network) for supporting the mainnet depl
 
 ---
 
-MIT License | v0.5.1 | 2026-01
+MIT License | v0.6.0 | 2026-01

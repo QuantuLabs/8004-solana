@@ -30,8 +30,9 @@ tests/sdk/
 # Documentation archives (old versions, audits, refs)
 docs/archive/
 
-# Documentation markdown (local)
+# Documentation markdown (local, except SEAL.md)
 docs/**/*.md
+!docs/SEAL.md
 
 # IDE
 .vscode/

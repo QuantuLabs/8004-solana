@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-30
+
+### Added - SEAL v1 (Solana Event Authenticity Layer)
+
+Trustless on-chain `seal_hash` computation. See **[docs/SEAL.md](docs/SEAL.md)** for full specification.
+
+- `compute_seal_hash()` - Keccak256 of all feedback params
+- `compute_feedback_leaf_v1()` - Binds seal to context
+- 4 cross-validation vectors (Rust/TypeScript parity)
+
+### Breaking Changes
+
+- `give_feedback`: `feedback_hash` → `feedback_file_hash: Option<[u8; 32]>`
+- `revoke_feedback` / `append_response`: require `seal_hash` (recomputed by client)
+- Events: `seal_hash` replaces `feedback_hash`
+
+---
+
 ## [0.5.1] - 2026-01-30
 
 ### Security
