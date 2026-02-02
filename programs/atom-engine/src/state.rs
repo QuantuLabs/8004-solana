@@ -368,7 +368,11 @@ impl AtomConfig {
 
 /// Add a client hash to the HLL, returns true if register was updated
 pub fn hll_add(hll: &mut [u8; 128], client_hash: &[u8; 32], salt: u64) -> bool {
-    let h_raw = u64::from_le_bytes(client_hash[0..8].try_into().unwrap());
+    let h_raw = u64::from_le_bytes(
+        client_hash[0..8]
+            .try_into()
+            .expect("client_hash is [u8; 32], slice [0..8] always fits [u8; 8]"),
+    );
     let h = h_raw ^ salt;
 
     let idx = (h % HLL_REGISTERS as u64) as usize;
@@ -481,7 +485,11 @@ pub fn secure_fp56(client_hash: &[u8; 32], asset: &Pubkey) -> u64 {
     data[48..80].copy_from_slice(client_hash);
 
     let hash = keccak::hash(&data);
-    u64::from_le_bytes(hash.0[0..8].try_into().unwrap()) & FP_MASK
+    u64::from_le_bytes(
+        hash.0[0..8]
+            .try_into()
+            .expect("keccak hash is [u8; 32], slice [0..8] always fits [u8; 8]"),
+    ) & FP_MASK
 }
 
 #[inline]

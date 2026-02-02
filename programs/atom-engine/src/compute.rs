@@ -148,65 +148,6 @@ fn calculate_wue_weight(diversity_ratio: u8) -> u32 {
 // ============================================================================
 // Alpha Calculation Functions
 // ============================================================================
-
-/// Compute alpha for degrading path (negative feedback)
-#[inline]
-fn compute_alpha_down_v6(stats: &AtomStats, base_alpha: u32) -> u32 {
-    // Inertia buckets with 1-bit smoothing
-    let confidence_inertia = ((stats.confidence >> 10) as u16)
-        + (((stats.confidence >> 9) & 1) as u16);
-    let tenure_inertia = (((stats.feedback_count >> 5) as u16).min(4))
-        + (((stats.feedback_count >> 4) & 1) as u16);
-
-    let raw_inertia = confidence_inertia.max(tenure_inertia).max(1);
-
-    // Diversity cap with tenure floor
-    let sybil_cap = ((stats.diversity_ratio >> 5) as u16).clamp(1, 10);
-    let tiny_tenure_floor = 1u16 + tenure_inertia.min(2);
-    let cap = sybil_cap.max(tiny_tenure_floor);
-    let effective_inertia = raw_inertia.min(cap);
-
-    let mut alpha = (base_alpha / effective_inertia as u32).max(1);
-
-    // Graded glass shield for newcomers
-    if stats.feedback_count < NEWCOMER_SHIELD_THRESHOLD && stats.neg_pressure < 2 {
-        let shield_cap = if stats.feedback_count < 8 { 10 } else { 15 };
-        alpha = alpha.min(shield_cap);
-    }
-
-    // Malice override for confirmed bad actors
-    let persistent_neg = stats.neg_pressure >= 30;
-    let enough_history = stats.feedback_count > NEWCOMER_SHIELD_THRESHOLD;
-    let neg_dense = stats.neg_pressure >= 200;
-
-    if persistent_neg && enough_history && neg_dense {
-        let kill_floor = 12u32;
-        alpha = alpha.max(kill_floor);
-        alpha = (alpha + (alpha >> 1)).min(50);
-    }
-
-    alpha
-}
-
-/// Compute alpha for improving path (positive feedback)
-#[inline]
-fn compute_alpha_up_v6(stats: &AtomStats, base_alpha: u32) -> u32 {
-    // Volatility brake (one-way, only slows upward - prevents pump attacks)
-    // NEVER amplifies downward (prevents Volatility Trap attack)
-    let vol_penalty = (1 + (stats.ema_volatility >> 9) as u32).min(2);
-
-    // Momentum release: bypass brake on winning streak (neg_pressure == 0)
-    // Prevents recovery suppression attack
-    let effective_brake = if stats.neg_pressure == 0 {
-        1  // Full speed recovery
-    } else {
-        vol_penalty
-    };
-
-    (base_alpha / effective_brake).max(1)
-}
-
-// ============================================================================
 // Caller-Specific Pricing & Temporal Inertia
 // ============================================================================
 
@@ -694,7 +635,7 @@ pub fn update_stats(
         stats.hll_salt = u64::from_le_bytes(
             anchor_lang::solana_program::keccak::hash(&salt_seed).0[0..8]
                 .try_into()
-                .unwrap(),
+                .expect("keccak hash is [u8; 32], slice [0..8] always fits [u8; 8]"),
         );
     }
 

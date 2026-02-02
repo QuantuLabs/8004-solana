@@ -83,8 +83,7 @@ pub fn give_feedback(
         // If atom_stats not provided or not initialized, feedback proceeds without ATOM scoring
     }
 
-    let update_result = if is_atom_initialized && score.is_some() {
-        let s = score.unwrap();
+    let update_result = if let Some(s) = score.filter(|_| is_atom_initialized) {
         let atom_config = ctx
             .accounts
             .atom_config
@@ -377,9 +376,8 @@ pub fn append_response(
     let agent_wallet = ctx.accounts.agent_account.agent_wallet;
 
     let is_authorized = responder == core_owner ||
-        (agent_wallet.is_some() &&
-         cached_owner == core_owner &&
-         responder == agent_wallet.unwrap());
+        (cached_owner == core_owner &&
+         agent_wallet.is_some_and(|wallet| responder == wallet));
 
     require!(is_authorized, RegistryError::Unauthorized);
 

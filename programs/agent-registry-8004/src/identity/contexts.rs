@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::bpf_loader_upgradeable;
 use anchor_lang::solana_program::sysvar::instructions as sysvar_instructions;
 
 use super::state::*;
+use crate::constants::BPF_LOADER_UPGRADEABLE_ID;
 use crate::error::RegistryError;
 
 /// Set metadata as individual PDA with dynamic sizing
@@ -273,7 +273,7 @@ pub struct Initialize<'info> {
     #[account(
         seeds = [crate::ID.as_ref()],
         bump,
-        seeds::program = bpf_loader_upgradeable::ID,
+        seeds::program = BPF_LOADER_UPGRADEABLE_ID,
         constraint = program_data.upgrade_authority_address == Some(authority.key())
             @ RegistryError::Unauthorized
     )]

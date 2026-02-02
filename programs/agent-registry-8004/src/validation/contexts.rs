@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::bpf_loader_upgradeable;
 
+use crate::constants::BPF_LOADER_UPGRADEABLE_ID;
 use crate::error::RegistryError;
 use crate::identity::state::AgentAccount;
 use super::state::{ValidationConfig, ValidationRequest};
@@ -29,7 +29,7 @@ pub struct InitializeValidationConfig<'info> {
     #[account(
         seeds = [crate::ID.as_ref()],
         bump,
-        seeds::program = bpf_loader_upgradeable::ID,
+        seeds::program = BPF_LOADER_UPGRADEABLE_ID,
     )]
     pub program_data: Account<'info, ProgramData>,
 

@@ -12,6 +12,7 @@ use mpl_core::instructions::{
 use super::contexts::*;
 use super::events::*;
 use super::state::*;
+use crate::constants::*;
 use crate::error::RegistryError;
 
 /// Maximum deadline window: 5 minutes (300 seconds)
@@ -142,8 +143,9 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
             .as_ref()
             .ok_or(RegistryError::Unauthorized)?;
 
-        let user_auth_bump = ctx.bumps.user_collection_authority.unwrap();
-        let signer_seeds: &[&[&[u8]]] = &[&[b"user_collection_authority", &[user_auth_bump]]];
+        let user_auth_bump = ctx.bumps.user_collection_authority
+            .ok_or(RegistryError::Unauthorized)?;
+        let signer_seeds: &[&[&[u8]]] = &[&[SEED_USER_COLLECTION_AUTHORITY, &[user_auth_bump]]];
 
         update_core_asset_uri_cpi(
             &ctx.accounts.mpl_core_program.to_account_info(),
@@ -159,7 +161,7 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
         let collection_key = ctx.accounts.collection.key();
         let registry_bump = ctx.accounts.registry_config.bump;
         let signer_seeds: &[&[&[u8]]] = &[&[
-            b"registry_config",
+            SEED_REGISTRY_CONFIG,
             collection_key.as_ref(),
             &[registry_bump],
         ]];
@@ -555,7 +557,7 @@ pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
 
     // Set base_registry
     let (registry_pda, _) = Pubkey::find_program_address(
-        &[b"registry_config", ctx.accounts.collection.key().as_ref()],
+        &[SEED_REGISTRY_CONFIG, ctx.accounts.collection.key().as_ref()],
         &crate::ID,
     );
     root.base_registry = registry_pda;
@@ -569,7 +571,7 @@ pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         .name("8004 Base Registry".to_string())
         .uri(String::new())
         .invoke_signed(&[&[
-            b"registry_config",
+            SEED_REGISTRY_CONFIG,
             ctx.accounts.collection.key().as_ref(),
             &[ctx.bumps.registry_config],
         ]])?;
@@ -623,12 +625,12 @@ pub fn create_user_registry(
         .name(collection_name)
         .uri(collection_uri)
         .invoke_signed(&[&[
-            b"user_collection_authority",
+            SEED_USER_COLLECTION_AUTHORITY,
             &[ctx.bumps.collection_authority],
         ]])?;
 
     let (registry_pda, _) = Pubkey::find_program_address(
-        &[b"registry_config", ctx.accounts.collection.key().as_ref()],
+        &[SEED_REGISTRY_CONFIG, ctx.accounts.collection.key().as_ref()],
         &crate::ID,
     );
 
@@ -685,7 +687,7 @@ pub fn update_user_registry_metadata(
     }
 
     builder.invoke_signed(&[&[
-        b"user_collection_authority",
+        SEED_USER_COLLECTION_AUTHORITY,
         &[ctx.bumps.collection_authority],
     ]])?;
 
@@ -721,7 +723,7 @@ fn register_inner(
 
         // Verify root_config is the canonical PDA (not done in context due to Option)
         let (expected_root_pda, expected_bump) = Pubkey::find_program_address(
-            &[b"root_config"],
+            &[SEED_ROOT_CONFIG],
             &crate::ID,
         );
         require!(
@@ -734,7 +736,7 @@ fn register_inner(
         );
 
         let registry_pda = Pubkey::find_program_address(
-            &[b"registry_config", ctx.accounts.collection.key().as_ref()],
+            &[SEED_REGISTRY_CONFIG, ctx.accounts.collection.key().as_ref()],
             &crate::ID,
         ).0;
 
@@ -767,8 +769,9 @@ fn register_inner(
                 agent_uri.clone()
             },
             &[&[
-                b"user_collection_authority",
-                &[ctx.bumps.user_collection_authority.unwrap()],
+                SEED_USER_COLLECTION_AUTHORITY,
+                &[ctx.bumps.user_collection_authority
+                    .ok_or(RegistryError::Unauthorized)?],
             ]],
         )?;
     } else {
@@ -787,7 +790,7 @@ fn register_inner(
                 agent_uri.clone()
             },
             &[&[
-                b"registry_config",
+                SEED_REGISTRY_CONFIG,
                 ctx.accounts.collection.key().as_ref(),
                 &[registry.bump],
             ]],
@@ -812,7 +815,7 @@ fn register_inner(
     agent.nft_name = "Agent".to_string();
 
     let (registry_pda, _) = Pubkey::find_program_address(
-        &[b"registry_config", ctx.accounts.collection.key().as_ref()],
+        &[SEED_REGISTRY_CONFIG, ctx.accounts.collection.key().as_ref()],
         &crate::ID,
     );
 

@@ -1,8 +1,12 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::bpf_loader_upgradeable;
 
 use crate::state::{AtomConfig, AtomStats};
 use crate::error::AtomError;
+
+/// BPF Loader Upgradeable program ID (loader-v3)
+/// Defined locally to avoid deprecated bpf_loader_upgradeable module import.
+const BPF_LOADER_UPGRADEABLE_ID: Pubkey =
+    pubkey!("BPFLoaderUpgradeab1e11111111111111111111111");
 
 /// Initialize the ATOM config (upgrade authority only, once)
 /// SECURITY: Only the program deployer can initialize to prevent front-running
@@ -25,7 +29,7 @@ pub struct InitializeConfig<'info> {
     #[account(
         seeds = [crate::ID.as_ref()],
         bump,
-        seeds::program = bpf_loader_upgradeable::ID,
+        seeds::program = BPF_LOADER_UPGRADEABLE_ID,
         constraint = program_data.upgrade_authority_address == Some(authority.key())
             @ AtomError::Unauthorized
     )]
