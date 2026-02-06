@@ -1,52 +1,34 @@
 use anchor_lang::prelude::*;
 
 // ============================================================================
-// Scalability: Sharding via Multiple Collections
+// Single Collection Architecture (v0.6.0)
+// Extension collections will be in separate repo: 8004-collection-extension
 // ============================================================================
 
-/// Registry type - Base (protocol managed) or User (custom shards)
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace, Debug)]
-pub enum RegistryType {
-    /// Base registry managed by protocol authority
-    Base,
-    /// User-created registry (custom shard)
-    User,
-}
-
-impl Default for RegistryType {
-    fn default() -> Self {
-        RegistryType::Base
-    }
-}
-
-/// Root configuration - Global pointer to base registry
+/// Root configuration - Global registry state
 /// Seeds: ["root_config"]
 #[account]
 #[derive(InitSpace)]
 pub struct RootConfig {
-    /// Base registry for new agent registrations
-    pub base_registry: Pubkey,
+    /// Base collection for agent registrations
+    pub base_collection: Pubkey,
 
-    /// Authority (can create base registry)
+    /// Protocol authority
     pub authority: Pubkey,
 
     /// PDA bump seed
     pub bump: u8,
 }
 
-/// Per-collection registry configuration - Without counters (off-chain via indexer)
+/// Registry configuration for the base collection
 /// Seeds: ["registry_config", collection.key()]
-/// EVM conformity: counters (total_agents, next_id) computed off-chain
 #[account]
 #[derive(InitSpace)]
 pub struct RegistryConfig {
-    /// Metaplex Core Collection address (also in seeds)
+    /// Metaplex Core Collection address
     pub collection: Pubkey,
 
-    /// Registry type: Base (protocol) or User (custom shard)
-    pub registry_type: RegistryType,
-
-    /// Authority (protocol authority for Base, user for User)
+    /// Protocol authority
     pub authority: Pubkey,
 
     /// PDA bump seed

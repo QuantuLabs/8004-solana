@@ -2,7 +2,7 @@
   "address": "8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N",
   "metadata": {
     "name": "agent_registry_8004",
-    "version": "0.5.0",
+    "version": "0.5.2",
     "spec": "0.1.0",
     "description": "8004 AI Agent Identity & Reputation Registry (Consolidated)"
   },
@@ -10,7 +10,8 @@
     {
       "name": "append_response",
       "docs": [
-        "Append response to feedback"
+        "Append response to feedback",
+        "SEAL v1: Client provides seal_hash from the original feedback"
       ],
       "discriminator": [
         162,
@@ -89,7 +90,7 @@
           }
         },
         {
-          "name": "feedback_hash",
+          "name": "seal_hash",
           "type": {
             "array": [
               "u8",
@@ -124,136 +125,6 @@
       ],
       "args": [],
       "returns": "pubkey"
-    },
-    {
-      "name": "create_user_registry",
-      "docs": [
-        "Create a user registry (anyone can create their own shard)"
-      ],
-      "discriminator": [
-        244,
-        141,
-        67,
-        250,
-        234,
-        104,
-        58,
-        135
-      ],
-      "accounts": [
-        {
-          "name": "collection_authority",
-          "docs": [
-            "PDA authority for all user collections"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114,
-                  95,
-                  99,
-                  111,
-                  108,
-                  108,
-                  101,
-                  99,
-                  116,
-                  105,
-                  111,
-                  110,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "registry_config",
-          "docs": [
-            "User registry config"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  101,
-                  103,
-                  105,
-                  115,
-                  116,
-                  114,
-                  121,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "collection"
-              }
-            ]
-          }
-        },
-        {
-          "name": "collection",
-          "docs": [
-            "New collection to create (program PDA is authority)"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "owner",
-          "docs": [
-            "User who creates and owns this registry"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "mpl_core_program",
-          "docs": [
-            "Metaplex Core program"
-          ],
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        }
-      ],
-      "args": [
-        {
-          "name": "collection_name",
-          "type": "string"
-        },
-        {
-          "name": "collection_uri",
-          "type": "string"
-        }
-      ]
     },
     {
       "name": "delete_metadata_pda",
@@ -408,7 +279,9 @@
     {
       "name": "give_feedback",
       "docs": [
-        "Give feedback to an agent"
+        "Give feedback to an agent",
+        "SEAL v1: feedback_file_hash is optional (hash of external file),",
+        "the program computes seal_hash on-chain for trustless integrity."
       ],
       "discriminator": [
         145,
@@ -526,12 +399,14 @@
           }
         },
         {
-          "name": "feedback_hash",
+          "name": "feedback_file_hash",
           "type": {
-            "array": [
-              "u8",
-              32
-            ]
+            "option": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         },
         {
@@ -555,7 +430,7 @@
     {
       "name": "initialize",
       "docs": [
-        "Initialize the registry with root config and first base registry"
+        "Initialize the registry with root config and base collection"
       ],
       "discriminator": [
         175,
@@ -571,7 +446,7 @@
         {
           "name": "root_config",
           "docs": [
-            "Global root config pointing to current base registry"
+            "Global root config"
           ],
           "writable": true,
           "pda": {
@@ -598,7 +473,7 @@
         {
           "name": "registry_config",
           "docs": [
-            "First base registry config (base #0)"
+            "Base registry config"
           ],
           "writable": true,
           "pda": {
@@ -633,7 +508,7 @@
         {
           "name": "collection",
           "docs": [
-            "First collection (created by CPI to Metaplex Core)"
+            "Base collection (created by CPI to Metaplex Core)"
           ],
           "writable": true,
           "signer": true
@@ -742,151 +617,6 @@
       "args": []
     },
     {
-      "name": "initialize_validation_config",
-      "docs": [
-        "Initialize the ValidationConfig (global validation registry state)"
-      ],
-      "discriminator": [
-        138,
-        209,
-        223,
-        183,
-        48,
-        227,
-        146,
-        152
-      ],
-      "accounts": [
-        {
-          "name": "config",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  108,
-                  105,
-                  100,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "authority",
-          "docs": [
-            "Must be the program's upgrade authority"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "program_data",
-          "docs": [
-            "Program data account containing upgrade authority"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  254,
-                  154,
-                  235,
-                  128,
-                  134,
-                  246,
-                  203,
-                  89,
-                  88,
-                  221,
-                  213,
-                  226,
-                  164,
-                  81,
-                  160,
-                  35,
-                  9,
-                  166,
-                  24,
-                  227,
-                  95,
-                  246,
-                  37,
-                  185,
-                  197,
-                  164,
-                  45,
-                  202,
-                  159,
-                  85,
-                  13
-                ]
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                2,
-                168,
-                246,
-                145,
-                78,
-                136,
-                161,
-                176,
-                226,
-                16,
-                21,
-                62,
-                247,
-                99,
-                174,
-                43,
-                0,
-                194,
-                185,
-                61,
-                22,
-                193,
-                36,
-                210,
-                192,
-                83,
-                122,
-                16,
-                4,
-                128,
-                0,
-                0
-              ]
-            }
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "owner_of",
       "docs": [
         "Get agent owner (cached - may be stale after external transfer)"
@@ -936,7 +666,7 @@
     {
       "name": "register",
       "docs": [
-        "Register agent in a specific registry (base or user)"
+        "Register agent in the base collection"
       ],
       "discriminator": [
         211,
@@ -949,6 +679,32 @@
         240
       ],
       "accounts": [
+        {
+          "name": "root_config",
+          "docs": [
+            "Root config to validate base collection"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
         {
           "name": "registry_config",
           "pda": {
@@ -1013,58 +769,9 @@
         {
           "name": "collection",
           "docs": [
-            "Collection for this registry"
+            "Base collection"
           ],
           "writable": true
-        },
-        {
-          "name": "user_collection_authority",
-          "docs": [
-            "Optional: PDA authority for user collections"
-          ],
-          "optional": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114,
-                  95,
-                  99,
-                  111,
-                  108,
-                  108,
-                  101,
-                  99,
-                  116,
-                  105,
-                  111,
-                  110,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "root_config",
-          "docs": [
-            "Optional: Root config for Base registry validation",
-            "Required for Base registries to validate base_registry"
-          ],
-          "optional": true
         },
         {
           "name": "owner",
@@ -1107,6 +814,32 @@
       ],
       "accounts": [
         {
+          "name": "root_config",
+          "docs": [
+            "Root config to validate base collection"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "registry_config",
           "pda": {
             "seeds": [
@@ -1170,58 +903,9 @@
         {
           "name": "collection",
           "docs": [
-            "Collection for this registry"
+            "Base collection"
           ],
           "writable": true
-        },
-        {
-          "name": "user_collection_authority",
-          "docs": [
-            "Optional: PDA authority for user collections"
-          ],
-          "optional": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114,
-                  95,
-                  99,
-                  111,
-                  108,
-                  108,
-                  101,
-                  99,
-                  116,
-                  105,
-                  111,
-                  110,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "root_config",
-          "docs": [
-            "Optional: Root config for Base registry validation",
-            "Required for Base registries to validate base_registry"
-          ],
-          "optional": true
         },
         {
           "name": "owner",
@@ -1252,336 +936,10 @@
       ]
     },
     {
-      "name": "request_validation",
-      "docs": [
-        "Request validation for an agent"
-      ],
-      "discriminator": [
-        72,
-        26,
-        53,
-        67,
-        228,
-        30,
-        144,
-        53
-      ],
-      "accounts": [
-        {
-          "name": "config",
-          "docs": [
-            "ValidationConfig for tracking global counters"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  108,
-                  105,
-                  100,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "requester",
-          "docs": [
-            "Agent owner (requester)"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "payer",
-          "docs": [
-            "Payer for the validation request account (can be different from requester)"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "agent_account",
-          "docs": [
-            "Agent account (to verify ownership and get asset)"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  103,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "asset_key"
-              }
-            ]
-          }
-        },
-        {
-          "name": "asset",
-          "docs": [
-            "Agent asset (Metaplex Core)"
-          ]
-        },
-        {
-          "name": "validation_request",
-          "docs": [
-            "Validation request PDA (to be created)"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  108,
-                  105,
-                  100,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "asset_key"
-              },
-              {
-                "kind": "arg",
-                "path": "validator_address"
-              },
-              {
-                "kind": "arg",
-                "path": "nonce"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "asset_key",
-          "type": "pubkey"
-        },
-        {
-          "name": "validator_address",
-          "type": "pubkey"
-        },
-        {
-          "name": "nonce",
-          "type": "u32"
-        },
-        {
-          "name": "request_uri",
-          "type": "string"
-        },
-        {
-          "name": "request_hash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "respond_to_validation",
-      "docs": [
-        "Validator responds to a validation request",
-        "ERC-8004: Enables progressive validation - validators can update responses"
-      ],
-      "discriminator": [
-        64,
-        212,
-        244,
-        6,
-        65,
-        134,
-        212,
-        122
-      ],
-      "accounts": [
-        {
-          "name": "config",
-          "docs": [
-            "ValidationConfig for tracking global counters"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  108,
-                  105,
-                  100,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "validator",
-          "docs": [
-            "Validator (signer)"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "agent_account",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  103,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "asset_key"
-              }
-            ]
-          }
-        },
-        {
-          "name": "asset",
-          "docs": [
-            "Agent asset (Metaplex Core)"
-          ]
-        },
-        {
-          "name": "validation_request",
-          "docs": [
-            "Validation request PDA (existing, to be updated)",
-            "ERC-8004: Enables progressive validation - validators can update responses"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  108,
-                  105,
-                  100,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "asset_key"
-              },
-              {
-                "kind": "arg",
-                "path": "validator_address"
-              },
-              {
-                "kind": "arg",
-                "path": "nonce"
-              }
-            ]
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "asset_key",
-          "type": "pubkey"
-        },
-        {
-          "name": "validator_address",
-          "type": "pubkey"
-        },
-        {
-          "name": "nonce",
-          "type": "u32"
-        },
-        {
-          "name": "response",
-          "type": "u8"
-        },
-        {
-          "name": "response_uri",
-          "type": "string"
-        },
-        {
-          "name": "response_hash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "tag",
-          "type": "string"
-        }
-      ]
-    },
-    {
       "name": "revoke_feedback",
       "docs": [
-        "Revoke feedback"
+        "Revoke feedback",
+        "SEAL v1: Client provides seal_hash (can be recomputed using computeSealHash)"
       ],
       "discriminator": [
         211,
@@ -1686,7 +1044,7 @@
           "type": "u64"
         },
         {
-          "name": "feedback_hash",
+          "name": "seal_hash",
           "type": {
             "array": [
               "u8",
@@ -1781,48 +1139,6 @@
             "Collection account (required by Core for assets in collection)"
           ],
           "writable": true
-        },
-        {
-          "name": "user_collection_authority",
-          "docs": [
-            "User collection authority PDA (required for user registries)",
-            "Optional: only needed when registry_type == User"
-          ],
-          "optional": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114,
-                  95,
-                  99,
-                  111,
-                  108,
-                  108,
-                  101,
-                  99,
-                  116,
-                  105,
-                  111,
-                  110,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
         },
         {
           "name": "owner",
@@ -2151,134 +1467,6 @@
         }
       ],
       "args": []
-    },
-    {
-      "name": "update_user_registry_metadata",
-      "docs": [
-        "Update user registry collection metadata (owner only)"
-      ],
-      "discriminator": [
-        121,
-        57,
-        38,
-        142,
-        118,
-        18,
-        204,
-        28
-      ],
-      "accounts": [
-        {
-          "name": "collection_authority",
-          "docs": [
-            "PDA authority for signing"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114,
-                  95,
-                  99,
-                  111,
-                  108,
-                  108,
-                  101,
-                  99,
-                  116,
-                  105,
-                  111,
-                  110,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "registry_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  101,
-                  103,
-                  105,
-                  115,
-                  116,
-                  114,
-                  121,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "collection"
-              }
-            ]
-          }
-        },
-        {
-          "name": "collection",
-          "docs": [
-            "Collection to update"
-          ],
-          "writable": true
-        },
-        {
-          "name": "owner",
-          "docs": [
-            "Owner of this user registry"
-          ],
-          "signer": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "mpl_core_program",
-          "docs": [
-            "Metaplex Core program"
-          ],
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        }
-      ],
-      "args": [
-        {
-          "name": "new_name",
-          "type": {
-            "option": "string"
-          }
-        },
-        {
-          "name": "new_uri",
-          "type": {
-            "option": "string"
-          }
-        }
-      ]
     }
   ],
   "accounts": [
@@ -2333,32 +1521,6 @@
         223,
         246
       ]
-    },
-    {
-      "name": "ValidationConfig",
-      "discriminator": [
-        169,
-        98,
-        16,
-        22,
-        71,
-        9,
-        255,
-        7
-      ]
-    },
-    {
-      "name": "ValidationRequest",
-      "discriminator": [
-        130,
-        174,
-        153,
-        111,
-        74,
-        241,
-        40,
-        140
-      ]
     }
   ],
   "events": [
@@ -2376,16 +1538,16 @@
       ]
     },
     {
-      "name": "AgentRegisteredInRegistry",
+      "name": "AgentRegistered",
       "discriminator": [
-        235,
-        241,
-        87,
-        226,
-        1,
-        223,
-        186,
-        175
+        191,
+        78,
+        217,
+        54,
+        232,
+        100,
+        189,
+        85
       ]
     },
     {
@@ -2399,19 +1561,6 @@
         110,
         74,
         200
-      ]
-    },
-    {
-      "name": "BaseRegistryCreated",
-      "discriminator": [
-        135,
-        156,
-        231,
-        228,
-        36,
-        76,
-        0,
-        43
       ]
     },
     {
@@ -2467,6 +1616,19 @@
       ]
     },
     {
+      "name": "RegistryInitialized",
+      "discriminator": [
+        144,
+        138,
+        62,
+        105,
+        58,
+        38,
+        100,
+        177
+      ]
+    },
+    {
       "name": "ResponseAppended",
       "discriminator": [
         168,
@@ -2490,45 +1652,6 @@
         84,
         102,
         11
-      ]
-    },
-    {
-      "name": "UserRegistryCreated",
-      "discriminator": [
-        245,
-        139,
-        104,
-        155,
-        229,
-        130,
-        152,
-        114
-      ]
-    },
-    {
-      "name": "ValidationRequested",
-      "discriminator": [
-        133,
-        42,
-        252,
-        198,
-        82,
-        135,
-        183,
-        65
-      ]
-    },
-    {
-      "name": "ValidationResponded",
-      "discriminator": [
-        93,
-        63,
-        246,
-        101,
-        212,
-        208,
-        53,
-        167
       ]
     },
     {
@@ -2752,44 +1875,9 @@
       "msg": "Ed25519 signature verification failed"
     },
     {
-      "code": 12250,
-      "name": "InvalidRegistryType",
-      "msg": "Invalid registry type for this operation"
-    },
-    {
       "code": 12251,
       "name": "RootAlreadyInitialized",
       "msg": "Root config already initialized"
-    },
-    {
-      "code": 12252,
-      "name": "RegistryAlreadyExists",
-      "msg": "Registry already exists for this collection"
-    },
-    {
-      "code": 12253,
-      "name": "CollectionNameTooLong",
-      "msg": "Collection name exceeds maximum length"
-    },
-    {
-      "code": 12254,
-      "name": "CollectionUriTooLong",
-      "msg": "Collection URI exceeds maximum length"
-    },
-    {
-      "code": 12255,
-      "name": "RegistrationNotAllowed",
-      "msg": "Cannot register in this registry"
-    },
-    {
-      "code": 12256,
-      "name": "RootConfigRequired",
-      "msg": "Root config required for Base registry registration"
-    },
-    {
-      "code": 12257,
-      "name": "InvalidRootConfig",
-      "msg": "Invalid root config PDA"
     },
     {
       "code": 12300,
@@ -2950,9 +2038,9 @@
       }
     },
     {
-      "name": "AgentRegisteredInRegistry",
+      "name": "AgentRegistered",
       "docs": [
-        "Event emitted when agent is registered in a specific registry",
+        "Event emitted when agent is registered",
         "Field order: fixed-size first (Pubkey, bool), variable-size last (String)"
       ],
       "type": {
@@ -2960,10 +2048,6 @@
         "fields": [
           {
             "name": "asset",
-            "type": "pubkey"
-          },
-          {
-            "name": "registry",
             "type": "pubkey"
           },
           {
@@ -3005,32 +2089,10 @@
       }
     },
     {
-      "name": "BaseRegistryCreated",
-      "docs": [
-        "Event emitted when a base registry is created"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "registry",
-            "type": "pubkey"
-          },
-          {
-            "name": "collection",
-            "type": "pubkey"
-          },
-          {
-            "name": "created_by",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
       "name": "FeedbackRevoked",
       "docs": [
-        "Event emitted when feedback is revoked"
+        "Event emitted when feedback is revoked",
+        "SEAL v1: Uses seal_hash (on-chain computed) for identification."
       ],
       "type": {
         "kind": "struct",
@@ -3048,7 +2110,10 @@
             "type": "u64"
           },
           {
-            "name": "feedback_hash",
+            "name": "seal_hash",
+            "docs": [
+              "SEAL v1: The seal_hash from the original feedback (for identification)"
+            ],
             "type": {
               "array": [
                 "u8",
@@ -3066,10 +2131,16 @@
           },
           {
             "name": "atom_enabled",
+            "docs": [
+              "Whether ATOM Engine was used for this revocation"
+            ],
             "type": "bool"
           },
           {
             "name": "had_impact",
+            "docs": [
+              "Enriched fields from revoke result (0 values if atom_enabled=false)"
+            ],
             "type": "bool"
           },
           {
@@ -3204,7 +2275,10 @@
       "name": "NewFeedback",
       "docs": [
         "Event emitted when new feedback is given",
-        "Field order optimized for indexing: fixed-size fields first, variable-size (String) last"
+        "Field order optimized for indexing: fixed-size fields first, variable-size (String) last",
+        "",
+        "SEAL v1: feedback_file_hash is optional (hash of external file content),",
+        "seal_hash is computed on-chain from feedback parameters (trustless)."
       ],
       "type": {
         "kind": "struct",
@@ -3240,7 +2314,26 @@
             }
           },
           {
-            "name": "feedback_hash",
+            "name": "feedback_file_hash",
+            "docs": [
+              "SEAL v1: Optional hash of the feedback file content (ERC-8004 spec)",
+              "Client-provided, used for external file integrity verification."
+            ],
+            "type": {
+              "option": {
+                "array": [
+                  "u8",
+                  32
+                ]
+              }
+            }
+          },
+          {
+            "name": "seal_hash",
+            "docs": [
+              "SEAL v1: Hash computed on-chain from feedback parameters (trustless)",
+              "This is the authoritative content hash used in the hash-chain."
+            ],
             "type": {
               "array": [
                 "u8",
@@ -3311,9 +2404,8 @@
     {
       "name": "RegistryConfig",
       "docs": [
-        "Per-collection registry configuration - Without counters (off-chain via indexer)",
-        "Seeds: [\"registry_config\", collection.key()]",
-        "EVM conformity: counters (total_agents, next_id) computed off-chain"
+        "Registry configuration for the base collection",
+        "Seeds: [\"registry_config\", collection.key()]"
       ],
       "type": {
         "kind": "struct",
@@ -3321,25 +2413,14 @@
           {
             "name": "collection",
             "docs": [
-              "Metaplex Core Collection address (also in seeds)"
+              "Metaplex Core Collection address"
             ],
             "type": "pubkey"
           },
           {
-            "name": "registry_type",
-            "docs": [
-              "Registry type: Base (protocol) or User (custom shard)"
-            ],
-            "type": {
-              "defined": {
-                "name": "RegistryType"
-              }
-            }
-          },
-          {
             "name": "authority",
             "docs": [
-              "Authority (protocol authority for Base, user for User)"
+              "Protocol authority"
             ],
             "type": "pubkey"
           },
@@ -3354,18 +2435,20 @@
       }
     },
     {
-      "name": "RegistryType",
+      "name": "RegistryInitialized",
       "docs": [
-        "Registry type - Base (protocol managed) or User (custom shards)"
+        "Event emitted when registry is initialized"
       ],
       "type": {
-        "kind": "enum",
-        "variants": [
+        "kind": "struct",
+        "fields": [
           {
-            "name": "Base"
+            "name": "collection",
+            "type": "pubkey"
           },
           {
-            "name": "User"
+            "name": "authority",
+            "type": "pubkey"
           }
         ]
       }
@@ -3373,7 +2456,8 @@
     {
       "name": "ResponseAppended",
       "docs": [
-        "Event emitted when response is appended to feedback"
+        "Event emitted when response is appended to feedback",
+        "SEAL v1: Uses seal_hash (on-chain computed) for feedback identification."
       ],
       "type": {
         "kind": "struct",
@@ -3408,7 +2492,10 @@
             }
           },
           {
-            "name": "feedback_hash",
+            "name": "seal_hash",
+            "docs": [
+              "SEAL v1: The seal_hash from the original feedback (for identification)"
+            ],
             "type": {
               "array": [
                 "u8",
@@ -3439,23 +2526,23 @@
     {
       "name": "RootConfig",
       "docs": [
-        "Root configuration - Global pointer to base registry",
+        "Root configuration - Global registry state",
         "Seeds: [\"root_config\"]"
       ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "base_registry",
+            "name": "base_collection",
             "docs": [
-              "Base registry for new agent registrations"
+              "Base collection for agent registrations"
             ],
             "type": "pubkey"
           },
           {
             "name": "authority",
             "docs": [
-              "Authority (can create base registry)"
+              "Protocol authority"
             ],
             "type": "pubkey"
           },
@@ -3488,226 +2575,6 @@
           },
           {
             "name": "new_uri",
-            "type": "string"
-          }
-        ]
-      }
-    },
-    {
-      "name": "UserRegistryCreated",
-      "docs": [
-        "Event emitted when a user registry is created"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "registry",
-            "type": "pubkey"
-          },
-          {
-            "name": "collection",
-            "type": "pubkey"
-          },
-          {
-            "name": "owner",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ValidationConfig",
-      "docs": [
-        "Global validation registry configuration"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "authority",
-            "docs": [
-              "Registry authority (program owner)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "total_requests",
-            "docs": [
-              "Total validation requests created"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "total_responses",
-            "docs": [
-              "Total validation responses recorded"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump seed"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ValidationRequest",
-      "docs": [
-        "Individual validation request (state stored on-chain)",
-        "URIs, tags, hashes (except request_hash), and created_at are stored in events only",
-        "This optimized structure follows ERC-8004 immutability requirements while minimizing rent cost"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "asset",
-            "docs": [
-              "Agent asset (Metaplex Core) - used as primary identifier"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "validator_address",
-            "docs": [
-              "Validator address (who can respond)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "nonce",
-            "docs": [
-              "Nonce for multiple validations from same validator (enables re-validation)"
-            ],
-            "type": "u32"
-          },
-          {
-            "name": "request_hash",
-            "docs": [
-              "Request hash (SHA-256 of request content for integrity verification)"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "response",
-            "docs": [
-              "Current response value (0-100, 0 = pending/no response)",
-              "ERC-8004: 0 is a valid response score, use responded_at to determine pending status"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "responded_at",
-            "docs": [
-              "Timestamp of last response (0 if no response yet)",
-              "ERC-8004: Equivalent to lastUpdate, enables progressive validation"
-            ],
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ValidationRequested",
-      "docs": [
-        "Event emitted when validation is requested",
-        "Field order optimized for indexing: fixed-size fields first, variable-size (String) last",
-        "ERC-8004: Events store full metadata not kept on-chain for rent optimization"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "asset",
-            "type": "pubkey"
-          },
-          {
-            "name": "validator_address",
-            "type": "pubkey"
-          },
-          {
-            "name": "nonce",
-            "type": "u32"
-          },
-          {
-            "name": "requester",
-            "type": "pubkey"
-          },
-          {
-            "name": "request_hash",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "created_at",
-            "type": "i64"
-          },
-          {
-            "name": "request_uri",
-            "type": "string"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ValidationResponded",
-      "docs": [
-        "Event emitted when validator responds",
-        "Field order optimized for indexing: fixed-size fields first, variable-size (String) last",
-        "ERC-8004: Enables progressive validation - validators can update responses"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "asset",
-            "type": "pubkey"
-          },
-          {
-            "name": "validator_address",
-            "type": "pubkey"
-          },
-          {
-            "name": "nonce",
-            "type": "u32"
-          },
-          {
-            "name": "response",
-            "type": "u8"
-          },
-          {
-            "name": "response_hash",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "responded_at",
-            "type": "i64"
-          },
-          {
-            "name": "response_uri",
-            "type": "string"
-          },
-          {
-            "name": "tag",
             "type": "string"
           }
         ]

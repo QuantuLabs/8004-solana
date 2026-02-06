@@ -15,7 +15,7 @@ async function main() {
   // Generate collection keypair
   const collection = Keypair.generate();
 
-  // Derive PDAs for new multi-collection architecture
+  // Derive PDAs (v0.6.0 single-collection architecture)
   const [rootConfigPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("root_config")],
     programId
@@ -32,7 +32,7 @@ async function main() {
     BPF_LOADER_UPGRADEABLE_PROGRAM_ID
   );
 
-  console.log("=== Initializing Registry (Multi-Collection Architecture) ===");
+  console.log("=== Initializing Registry (v0.6.0 Single-Collection) ===");
   console.log("Program ID:", programId.toBase58());
   console.log("Root Config PDA:", rootConfigPda.toBase58());
   console.log("Registry Config PDA:", registryConfigPda.toBase58());
@@ -61,14 +61,13 @@ async function main() {
     const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
     console.log("\n=== Root Config ===");
     console.log("Authority:", rootConfig.authority.toBase58());
-    console.log("Base Registry:", rootConfig.baseRegistry.toBase58());
+    console.log("Base Collection:", rootConfig.baseCollection.toBase58());
     console.log("Bump:", rootConfig.bump);
 
     // Fetch and display registry config
     const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
-    console.log("\n=== Registry Config (Base #0) ===");
+    console.log("\n=== Registry Config ===");
     console.log("Collection:", registryConfig.collection.toBase58());
-    console.log("Registry Type:", JSON.stringify(registryConfig.registryType));
     console.log("Authority:", registryConfig.authority.toBase58());
     console.log("Bump:", registryConfig.bump);
 

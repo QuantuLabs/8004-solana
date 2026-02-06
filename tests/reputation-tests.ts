@@ -16,6 +16,7 @@ import {
   MAX_URI_LENGTH,
   MAX_TAG_LENGTH,
   getRootConfigPda,
+  getRegistryConfigPda,
   getAgentPda,
   getAtomConfigPda,
   getAtomStatsPda,
@@ -89,10 +90,8 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     const rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
     const rootConfig = program.coder.accounts.decode("rootConfig", rootAccountInfo!.data);
 
-    registryConfigPda = rootConfig.baseRegistry;
-    const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
-    const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo!.data);
-    collectionPubkey = registryConfig.collection;
+    collectionPubkey = rootConfig.baseCollection;
+    [registryConfigPda] = getRegistryConfigPda(collectionPubkey, program.programId);
 
     clientKeypair = Keypair.generate();
 

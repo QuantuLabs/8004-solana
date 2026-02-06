@@ -5,6 +5,11 @@ use super::state::*;
 use crate::constants::BPF_LOADER_UPGRADEABLE_ID;
 use crate::error::RegistryError;
 
+// ============================================================================
+// Single Collection Architecture (v0.6.0)
+// Extension collections will be in separate repo: 8004-collection-extension
+// ============================================================================
+
 /// Set metadata as individual PDA with dynamic sizing
 /// Creates new PDA if not exists, updates if exists and not immutable
 /// key_hash is SHA256(key)[0..16] for collision resistance (2^128 space)
@@ -105,15 +110,6 @@ pub struct SetAgentUri<'info> {
         constraint = collection.key() == registry_config.collection @ RegistryError::InvalidCollection
     )]
     pub collection: UncheckedAccount<'info>,
-
-    /// User collection authority PDA (required for user registries)
-    /// Optional: only needed when registry_type == User
-    /// CHECK: Verified by seeds constraint when provided
-    #[account(
-        seeds = [b"user_collection_authority"],
-        bump
-    )]
-    pub user_collection_authority: Option<UncheckedAccount<'info>>,
 
     #[account(mut)]
     pub owner: Signer<'info>,
@@ -234,14 +230,14 @@ pub struct SetAgentWallet<'info> {
 }
 
 // ============================================================================
-// Scalability: Multi-Collection Sharding Contexts
+// Single Collection Architecture
 // ============================================================================
 
-/// Initialize the registry with root config and first base registry
+/// Initialize the registry with root config and base collection
 /// Only upgrade authority can call this (prevents front-running)
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-    /// Global root config pointing to current base registry
+    /// Global root config
     #[account(
         init,
         payer = authority,
@@ -251,7 +247,7 @@ pub struct Initialize<'info> {
     )]
     pub root_config: Account<'info, RootConfig>,
 
-    /// First base registry config (base #0)
+    /// Base registry config
     #[account(
         init,
         payer = authority,
@@ -261,7 +257,7 @@ pub struct Initialize<'info> {
     )]
     pub registry_config: Account<'info, RegistryConfig>,
 
-    /// First collection (created by CPI to Metaplex Core)
+    /// Base collection (created by CPI to Metaplex Core)
     /// CHECK: Created by Metaplex Core CPI
     #[account(mut)]
     pub collection: Signer<'info>,
@@ -287,88 +283,18 @@ pub struct Initialize<'info> {
     pub mpl_core_program: UncheckedAccount<'info>,
 }
 
-/// Create a user registry (anyone can create their own shard)
-#[derive(Accounts)]
-#[instruction(collection_name: String, collection_uri: String)]
-pub struct CreateUserRegistry<'info> {
-    /// PDA authority for all user collections
-    /// CHECK: PDA verified by seeds
-    #[account(
-        seeds = [b"user_collection_authority"],
-        bump
-    )]
-    pub collection_authority: UncheckedAccount<'info>,
-
-    /// User registry config
-    #[account(
-        init,
-        payer = owner,
-        space = RegistryConfig::DISCRIMINATOR.len() + RegistryConfig::INIT_SPACE,
-        seeds = [b"registry_config", collection.key().as_ref()],
-        bump
-    )]
-    pub registry_config: Account<'info, RegistryConfig>,
-
-    /// New collection to create (program PDA is authority)
-    /// CHECK: Created by Metaplex Core CPI
-    #[account(mut)]
-    pub collection: Signer<'info>,
-
-    /// User who creates and owns this registry
-    #[account(mut)]
-    pub owner: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-
-    /// Metaplex Core program
-    /// CHECK: Verified by address constraint
-    #[account(address = mpl_core::ID)]
-    pub mpl_core_program: UncheckedAccount<'info>,
-}
-
-/// Update user registry collection metadata (owner only)
-#[derive(Accounts)]
-#[instruction(new_name: Option<String>, new_uri: Option<String>)]
-pub struct UpdateUserRegistryMetadata<'info> {
-    /// PDA authority for signing
-    /// CHECK: PDA verified by seeds
-    #[account(
-        seeds = [b"user_collection_authority"],
-        bump
-    )]
-    pub collection_authority: UncheckedAccount<'info>,
-
-    #[account(
-        seeds = [b"registry_config", collection.key().as_ref()],
-        bump = registry_config.bump,
-        constraint = registry_config.registry_type == RegistryType::User @ RegistryError::InvalidRegistryType,
-        constraint = registry_config.authority == owner.key() @ RegistryError::Unauthorized
-    )]
-    pub registry_config: Account<'info, RegistryConfig>,
-
-    /// Collection to update
-    /// CHECK: Verified via registry_config constraint
-    #[account(
-        mut,
-        constraint = collection.key() == registry_config.collection @ RegistryError::InvalidCollection
-    )]
-    pub collection: UncheckedAccount<'info>,
-
-    /// Owner of this user registry
-    pub owner: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-
-    /// Metaplex Core program
-    /// CHECK: Verified by address constraint
-    #[account(address = mpl_core::ID)]
-    pub mpl_core_program: UncheckedAccount<'info>,
-}
-
-/// Register agent in a specific registry (base or user)
+/// Register agent in the base collection
 #[derive(Accounts)]
 #[instruction(agent_uri: String)]
 pub struct Register<'info> {
+    /// Root config to validate base collection
+    #[account(
+        seeds = [b"root_config"],
+        bump = root_config.bump,
+        constraint = root_config.base_collection == collection.key() @ RegistryError::InvalidCollection
+    )]
+    pub root_config: Account<'info, RootConfig>,
+
     #[account(
         seeds = [b"registry_config", collection.key().as_ref()],
         bump = registry_config.bump
@@ -389,26 +315,10 @@ pub struct Register<'info> {
     #[account(mut)]
     pub asset: Signer<'info>,
 
-    /// Collection for this registry
-    /// CHECK: Verified via registry_config constraint
-    #[account(
-        mut,
-        constraint = collection.key() == registry_config.collection @ RegistryError::InvalidCollection
-    )]
+    /// Base collection
+    /// CHECK: Verified via root_config constraint
+    #[account(mut)]
     pub collection: UncheckedAccount<'info>,
-
-    /// Optional: PDA authority for user collections
-    /// CHECK: PDA verified by seeds when needed
-    #[account(
-        seeds = [b"user_collection_authority"],
-        bump
-    )]
-    pub user_collection_authority: Option<UncheckedAccount<'info>>,
-
-    /// Optional: Root config for Base registry validation
-    /// Required for Base registries to validate base_registry
-    /// CHECK: Seeds verified in instruction when registry_type == Base
-    pub root_config: Option<Account<'info, RootConfig>>,
 
     #[account(mut)]
     pub owner: Signer<'info>,

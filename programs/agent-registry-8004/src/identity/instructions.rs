@@ -6,7 +6,7 @@ use anchor_lang::solana_program::sysvar::instructions::{
 use mpl_core::accounts::BaseAssetV1;
 use mpl_core::instructions::{
     CreateCollectionV2CpiBuilder, CreateV2CpiBuilder, TransferV1CpiBuilder,
-    UpdateCollectionV1CpiBuilder, UpdateV1CpiBuilder,
+    UpdateV1CpiBuilder,
 };
 
 use super::contexts::*;
@@ -42,7 +42,7 @@ pub fn set_metadata_pda(
     let computed_hash = hash(key.as_bytes());
     let expected: [u8; 16] = computed_hash.to_bytes()[0..16]
         .try_into()
-        .expect("hash is 32 bytes");
+        .map_err(|_| RegistryError::Overflow)?;
     require!(key_hash == expected, RegistryError::KeyHashMismatch);
 
     // Verify ownership via Core asset
@@ -132,51 +132,24 @@ pub fn set_agent_uri(ctx: Context<SetAgentUri>, new_uri: String) -> Result<()> {
     );
 
     let asset = ctx.accounts.asset.key();
+    let collection_key = ctx.accounts.collection.key();
+    let registry_bump = ctx.accounts.registry_config.bump;
+    let signer_seeds: &[&[&[u8]]] = &[&[
+        SEED_REGISTRY_CONFIG,
+        collection_key.as_ref(),
+        &[registry_bump],
+    ]];
 
-    // Determine authority based on registry type
-    let is_user_registry = ctx.accounts.registry_config.registry_type == RegistryType::User;
-
-    if is_user_registry {
-        let user_auth = ctx
-            .accounts
-            .user_collection_authority
-            .as_ref()
-            .ok_or(RegistryError::Unauthorized)?;
-
-        let user_auth_bump = ctx.bumps.user_collection_authority
-            .ok_or(RegistryError::Unauthorized)?;
-        let signer_seeds: &[&[&[u8]]] = &[&[SEED_USER_COLLECTION_AUTHORITY, &[user_auth_bump]]];
-
-        update_core_asset_uri_cpi(
-            &ctx.accounts.mpl_core_program.to_account_info(),
-            &ctx.accounts.asset.to_account_info(),
-            &ctx.accounts.collection.to_account_info(),
-            &ctx.accounts.owner.to_account_info(),
-            &user_auth.to_account_info(),
-            &ctx.accounts.system_program.to_account_info(),
-            new_uri.clone(),
-            signer_seeds,
-        )?;
-    } else {
-        let collection_key = ctx.accounts.collection.key();
-        let registry_bump = ctx.accounts.registry_config.bump;
-        let signer_seeds: &[&[&[u8]]] = &[&[
-            SEED_REGISTRY_CONFIG,
-            collection_key.as_ref(),
-            &[registry_bump],
-        ]];
-
-        update_core_asset_uri_cpi(
-            &ctx.accounts.mpl_core_program.to_account_info(),
-            &ctx.accounts.asset.to_account_info(),
-            &ctx.accounts.collection.to_account_info(),
-            &ctx.accounts.owner.to_account_info(),
-            &ctx.accounts.registry_config.to_account_info(),
-            &ctx.accounts.system_program.to_account_info(),
-            new_uri.clone(),
-            signer_seeds,
-        )?;
-    }
+    update_core_asset_uri_cpi(
+        &ctx.accounts.mpl_core_program.to_account_info(),
+        &ctx.accounts.asset.to_account_info(),
+        &ctx.accounts.collection.to_account_info(),
+        &ctx.accounts.owner.to_account_info(),
+        &ctx.accounts.registry_config.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        new_uri.clone(),
+        signer_seeds,
+    )?;
 
     // Update AgentAccount
     let agent = &mut ctx.accounts.agent_account;
@@ -537,30 +510,24 @@ fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
 }
 
 // ============================================================================
-// Scalability: Multi-Collection Sharding Instructions
+// Single Collection Instructions
 // ============================================================================
 
-/// Initialize the registry with root config and base registry
+/// Initialize the registry with root config and base collection
 pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
     let root = &mut ctx.accounts.root_config;
     let registry = &mut ctx.accounts.registry_config;
+    let collection_key = ctx.accounts.collection.key();
 
     // Initialize root config
+    root.base_collection = collection_key;
     root.authority = ctx.accounts.authority.key();
     root.bump = ctx.bumps.root_config;
 
-    // Initialize base registry
-    registry.collection = ctx.accounts.collection.key();
-    registry.registry_type = RegistryType::Base;
+    // Initialize registry config
+    registry.collection = collection_key;
     registry.authority = ctx.accounts.authority.key();
     registry.bump = ctx.bumps.registry_config;
-
-    // Set base_registry
-    let (registry_pda, _) = Pubkey::find_program_address(
-        &[SEED_REGISTRY_CONFIG, ctx.accounts.collection.key().as_ref()],
-        &crate::ID,
-    );
-    root.base_registry = registry_pda;
 
     // Create Metaplex Core Collection
     CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
@@ -568,133 +535,20 @@ pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         .payer(&ctx.accounts.authority.to_account_info())
         .update_authority(Some(&registry.to_account_info()))
         .system_program(&ctx.accounts.system_program.to_account_info())
-        .name("8004 Base Registry".to_string())
+        .name("8004 Agent Registry".to_string())
         .uri(String::new())
         .invoke_signed(&[&[
             SEED_REGISTRY_CONFIG,
-            ctx.accounts.collection.key().as_ref(),
+            collection_key.as_ref(),
             &[ctx.bumps.registry_config],
         ]])?;
 
-    emit!(BaseRegistryCreated {
-        registry: registry_pda,
-        collection: ctx.accounts.collection.key(),
-        created_by: ctx.accounts.authority.key(),
+    emit!(RegistryInitialized {
+        collection: collection_key,
+        authority: ctx.accounts.authority.key(),
     });
 
-    msg!("Root config initialized with base registry: {}", registry_pda);
-
-    Ok(())
-}
-
-// ============================================================================
-// User Registry Instructions
-// ============================================================================
-
-const MAX_COLLECTION_NAME_LENGTH: usize = 32;
-const MAX_COLLECTION_URI_LENGTH: usize = 250;
-
-/// Create a user registry (anyone can create their own shard)
-pub fn create_user_registry(
-    ctx: Context<CreateUserRegistry>,
-    collection_name: String,
-    collection_uri: String,
-) -> Result<()> {
-    require!(
-        collection_name.len() <= MAX_COLLECTION_NAME_LENGTH,
-        RegistryError::CollectionNameTooLong
-    );
-
-    require!(
-        collection_uri.len() <= MAX_COLLECTION_URI_LENGTH,
-        RegistryError::CollectionUriTooLong
-    );
-
-    let registry = &mut ctx.accounts.registry_config;
-
-    registry.collection = ctx.accounts.collection.key();
-    registry.registry_type = RegistryType::User;
-    registry.authority = ctx.accounts.owner.key();
-    registry.bump = ctx.bumps.registry_config;
-
-    CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
-        .collection(&ctx.accounts.collection.to_account_info())
-        .payer(&ctx.accounts.owner.to_account_info())
-        .update_authority(Some(&ctx.accounts.collection_authority.to_account_info()))
-        .system_program(&ctx.accounts.system_program.to_account_info())
-        .name(collection_name)
-        .uri(collection_uri)
-        .invoke_signed(&[&[
-            SEED_USER_COLLECTION_AUTHORITY,
-            &[ctx.bumps.collection_authority],
-        ]])?;
-
-    let (registry_pda, _) = Pubkey::find_program_address(
-        &[SEED_REGISTRY_CONFIG, ctx.accounts.collection.key().as_ref()],
-        &crate::ID,
-    );
-
-    emit!(UserRegistryCreated {
-        registry: registry_pda,
-        collection: ctx.accounts.collection.key(),
-        owner: ctx.accounts.owner.key(),
-    });
-
-    msg!("User registry created: {} by {}", registry_pda, ctx.accounts.owner.key());
-
-    Ok(())
-}
-
-/// Update user registry collection metadata (owner only)
-pub fn update_user_registry_metadata(
-    ctx: Context<UpdateUserRegistryMetadata>,
-    new_name: Option<String>,
-    new_uri: Option<String>,
-) -> Result<()> {
-    if let Some(ref name) = new_name {
-        require!(
-            name.len() <= MAX_COLLECTION_NAME_LENGTH,
-            RegistryError::CollectionNameTooLong
-        );
-    }
-
-    if let Some(ref uri) = new_uri {
-        require!(
-            uri.len() <= MAX_COLLECTION_URI_LENGTH,
-            RegistryError::CollectionUriTooLong
-        );
-    }
-
-    let mpl_core_info = ctx.accounts.mpl_core_program.to_account_info();
-    let collection_info = ctx.accounts.collection.to_account_info();
-    let owner_info = ctx.accounts.owner.to_account_info();
-    let authority_info = ctx.accounts.collection_authority.to_account_info();
-    let system_info = ctx.accounts.system_program.to_account_info();
-
-    let mut builder = UpdateCollectionV1CpiBuilder::new(&mpl_core_info);
-    builder
-        .collection(&collection_info)
-        .payer(&owner_info)
-        .authority(Some(&authority_info))
-        .system_program(&system_info);
-
-    if let Some(name) = new_name {
-        builder.new_name(name);
-    }
-
-    if let Some(uri) = new_uri {
-        builder.new_uri(uri);
-    }
-
-    builder.invoke_signed(&[&[
-        SEED_USER_COLLECTION_AUTHORITY,
-        &[ctx.bumps.collection_authority],
-    ]])?;
-
-    msg!(
-        "User registry metadata updated: {}",
-        ctx.accounts.registry_config.collection
-    );
+    msg!("Registry initialized with collection: {}", collection_key);
 
     Ok(())
 }
@@ -710,96 +564,34 @@ fn register_inner(
     );
 
     let registry = &ctx.accounts.registry_config;
-    let is_user_registry = registry.registry_type == RegistryType::User;
     let asset = ctx.accounts.asset.key();
+    let collection_key = ctx.accounts.collection.key();
 
-    // SECURITY: For Base registries, validate against root config
-    if !is_user_registry {
-        let root_config = ctx
-            .accounts
-            .root_config
-            .as_ref()
-            .ok_or(RegistryError::RootConfigRequired)?;
-
-        // Verify root_config is the canonical PDA (not done in context due to Option)
-        let (expected_root_pda, expected_bump) = Pubkey::find_program_address(
-            &[SEED_ROOT_CONFIG],
-            &crate::ID,
-        );
-        require!(
-            root_config.key() == expected_root_pda,
-            RegistryError::InvalidRootConfig
-        );
-        require!(
-            root_config.bump == expected_bump,
-            RegistryError::InvalidRootConfig
-        );
-
-        let registry_pda = Pubkey::find_program_address(
-            &[SEED_REGISTRY_CONFIG, ctx.accounts.collection.key().as_ref()],
-            &crate::ID,
-        ).0;
-
-        require!(
-            registry_pda == root_config.base_registry,
-            RegistryError::RegistrationNotAllowed
-        );
-    }
-
-    // Create Core asset with appropriate authority
-    if is_user_registry {
-        let user_auth = ctx
-            .accounts
-            .user_collection_authority
-            .as_ref()
-            .ok_or(RegistryError::Unauthorized)?;
-
-        create_core_asset_cpi(
-            &ctx.accounts.mpl_core_program.to_account_info(),
-            &ctx.accounts.asset.to_account_info(),
-            &ctx.accounts.collection.to_account_info(),
-            &ctx.accounts.owner.to_account_info(),
-            &ctx.accounts.owner.to_account_info(),
-            &user_auth.to_account_info(),
-            &ctx.accounts.system_program.to_account_info(),
-            format!("Agent"),
-            if agent_uri.is_empty() {
-                String::new()
-            } else {
-                agent_uri.clone()
-            },
-            &[&[
-                SEED_USER_COLLECTION_AUTHORITY,
-                &[ctx.bumps.user_collection_authority
-                    .ok_or(RegistryError::Unauthorized)?],
-            ]],
-        )?;
-    } else {
-        create_core_asset_cpi(
-            &ctx.accounts.mpl_core_program.to_account_info(),
-            &ctx.accounts.asset.to_account_info(),
-            &ctx.accounts.collection.to_account_info(),
-            &ctx.accounts.owner.to_account_info(),
-            &ctx.accounts.owner.to_account_info(),
-            &registry.to_account_info(),
-            &ctx.accounts.system_program.to_account_info(),
-            format!("Agent"),
-            if agent_uri.is_empty() {
-                String::new()
-            } else {
-                agent_uri.clone()
-            },
-            &[&[
-                SEED_REGISTRY_CONFIG,
-                ctx.accounts.collection.key().as_ref(),
-                &[registry.bump],
-            ]],
-        )?;
-    }
+    // Create Core asset
+    create_core_asset_cpi(
+        &ctx.accounts.mpl_core_program.to_account_info(),
+        &ctx.accounts.asset.to_account_info(),
+        &ctx.accounts.collection.to_account_info(),
+        &ctx.accounts.owner.to_account_info(),
+        &ctx.accounts.owner.to_account_info(),
+        &registry.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        "Agent".to_string(),
+        if agent_uri.is_empty() {
+            String::new()
+        } else {
+            agent_uri.clone()
+        },
+        &[&[
+            SEED_REGISTRY_CONFIG,
+            collection_key.as_ref(),
+            &[registry.bump],
+        ]],
+    )?;
 
     // Initialize agent account
     let agent = &mut ctx.accounts.agent_account;
-    agent.collection = ctx.accounts.collection.key();
+    agent.collection = collection_key;
     agent.owner = ctx.accounts.owner.key();
     agent.asset = asset;
     agent.bump = ctx.bumps.agent_account;
@@ -814,30 +606,20 @@ fn register_inner(
     agent.agent_uri = agent_uri;
     agent.nft_name = "Agent".to_string();
 
-    let (registry_pda, _) = Pubkey::find_program_address(
-        &[SEED_REGISTRY_CONFIG, ctx.accounts.collection.key().as_ref()],
-        &crate::ID,
-    );
-
-    emit!(AgentRegisteredInRegistry {
+    emit!(AgentRegistered {
         asset,
-        registry: registry_pda,
-        collection: ctx.accounts.collection.key(),
+        collection: collection_key,
         owner: ctx.accounts.owner.key(),
         atom_enabled: agent.atom_enabled,
         agent_uri: agent.agent_uri.clone(),
     });
 
-    msg!(
-        "Agent registered in registry {} (collection {})",
-        registry_pda,
-        ctx.accounts.collection.key()
-    );
+    msg!("Agent registered: {} in collection {}", asset, collection_key);
 
     Ok(())
 }
 
-/// Register agent in a specific registry (base or user)
+/// Register agent in the base collection
 pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
     register_inner(ctx, agent_uri, true)
 }

@@ -127,14 +127,13 @@ describe("Program Stress Tests (Agent Registry)", function () {
     }
 
     const rootConfig = program.coder.accounts.decode("rootConfig", rootInfo.data);
-    registryConfigPda = rootConfig.baseRegistry;
+    collectionPubkey = rootConfig.baseCollection;
 
+    [registryConfigPda] = getRegistryConfigPda(collectionPubkey, program.programId);
     const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
     if (!registryAccountInfo) {
       throw new Error("RegistryConfig missing. Run tests/init-localnet.ts first.");
     }
-    const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo.data);
-    collectionPubkey = registryConfig.collection;
 
     const atomConfigInfo = await provider.connection.getAccountInfo(atomConfigPda);
     if (!atomConfigInfo) {
@@ -209,6 +208,7 @@ describe("Program Stress Tests (Agent Registry)", function () {
       await program.methods
         .registerWithOptions(uri, true)
         .accounts({
+          rootConfig: rootConfigPda,
           registryConfig: registryConfigPda,
           agentAccount: agentPda,
           asset: asset.publicKey,

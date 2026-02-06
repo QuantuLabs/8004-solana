@@ -7,9 +7,14 @@ import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import {
   MPL_CORE_PROGRAM_ID,
   getRootConfigPda,
+  getRegistryConfigPda,
   getAgentPda,
+  getAtomConfigPda,
+  getAtomStatsPda,
+  getRegistryAuthorityPda,
+  ATOM_ENGINE_PROGRAM_ID,
   randomHash,
-  uniqueNonce,
+  getAtomProgram,
 } from "./utils/helpers";
 
 /**
@@ -27,6 +32,9 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
   let rootConfigPda: PublicKey;
   let registryConfigPda: PublicKey;
   let collectionPubkey: PublicKey;
+  let atomConfigPda: PublicKey;
+  let atomStatsPda: PublicKey;
+  let registryAuthorityPda: PublicKey;
 
   // Test wallets
   let otherUser: Keypair;
@@ -41,26 +49,31 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
 
     // Get root config
     [rootConfigPda] = getRootConfigPda(program.programId);
-    const rootAccountInfo = await provider.connection.getAccountInfo(rootConfigPda);
-    const rootConfig = program.coder.accounts.decode("rootConfig", rootAccountInfo!.data);
+    const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
+    collectionPubkey = rootConfig.baseCollection;
+    [registryConfigPda] = getRegistryConfigPda(collectionPubkey, program.programId);
 
-    registryConfigPda = rootConfig.baseRegistry;
-    const registryAccountInfo = await provider.connection.getAccountInfo(registryConfigPda);
-    const registryConfig = program.coder.accounts.decode("registryConfig", registryAccountInfo!.data);
-    collectionPubkey = registryConfig.collection;
+    // Get ATOM config
+    [atomConfigPda] = getAtomConfigPda();
+    [registryAuthorityPda] = getRegistryAuthorityPda(program.programId);
 
     // Generate other user for non-owner operations
     otherUser = Keypair.generate();
+    // Fund otherUser for transaction fees
+    const sig = await provider.connection.requestAirdrop(otherUser.publicKey, 0.5 * anchor.web3.LAMPORTS_PER_SOL);
+    await provider.connection.confirmTransaction(sig, "confirmed");
     console.log(`   Agent Owner: ${provider.wallet.publicKey.toString().slice(0, 16)}...`);
     console.log(`   Other User: ${otherUser.publicKey.toString().slice(0, 16)}...`);
 
     // Create an agent owned by provider.wallet
     testAgentAsset = Keypair.generate();
     [testAgentPda] = getAgentPda(testAgentAsset.publicKey, program.programId);
+    [atomStatsPda] = getAtomStatsPda(testAgentAsset.publicKey);
 
     await program.methods
       .register("https://test.com/anti-gaming-agent")
-      .accounts({
+      .accountsPartial({
+        rootConfig: rootConfigPda,
         registryConfig: registryConfigPda,
         agentAccount: testAgentPda,
         asset: testAgentAsset.publicKey,
@@ -72,6 +85,30 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
       .signers([testAgentAsset])
       .rpc();
 
+    // Enable ATOM
+    await program.methods
+      .enableAtom()
+      .accountsPartial({
+        owner: provider.wallet.publicKey,
+        asset: testAgentAsset.publicKey,
+        agentAccount: testAgentPda,
+      })
+      .rpc();
+
+    // Initialize AtomStats
+    const atomProgram = getAtomProgram(provider);
+    await atomProgram.methods
+      .initializeStats()
+      .accountsPartial({
+        owner: provider.wallet.publicKey,
+        asset: testAgentAsset.publicKey,
+        collection: collectionPubkey,
+        config: atomConfigPda,
+        stats: atomStatsPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
     // Verify agent created
     const agent = await program.account.agentAccount.fetch(testAgentPda);
     console.log(`   Test Agent Asset: ${testAgentAsset.publicKey.toString().slice(0, 16)}...`);
@@ -80,23 +117,28 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
 
   describe("Self-Feedback Prevention", () => {
     it("giveFeedback() FAILS when client is agent owner (self-feedback)", async () => {
-      const feedbackIndex = new BN(0);
-
       try {
         await program.methods
           .giveFeedback(
-            100,
-            "great",
-            "service",
-            "/api/test",
-            "https://feedback.uri",
-            Array.from(randomHash()),
-            feedbackIndex
+            new BN(10000),                // value (scaled by decimals)
+            2,                            // value_decimals
+            100,                          // score
+            Array.from(randomHash()),     // feedback_hash
+            "great",                      // tag1
+            "service",                    // tag2
+            "/api/test",                  // endpoint
+            "https://feedback.uri"        // feedback_uri
           )
-          .accounts({
+          .accountsPartial({
             client: provider.wallet.publicKey, // SAME as agent owner - should fail
             asset: testAgentAsset.publicKey,
+            collection: collectionPubkey,
             agentAccount: testAgentPda,
+            atomConfig: atomConfigPda,
+            atomStats: atomStatsPda,
+            atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+            registryAuthority: registryAuthorityPda,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
 
@@ -110,22 +152,27 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
     });
 
     it("giveFeedback() SUCCEEDS when client is different from owner", async () => {
-      const feedbackIndex = new BN(0);
-
       const sig = await program.methods
         .giveFeedback(
-          85,
-          "helpful",
-          "fast",
-          "/api/test",
-          "https://feedback.uri",
-          Array.from(randomHash()),
-          feedbackIndex
+          new BN(8500),                 // value (scaled by decimals)
+          2,                            // value_decimals
+          85,                           // score
+          Array.from(randomHash()),     // feedback_hash
+          "helpful",                    // tag1
+          "fast",                       // tag2
+          "/api/test",                  // endpoint
+          "https://feedback.uri"        // feedback_uri
         )
-        .accounts({
+        .accountsPartial({
           client: otherUser.publicKey,
           asset: testAgentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: testAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
+          systemProgram: SystemProgram.programId,
         })
         .signers([otherUser])
         .rpc();
@@ -135,153 +182,32 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
     });
   });
 
-  describe("Self-Validation Prevention", () => {
-    it("requestValidation() FAILS when validator_address is agent owner", async () => {
-      const nonce = uniqueNonce();
-
-      try {
-        await program.methods
-          .requestValidation(
-            provider.wallet.publicKey, // validator = agent owner - should fail
-            nonce,
-            "https://request.uri",
-            Array.from(randomHash())
-          )
-          .accounts({
-            requester: provider.wallet.publicKey,
-            asset: testAgentAsset.publicKey,
-            agentAccount: testAgentPda,
-          })
-          .rpc();
-
-        expect.fail("Should have failed with SelfValidationNotAllowed");
-      } catch (err: any) {
-        expect(err.toString()).to.include("SelfValidationNotAllowed");
-        console.log("   Correctly rejected self-validation request");
-      }
-    });
-
-    it("requestValidation() SUCCEEDS when validator is different from owner", async () => {
-      const nonce = uniqueNonce();
-
-      const sig = await program.methods
-        .requestValidation(
-          otherUser.publicKey,
-          nonce,
-          "https://request.uri",
-          Array.from(randomHash())
-        )
-        .accounts({
-          requester: provider.wallet.publicKey,
-          asset: testAgentAsset.publicKey,
-          agentAccount: testAgentPda,
-        })
-        .rpc();
-
-      console.log(`   Validation request with different validator succeeded: ${sig.slice(0, 16)}...`);
-      // Events-only: event was emitted
-    });
-
-    it("respondToValidation() FAILS when validator is agent owner", async () => {
-      const nonce = uniqueNonce();
-
-      // First create a request with a different validator
-      await program.methods
-        .requestValidation(
-          otherUser.publicKey,
-          nonce,
-          "https://request.uri",
-          Array.from(randomHash())
-        )
-        .accounts({
-          requester: provider.wallet.publicKey,
-          asset: testAgentAsset.publicKey,
-          agentAccount: testAgentPda,
-        })
-        .rpc();
-
-      // Owner tries to respond (should fail due to self-validation check)
-      try {
-        await program.methods
-          .respondToValidation(
-            nonce,
-            80,
-            "https://response.uri",
-            Array.from(randomHash()),
-            "approved"
-          )
-          .accounts({
-            validator: provider.wallet.publicKey, // Owner trying to validate - should fail
-            asset: testAgentAsset.publicKey,
-            agentAccount: testAgentPda,
-          })
-          .rpc();
-
-        expect.fail("Should have failed with SelfValidationNotAllowed");
-      } catch (err: any) {
-        expect(err.toString()).to.include("SelfValidationNotAllowed");
-        console.log("   Correctly rejected self-validation response");
-      }
-    });
-
-    it("respondToValidation() SUCCEEDS when validator is not agent owner", async () => {
-      const nonce = uniqueNonce();
-
-      // Create request
-      await program.methods
-        .requestValidation(
-          otherUser.publicKey,
-          nonce,
-          "https://request.uri",
-          Array.from(randomHash())
-        )
-        .accounts({
-          requester: provider.wallet.publicKey,
-          asset: testAgentAsset.publicKey,
-          agentAccount: testAgentPda,
-        })
-        .rpc();
-
-      // Respond as otherUser (not the owner)
-      const sig = await program.methods
-        .respondToValidation(
-          nonce,
-          80,
-          "https://response.uri",
-          Array.from(randomHash()),
-          "approved"
-        )
-        .accounts({
-          validator: otherUser.publicKey,
-          asset: testAgentAsset.publicKey,
-          agentAccount: testAgentPda,
-        })
-        .signers([otherUser])
-        .rpc();
-
-      console.log(`   Validation response from non-owner validator succeeded: ${sig.slice(0, 16)}...`);
-      // Events-only: event was emitted
-    });
-  });
+  // NOTE: Self-Validation Prevention tests removed in v0.5.0
+  // Validation module archived for future upgrade
 
   describe("Edge Cases", () => {
     it("Different user can give multiple feedbacks", async () => {
-      const feedbackIndex = new BN(1);
-
       await program.methods
         .giveFeedback(
-          90,
-          "excellent",
-          "reliable",
-          "/api/v2",
-          "https://feedback2.uri",
-          Array.from(randomHash()),
-          feedbackIndex
+          new BN(9000),                 // value (scaled by decimals)
+          2,                            // value_decimals
+          90,                           // score
+          Array.from(randomHash()),     // feedback_hash
+          "excellent",                  // tag1
+          "reliable",                   // tag2
+          "/api/v2",                    // endpoint
+          "https://feedback2.uri"       // feedback_uri
         )
-        .accounts({
+        .accountsPartial({
           client: otherUser.publicKey,
           asset: testAgentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: testAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
+          systemProgram: SystemProgram.programId,
         })
         .signers([otherUser])
         .rpc();
@@ -289,29 +215,34 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
       console.log("   Multiple feedbacks from same user allowed");
     });
 
-    it("Same index can be reused (events-only)", async () => {
-      const feedbackIndex = new BN(0);
-
-      // Events-only allows duplicate indices
+    it("Feedback with different hash works (no duplicate index concept)", async () => {
+      // Each feedback gets auto-incremented index, no duplicate index concept
       await program.methods
         .giveFeedback(
-          75,
-          "good",
-          "reused",
-          "/api/v3",
-          "https://feedback3.uri",
-          Array.from(randomHash()),
-          feedbackIndex
+          new BN(7500),                 // value (scaled by decimals)
+          2,                            // value_decimals
+          75,                           // score
+          Array.from(randomHash()),     // feedback_hash
+          "good",                       // tag1
+          "consistent",                 // tag2
+          "/api/v3",                    // endpoint
+          "https://feedback3.uri"       // feedback_uri
         )
-        .accounts({
+        .accountsPartial({
           client: otherUser.publicKey,
           asset: testAgentAsset.publicKey,
+          collection: collectionPubkey,
           agentAccount: testAgentPda,
+          atomConfig: atomConfigPda,
+          atomStats: atomStatsPda,
+          atomEngineProgram: ATOM_ENGINE_PROGRAM_ID,
+          registryAuthority: registryAuthorityPda,
+          systemProgram: SystemProgram.programId,
         })
         .signers([otherUser])
         .rpc();
 
-      console.log("   Reused index allowed (events-only, indexer dedupes)");
+      console.log("   Multiple feedbacks with auto-incremented index work");
     });
   });
 });

@@ -23,15 +23,15 @@ pub mod agent_registry_8004 {
     use super::*;
 
     // ============================================================================
-    // Identity Instructions (Metaplex Core) - Multi-Collection Architecture
+    // Identity Instructions - Single Collection Architecture (v0.6.0)
     // ============================================================================
 
-    /// Initialize the registry with root config and first base registry
+    /// Initialize the registry with root config and base collection
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         identity::instructions::initialize(ctx)
     }
 
-    /// Register agent in a specific registry (base or user)
+    /// Register agent in the base collection
     pub fn register(ctx: Context<Register>, agent_uri: String) -> Result<()> {
         identity::instructions::register(ctx, agent_uri)
     }
@@ -98,24 +98,6 @@ pub mod agent_registry_8004 {
         deadline: i64,
     ) -> Result<()> {
         identity::instructions::set_agent_wallet(ctx, new_wallet, deadline)
-    }
-
-    /// Create a user registry (anyone can create their own shard)
-    pub fn create_user_registry(
-        ctx: Context<CreateUserRegistry>,
-        collection_name: String,
-        collection_uri: String,
-    ) -> Result<()> {
-        identity::instructions::create_user_registry(ctx, collection_name, collection_uri)
-    }
-
-    /// Update user registry collection metadata (owner only)
-    pub fn update_user_registry_metadata(
-        ctx: Context<UpdateUserRegistryMetadata>,
-        new_name: Option<String>,
-        new_uri: Option<String>,
-    ) -> Result<()> {
-        identity::instructions::update_user_registry_metadata(ctx, new_name, new_uri)
     }
 
     // ============================================================================

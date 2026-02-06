@@ -19,12 +19,12 @@ import { expect } from "chai";
 import {
   MPL_CORE_PROGRAM_ID,
   getRootConfigPda,
+  getRegistryConfigPda,
   getAgentPda,
   getAtomConfigPda,
   getAtomStatsPda,
   getRegistryAuthorityPda,
   randomHash,
-  uniqueNonce,
   getAtomProgram,
 } from "./utils/helpers";
 
@@ -222,10 +222,8 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
 
     [rootConfigPda] = getRootConfigPda(program.programId);
     const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
-
-    registryConfigPda = rootConfig.baseRegistry;
-    const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
-    collectionPubkey = registryConfig.collection;
+    collectionPubkey = rootConfig.baseCollection;
+    [registryConfigPda] = getRegistryConfigPda(collectionPubkey, program.programId);
 
     [atomConfigPda] = getAtomConfigPda(atomEngine.programId);
     [registryAuthorityPda] = getRegistryAuthorityPda(program.programId);
@@ -265,9 +263,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
               agentAccount: agent1Pda,
               asset: agent1Asset.publicKey,
               collection: collectionPubkey,
-              userCollectionAuthority: null,
               owner: provider.wallet.publicKey,
-              payer: provider.wallet.publicKey,
               systemProgram: SystemProgram.programId,
               mplCoreProgram: MPL_CORE_PROGRAM_ID,
             })
@@ -291,7 +287,6 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
               agentAccount: agent1Pda,
               asset: agent1Asset.publicKey,
               collection: collectionPubkey,
-              userCollectionAuthority: null,
               owner: provider.wallet.publicKey,
               systemProgram: SystemProgram.programId,
               mplCoreProgram: MPL_CORE_PROGRAM_ID,
@@ -312,7 +307,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
         async () => {
           return atomEngine.methods
             .initializeStats()
-            .accounts({
+            .accountsPartial({
               owner: provider.wallet.publicKey,
               asset: agent1Asset.publicKey,
               collection: collectionPubkey,
@@ -328,21 +323,20 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
     });
 
     it("giveFeedback() - CPI to ATOM Engine (score: 85)", async () => {
-      const feedbackIndex = new anchor.BN(0);
-
       await measureCost(
         provider,
         "giveFeedback (CPI to ATOM, score=85)",
         async () => {
           return program.methods
             .giveFeedback(
-              85,
-              "quality",
-              "reliable",
-              "https://api.agent.example.com",
-              "https://example.com/feedback",
-              Array.from(randomHash()),
-              feedbackIndex
+              new anchor.BN(8500),           // value (scaled by decimals)
+              2,                             // value_decimals
+              85,                            // score
+              Array.from(randomHash()),      // feedback_hash
+              "quality",                     // tag1
+              "reliable",                    // tag2
+              "https://api.agent.example.com", // endpoint
+              "https://example.com/feedback"   // feedback_uri
             )
             .accountsPartial({
               client: thirdParty.publicKey,
@@ -364,21 +358,20 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
     });
 
     it("giveFeedback() - Second feedback (score: 90)", async () => {
-      const feedbackIndex = new anchor.BN(1);
-
       await measureCost(
         provider,
         "giveFeedback (CPI to ATOM, score=90)",
         async () => {
           return program.methods
             .giveFeedback(
-              90,
-              "fast",
-              "accurate",
-              "https://api.agent.example.com",
-              "https://example.com/feedback2",
-              Array.from(randomHash()),
-              feedbackIndex
+              new anchor.BN(9000),           // value (scaled by decimals)
+              2,                             // value_decimals
+              90,                            // score
+              Array.from(randomHash()),      // feedback_hash
+              "fast",                        // tag1
+              "accurate",                    // tag2
+              "https://api.agent.example.com", // endpoint
+              "https://example.com/feedback2"  // feedback_uri
             )
             .accountsPartial({
               client: client2.publicKey,
@@ -400,21 +393,20 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
     });
 
     it("giveFeedback() - Negative feedback (score: 30)", async () => {
-      const feedbackIndex = new anchor.BN(2);
-
       await measureCost(
         provider,
         "giveFeedback (CPI to ATOM, score=30)",
         async () => {
           return program.methods
             .giveFeedback(
-              30,
-              "slow",
-              "error",
-              "https://api.agent.example.com",
-              "https://example.com/feedback3",
-              Array.from(randomHash()),
-              feedbackIndex
+              new anchor.BN(3000),           // value (scaled by decimals)
+              2,                             // value_decimals
+              30,                            // score
+              Array.from(randomHash()),      // feedback_hash
+              "slow",                        // tag1
+              "error",                       // tag2
+              "https://api.agent.example.com", // endpoint
+              "https://example.com/feedback3"  // feedback_uri
             )
             .accountsPartial({
               client: client3.publicKey,
@@ -437,17 +429,18 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
 
     it("revokeFeedback() - Revoke feedback (CPI to ATOM)", async () => {
       // First give a feedback to revoke
-      const revokeIndex = new anchor.BN(3);
+      const revokeHash = Array.from(randomHash());
 
       await program.methods
         .giveFeedback(
-          70,
-          "test",
-          "revoke",
-          "https://api.example.com",
-          "https://example.com/feedback/revoke",
-          Array.from(randomHash()),
-          revokeIndex
+          new anchor.BN(7000),            // value (scaled by decimals)
+          2,                              // value_decimals
+          70,                             // score
+          revokeHash,                     // feedback_hash
+          "test",                         // tag1
+          "revoke",                       // tag2
+          "https://api.example.com",      // endpoint
+          "https://example.com/feedback/revoke" // feedback_uri
         )
         .accountsPartial({
           client: thirdParty.publicKey,
@@ -463,15 +456,20 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
         .signers([thirdParty])
         .rpc();
 
+      // Get feedback index from agent account
+      const agent = await program.account.agentAccount.fetch(agent1Pda);
+      const revokeIndex = new anchor.BN(agent.feedbackCount.toNumber() - 1);
+
       await measureCost(
         provider,
         "revokeFeedback (CPI to ATOM)",
         async () => {
           return program.methods
-            .revokeFeedback(revokeIndex)
+            .revokeFeedback(revokeIndex, revokeHash)
             .accountsPartial({
               client: thirdParty.publicKey,
               asset: agent1Asset.publicKey,
+              agentAccount: agent1Pda,
               atomConfig: atomConfigPda,
               atomStats: agent1StatsPda,
               atomEngineProgram: atomEngine.programId,
@@ -497,89 +495,27 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
         async () => {
           return program.methods
             .appendResponse(
-              feedbackIndex,
-              "https://example.com/response",
-              Array.from(randomHash())
+              agent1Asset.publicKey,      // asset_key
+              thirdParty.publicKey,       // client_address
+              feedbackIndex,              // feedback_index
+              "https://example.com/response", // response_uri
+              Array.from(randomHash()),   // response_hash
+              Array.from(randomHash())    // seal_hash
             )
-            .accounts({
+            .accountsPartial({
               responder: provider.wallet.publicKey,
-              asset: agent1Asset.publicKey,
-            })
-            .rpc();
-        },
-        0,
-        "TX only"
-      );
-    });
-
-    it("requestValidation() - Request validation", async () => {
-      const validationNonce = uniqueNonce();
-
-      await measureCost(
-        provider,
-        "requestValidation (events-only)",
-        async () => {
-          return program.methods
-            .requestValidation(
-              thirdParty.publicKey,
-              validationNonce,
-              "https://example.com/validation/request",
-              Array.from(randomHash())
-            )
-            .accounts({
-              requester: provider.wallet.publicKey,
-              asset: agent1Asset.publicKey,
               agentAccount: agent1Pda,
-            })
-            .rpc();
-        },
-        0,
-        "TX only"
-      );
-    });
-
-    it("respondToValidation() - Validator responds", async () => {
-      const validationNonce = uniqueNonce();
-
-      // First request
-      await program.methods
-        .requestValidation(
-          thirdParty.publicKey,
-          validationNonce,
-          "https://example.com/validation/request2",
-          Array.from(randomHash())
-        )
-        .accounts({
-          requester: provider.wallet.publicKey,
-          asset: agent1Asset.publicKey,
-          agentAccount: agent1Pda,
-        })
-        .rpc();
-
-      await measureCost(
-        provider,
-        "respondToValidation (events-only)",
-        async () => {
-          return program.methods
-            .respondToValidation(
-              validationNonce,
-              95,
-              "https://example.com/validation/response",
-              Array.from(randomHash()),
-              "approved"
-            )
-            .accounts({
-              validator: thirdParty.publicKey,
               asset: agent1Asset.publicKey,
-              agentAccount: agent1Pda,
             })
-            .signers([thirdParty])
             .rpc();
         },
         0,
         "TX only"
       );
     });
+
+    // NOTE: Validation cost tests removed in v0.5.0
+    // Validation module archived for future upgrade
   });
 
   describe("Display AtomStats After Operations", () => {

@@ -40,7 +40,7 @@ describe("Initialize Localnet", () => {
     if (accountInfo !== null) {
       console.log("Registry already initialized - skipping init");
       const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
-      console.log("Current base registry:", rootConfig.baseRegistry.toBase58());
+      console.log("Current base collection:", rootConfig.baseCollection.toBase58());
       return;
     }
 
@@ -92,7 +92,7 @@ describe("Initialize Localnet", () => {
     // Verify initialization
     const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
     expect(rootConfig.authority.toBase58()).to.equal(provider.wallet.publicKey.toBase58());
-    expect(rootConfig.baseRegistry.toBase58()).to.equal(registryConfigPda.toBase58());
+    expect(rootConfig.baseCollection.toBase58()).to.equal(collectionKeypair.publicKey.toBase58());
 
     const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
     expect(registryConfig.collection.toBase58()).to.equal(collectionKeypair.publicKey.toBase58());
@@ -142,16 +142,17 @@ describe("Initialize Localnet", () => {
     const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
     console.log("\nRoot Config:");
     console.log("  Authority:", rootConfig.authority.toBase58());
-    console.log("  Base Registry:", rootConfig.baseRegistry.toBase58());
+    console.log("  Base Collection:", rootConfig.baseCollection.toBase58());
 
     // Registry Config
-    const registryConfig = await program.account.registryConfig.fetch(
-      rootConfig.baseRegistry
+    const [registryConfigPda] = getRegistryConfigPda(
+      rootConfig.baseCollection,
+      program.programId
     );
+    const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
     console.log("\nRegistry Config:");
     console.log("  Collection:", registryConfig.collection.toBase58());
-    console.log("  Registry Type:", registryConfig.registryType);
-    console.log("  Base Index:", registryConfig.baseIndex);
+    console.log("  Authority:", registryConfig.authority.toBase58());
 
     // ATOM Config
     const [atomConfigPda] = getAtomConfigPda(atomEngine.programId);

@@ -44,31 +44,21 @@ pub struct WalletUpdated {
 }
 
 // ============================================================================
-// Scalability Events
+// Registry Events
 // ============================================================================
 
-/// Event emitted when a base registry is created
+/// Event emitted when registry is initialized
 #[event]
-pub struct BaseRegistryCreated {
-    pub registry: Pubkey,
+pub struct RegistryInitialized {
     pub collection: Pubkey,
-    pub created_by: Pubkey,
+    pub authority: Pubkey,
 }
 
-/// Event emitted when a user registry is created
-#[event]
-pub struct UserRegistryCreated {
-    pub registry: Pubkey,
-    pub collection: Pubkey,
-    pub owner: Pubkey,
-}
-
-/// Event emitted when agent is registered in a specific registry
+/// Event emitted when agent is registered
 /// Field order: fixed-size first (Pubkey, bool), variable-size last (String)
 #[event]
-pub struct AgentRegisteredInRegistry {
+pub struct AgentRegistered {
     pub asset: Pubkey,
-    pub registry: Pubkey,
     pub collection: Pubkey,
     pub owner: Pubkey,
     pub atom_enabled: bool,

@@ -18,6 +18,7 @@ import {
   getAtomStatsPda,
   getAgentPda,
   getRootConfigPda,
+  getRegistryConfigPda,
   getRegistryAuthorityPda,
   randomHash,
   fundKeypair,
@@ -52,9 +53,8 @@ describe("E2E Revoke Feedback v2.5", () => {
     // Get registry config
     [rootConfigPda] = getRootConfigPda(program.programId);
     const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
-    registryConfigPda = rootConfig.baseRegistry;
-    const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
-    collectionPubkey = registryConfig.collection;
+    collectionPubkey = rootConfig.baseCollection;
+    [registryConfigPda] = getRegistryConfigPda(collectionPubkey, program.programId);
 
     // Get ATOM config
     [atomConfigPda] = getAtomConfigPda(atomEngine.programId);
@@ -80,9 +80,7 @@ describe("E2E Revoke Feedback v2.5", () => {
         agentAccount: agentPda,
         asset: agentAsset.publicKey,
         collection: collectionPubkey,
-        userCollectionAuthority: null,
         owner: provider.wallet.publicKey,
-        payer: provider.wallet.publicKey,
         systemProgram: SystemProgram.programId,
         mplCoreProgram: MPL_CORE_PROGRAM_ID,
       })
@@ -94,7 +92,7 @@ describe("E2E Revoke Feedback v2.5", () => {
     // Initialize AtomStats for the agent (owner pays)
     await atomEngine.methods
       .initializeStats()
-      .accounts({
+      .accountsPartial({
         owner: provider.wallet.publicKey,
         asset: agentAsset.publicKey,
         collection: collectionPubkey,
