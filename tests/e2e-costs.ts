@@ -12,7 +12,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
-import { AtomEngine } from "../target/types/atom_engine";
+import { AtomEngine } from "../types/atom_engine";
 import { Keypair, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
 
@@ -25,6 +25,7 @@ import {
   getRegistryAuthorityPda,
   randomHash,
   uniqueNonce,
+  getAtomProgram,
 } from "./utils/helpers";
 
 // SOL price for USD calculations
@@ -195,7 +196,7 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.AgentRegistry8004 as Program<AgentRegistry8004>;
-  const atomEngine = anchor.workspace.AtomEngine as Program<AtomEngine>;
+  const atomEngine = getAtomProgram(provider) as Program<AtomEngine>;
 
   let rootConfigPda: PublicKey;
   let registryConfigPda: PublicKey;

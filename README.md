@@ -149,6 +149,31 @@ anchor build
 anchor test
 ```
 
+## Devnet Setup
+
+After deploying the programs to devnet, **initialize the registry** (one-time setup by the upgrade authority):
+
+```bash
+# Set environment variables
+export ANCHOR_PROVIDER_URL="https://api.devnet.solana.com"
+export ANCHOR_WALLET="$HOME/.config/solana/id.json"
+
+# Run the init script (creates root_config + base collection)
+npx ts-node scripts/init-devnet.ts
+```
+
+This creates:
+- **RootConfig PDA**: Global config pointing to the base registry
+- **RegistryConfig PDA**: Configuration for the base collection
+- **Base Collection**: Metaplex Core collection for agent NFTs
+
+| Account | Current Devnet Address |
+|---------|----------------------|
+| Root Config | `EJ3UN1Rp9QCqe5xjHMuoxTmRWm6KBYrxSeATtheFmgZb` |
+| Base Collection | `C6W2bq4BoVT8FDvqhdp3sbcHFBjNBXE8TsNak2wTXQs9` |
+
+**Note**: Only the program upgrade authority can call `initialize`.
+
 ## Documentation
 
 - [ATOM Engine](programs/atom-engine/README.md)

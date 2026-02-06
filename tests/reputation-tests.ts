@@ -6,7 +6,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program, BN } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
-import { AtomEngine } from "../target/types/atom_engine";
+import { AtomEngine } from "../types/atom_engine";
 import { Keypair, SystemProgram, PublicKey, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
 import { expect } from "chai";
 
@@ -24,6 +24,7 @@ import {
   uriOfLength,
   stringOfLength,
   expectAnchorError,
+  getAtomProgram,
 } from "./utils/helpers";
 
 // Helper to fund a keypair from the provider wallet
@@ -47,7 +48,7 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.AgentRegistry8004 as Program<AgentRegistry8004>;
-  const atomProgram = anchor.workspace.AtomEngine as Program<AtomEngine>;
+  const atomProgram = getAtomProgram(provider) as Program<AtomEngine>;
 
   let rootConfigPda: PublicKey;
   let registryConfigPda: PublicKey;

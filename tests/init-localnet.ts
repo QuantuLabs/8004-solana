@@ -5,7 +5,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program, BN } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
-import { AtomEngine } from "../target/types/atom_engine";
+import { AtomEngine } from "../types/atom_engine";
 import { Keypair, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
 
@@ -15,6 +15,7 @@ import {
   getRegistryConfigPda,
   getAtomConfigPda,
   getValidationConfigPda,
+  getAtomProgram,
 } from "./utils/helpers";
 
 describe("Initialize Localnet", () => {
@@ -22,7 +23,7 @@ describe("Initialize Localnet", () => {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.AgentRegistry8004 as Program<AgentRegistry8004>;
-  const atomEngine = anchor.workspace.AtomEngine as Program<AtomEngine>;
+  const atomEngine = getAtomProgram(provider) as Program<AtomEngine>;
 
   let rootConfigPda: PublicKey;
   let collectionKeypair: Keypair;

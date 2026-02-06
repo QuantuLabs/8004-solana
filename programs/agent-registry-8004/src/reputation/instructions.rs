@@ -177,7 +177,7 @@ pub fn give_feedback(
     );
 
     agent.feedback_digest = chain_hash(&agent.feedback_digest, DOMAIN_FEEDBACK, &leaf);
-    agent.feedback_count += 1;
+    agent.feedback_count = agent.feedback_count.checked_add(1).ok_or(RegistryError::Overflow)?;
 
     emit!(NewFeedback {
         asset,
@@ -324,7 +324,7 @@ pub fn revoke_feedback(
     let leaf = compute_revoke_leaf(&asset, &client, feedback_index, &seal_hash, slot);
     let agent = &mut ctx.accounts.agent_account;
     agent.revoke_digest = chain_hash(&agent.revoke_digest, DOMAIN_REVOKE, &leaf);
-    agent.revoke_count += 1;
+    agent.revoke_count = agent.revoke_count.checked_add(1).ok_or(RegistryError::Overflow)?;
     emit!(FeedbackRevoked {
         asset,
         client_address: client,
@@ -398,7 +398,7 @@ pub fn append_response(
     );
     let agent = &mut ctx.accounts.agent_account;
     agent.response_digest = chain_hash(&agent.response_digest, DOMAIN_RESPONSE, &leaf);
-    agent.response_count += 1;
+    agent.response_count = agent.response_count.checked_add(1).ok_or(RegistryError::Overflow)?;
 
     emit!(ResponseAppended {
         asset: asset_key,

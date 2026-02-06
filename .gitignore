@@ -81,3 +81,6 @@ CLAUDE.md
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Local cargo config for path overrides
+.cargo/

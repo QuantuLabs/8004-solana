@@ -24,7 +24,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
-import { AtomEngine } from "../target/types/atom_engine";
+import { AtomEngine } from "../types/atom_engine";
 import { Keypair, PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
 import * as crypto from "crypto";
@@ -44,6 +44,7 @@ import {
   fundKeypairs,
   returnFunds,
   sleep,
+  getAtomProgram,
 } from "./utils/helpers";
 
 import { loadTestWallets, saveTestWallets } from "./utils/test-wallets";
@@ -133,7 +134,7 @@ describe("Indexer Stress Tests", function () {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.AgentRegistry8004 as Program<AgentRegistry8004>;
-  const atomProgram = anchor.workspace.AtomEngine as Program<AtomEngine>;
+  const atomProgram = getAtomProgram(provider) as Program<AtomEngine>;
 
   let rootConfigPda: PublicKey;
   let registryConfigPda: PublicKey;

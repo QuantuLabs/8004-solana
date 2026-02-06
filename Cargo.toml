@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "programs/agent-registry-8004",
-    "programs/atom-engine"
 ]
 resolver = "2"
 

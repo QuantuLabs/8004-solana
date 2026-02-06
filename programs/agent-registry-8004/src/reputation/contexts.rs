@@ -25,6 +25,9 @@ pub struct GiveFeedback<'info> {
     pub asset: UncheckedAccount<'info>,
 
     /// CHECK: Collection for the agent (passed to atom-engine for filtering)
+    #[account(
+        constraint = collection.key() == agent_account.collection @ RegistryError::InvalidCollection
+    )]
     pub collection: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,

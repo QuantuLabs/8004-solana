@@ -8,7 +8,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AgentRegistry8004 } from "../target/types/agent_registry_8004";
-import { AtomEngine } from "../target/types/atom_engine";
+import { AtomEngine } from "../types/atom_engine";
 import { Keypair, SystemProgram, PublicKey } from "@solana/web3.js";
 import { expect } from "chai";
 
@@ -21,6 +21,7 @@ import {
   getRegistryAuthorityPda,
   randomHash,
   fundKeypair,
+  getAtomProgram,
 } from "./utils/helpers";
 
 describe("E2E Revoke Feedback v2.5", () => {
@@ -28,7 +29,7 @@ describe("E2E Revoke Feedback v2.5", () => {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.AgentRegistry8004 as Program<AgentRegistry8004>;
-  const atomEngine = anchor.workspace.AtomEngine as Program<AtomEngine>;
+  const atomEngine = getAtomProgram(provider) as Program<AtomEngine>;
 
   let rootConfigPda: PublicKey;
   let registryConfigPda: PublicKey;

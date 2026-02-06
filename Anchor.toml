@@ -7,11 +7,9 @@ skip-lint = false
 
 [programs.devnet]
 agent_registry_8004 = "8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N"
-atom_engine = "AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8"
 
 [programs.localnet]
 agent_registry_8004 = "8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N"
-atom_engine = "AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8"
 
 [registry]
 url = "https://api.apr.dev"
@@ -21,17 +19,10 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-attacks = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/atom-attack-vectors.ts"
 costs = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/e2e-costs.ts"
-entropy = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-entropy-backfire.ts"
 full = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/identity-tests.ts tests/reputation-tests.ts tests/validation-tests.ts"
-grief = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-griefing.ts"
-hll = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-hll-stuffing.ts"
 indexer = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/indexer-stress-test.ts"
-iron = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-iron-dome.ts"
-phantom = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-phantom-swarm.ts"
 revoke = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/revoke-e2e.ts"
-security = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/atom-security-audit.ts"
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/revoke-e2e.ts tests/reputation-tests.ts"
 validation = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/init-localnet.ts tests/validation-state-tests.ts"
 
@@ -46,5 +37,10 @@ url = "https://api.devnet.solana.com"
 ledger = ".anchor/test-ledger"
 rpc_port = 8899
 
+# Clone Metaplex Core for NFT operations
 [[test.validator.clone]]
 address = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+
+# Clone ATOM Engine from devnet for CPI
+[[test.validator.clone]]
+address = "AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8"

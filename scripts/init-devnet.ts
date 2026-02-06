@@ -61,16 +61,16 @@ async function main() {
     const rootConfig = await program.account.rootConfig.fetch(rootConfigPda);
     console.log("\n=== Root Config ===");
     console.log("Authority:", rootConfig.authority.toBase58());
-    console.log("Current Base Registry:", rootConfig.currentBaseRegistry.toBase58());
-    console.log("Base Registry Count:", rootConfig.baseRegistryCount.toString());
+    console.log("Base Registry:", rootConfig.baseRegistry.toBase58());
+    console.log("Bump:", rootConfig.bump);
 
     // Fetch and display registry config
     const registryConfig = await program.account.registryConfig.fetch(registryConfigPda);
     console.log("\n=== Registry Config (Base #0) ===");
     console.log("Collection:", registryConfig.collection.toBase58());
-    console.log("Registry Type:", registryConfig.registryType);
+    console.log("Registry Type:", JSON.stringify(registryConfig.registryType));
     console.log("Authority:", registryConfig.authority.toBase58());
-    console.log("Base Index:", registryConfig.baseIndex.toString());
+    console.log("Bump:", registryConfig.bump);
 
   } catch (e: any) {
     console.error("Error:", e.message);

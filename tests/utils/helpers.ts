@@ -265,6 +265,14 @@ export function getAtomStatsPda(
 // NOTE: getAtomCheckpointPda removed in v2.5c - checkpoints eliminated, events = source of truth
 
 /**
+ * Get the ATOM Engine program from IDL (since it's cloned from devnet, not in workspace)
+ */
+export function getAtomProgram(provider: anchor.AnchorProvider): anchor.Program<any> {
+  const idl = require("../../idl/atom_engine.json");
+  return new anchor.Program(idl, provider);
+}
+
+/**
  * Derive registry authority PDA for CPI signing to atom-engine: ["atom_cpi_authority"]
  * This PDA is derived from agent-registry and used to sign CPI calls
  */
