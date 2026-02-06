@@ -11,7 +11,7 @@
 | Program | Address |
 |---------|---------|
 | agent-registry-8004 | `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N` |
-| atom-engine | `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8` |
+| [atom-engine](https://github.com/QuantuLabs/8004-atom) | `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8` |
 
 ## Highlights
 
