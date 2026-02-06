@@ -6,7 +6,6 @@ pub mod constants;
 pub mod error;
 pub mod identity;
 pub mod reputation;
-pub mod validation;
 
 // Re-export all contexts at crate root for Anchor macro
 pub use identity::contexts::*;
@@ -16,10 +15,6 @@ pub use identity::events::*;
 pub use reputation::contexts::*;
 pub use reputation::state::*;
 pub use reputation::events::*;
-
-pub use validation::contexts::*;
-pub use validation::state::*;
-pub use validation::events::*;
 
 pub use error::RegistryError;
 
@@ -178,60 +173,6 @@ pub mod agent_registry_8004 {
         reputation::instructions::append_response(ctx, asset_key, client_address, feedback_index, response_uri, response_hash, seal_hash)
     }
 
-    // ============================================================================
-    // Validation Instructions
-    // ============================================================================
-
-    /// Initialize the ValidationConfig (global validation registry state)
-    pub fn initialize_validation_config(ctx: Context<InitializeValidationConfig>) -> Result<()> {
-        validation::instructions::initialize_validation_config(ctx)
-    }
-
-    /// Request validation for an agent
-    pub fn request_validation(
-        ctx: Context<RequestValidation>,
-        asset_key: Pubkey,
-        validator_address: Pubkey,
-        nonce: u32,
-        request_uri: String,
-        request_hash: [u8; 32],
-    ) -> Result<()> {
-        validation::instructions::request_validation(
-            ctx,
-            asset_key,
-            validator_address,
-            nonce,
-            request_uri,
-            request_hash,
-        )
-    }
-
-    /// Validator responds to a validation request
-    /// ERC-8004: Enables progressive validation - validators can update responses
-    pub fn respond_to_validation(
-        ctx: Context<RespondToValidation>,
-        asset_key: Pubkey,
-        validator_address: Pubkey,
-        nonce: u32,
-        response: u8,
-        response_uri: String,
-        response_hash: [u8; 32],
-        tag: String,
-    ) -> Result<()> {
-        validation::instructions::respond_to_validation(
-            ctx,
-            asset_key,
-            validator_address,
-            nonce,
-            response,
-            response_uri,
-            response_hash,
-            tag,
-        )
-    }
-
-    // ERC-8004 Compliance: No close_validation() function
-    // Per specification: "On-chain pointers and hashes cannot be deleted,
-    // ensuring audit trail integrity." ValidationRequest PDAs are immutable
-    // and permanent for reputation data integrity.
+    // NOTE: Validation module removed in v0.5.0 - planned for future upgrade
+    // Archived code available in src/_archive/validation/
 }

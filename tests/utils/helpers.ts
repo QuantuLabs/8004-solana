@@ -66,23 +66,8 @@ export function getConfigPda(programId: PublicKey): [PublicKey, number] {
   );
 }
 
-/**
- * Derive ValidationConfig PDA: ["validation_config"]
- * Required for request_validation and respond_to_validation instructions
- */
-export function getValidationConfigPda(programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("validation_config")],
-    programId
-  );
-}
-
-/**
- * @deprecated Use getValidationConfigPda instead
- */
-export function getValidationStatsPda(programId: PublicKey): [PublicKey, number] {
-  return getValidationConfigPda(programId);
-}
+// NOTE: Validation module removed in v0.5.0 - archived for future upgrade
+// See tests/_archive/validation-*.ts and programs/agent-registry-8004/src/_archive/validation/
 
 /**
  * Derive agent PDA: ["agent", asset.key()]
@@ -190,26 +175,7 @@ export function getResponsePda(
   );
 }
 
-/**
- * Derive validation request PDA: ["validation", asset.key(), validator, nonce (u32 LE)]
- * v0.3.0: Uses asset (Pubkey) instead of agent_id
- */
-export function getValidationRequestPda(
-  asset: PublicKey,
-  validator: PublicKey,
-  nonce: number,
-  programId: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("validation"),
-      asset.toBuffer(),
-      validator.toBuffer(),
-      new anchor.BN(nonce).toArrayLike(Buffer, "le", 4),
-    ],
-    programId
-  );
-}
+// NOTE: getValidationRequestPda removed in v0.5.0 - archived for future upgrade
 
 /**
  * Derive metadata entry PDA: ["agent_meta", asset.key(), key_hash (16 bytes)]
