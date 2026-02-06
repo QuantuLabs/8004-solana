@@ -1,6 +1,6 @@
 # 8004 on Solana
 
-**The trust layer for AI agents.** Identity, reputation, and validation—all on-chain.
+**The trust layer for AI agents.** Identity and reputation—on-chain.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Anchor](https://img.shields.io/badge/Anchor-0.31.1-blue)](https://github.com/coral-xyz/anchor)
@@ -13,32 +13,37 @@
 | agent-registry-8004 | `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N` |
 | atom-engine | `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8` |
 
-## v0.6.0
+## Highlights
 
 - **SEAL v1** (Solana Event Authenticity Layer): Trustless on-chain hash computation
-- **[ATOM v0.2.2](programs/atom-engine/README.md)**: Hardened EMA arithmetic, tier vesting (8 epochs), platinum loyalty gate (500+)
+- **[ATOM Engine](programs/atom-engine/README.md)**: Hardened EMA arithmetic, tier vesting, platinum loyalty gate
 - **Hash-chain integrity**: Rolling digests for feedback, response, and revoke events
+- **Single-collection architecture**: All agents in one Metaplex Core collection
 
 See [CHANGELOG.md](CHANGELOG.md).
 
 ## Architecture
+
+Two core modules (Identity + Reputation) with an external reputation engine (ATOM).
+
+> Validation module archived for future upgrade.
 
 ```
 +-----------------------------------------------------------------+
 |              agent-registry-8004 (Devnet)                        |
 |         8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N            |
 +-----------------------------------------------------------------+
-|  +---------------+ +----------------+ +--------------------+     |
-|  | Identity      | | Reputation     | | Validation         |     |
-|  +---------------+ +----------------+ +--------------------+     |
-|  | Agent NFTs    | | SEAL v1 Events | | ValidationConfig   |     |
-|  |  (Core)       | | Hash-Chains    | | ValidationRequest  |     |
-|  | Metadata PDAs | | seal_hash      | | Multi-validator    |     |
-|  +---------------+ +----------------+ +--------------------+     |
+|  +---------------+ +------------------+                          |
+|  | Identity      | | Reputation       |                          |
+|  +---------------+ +------------------+                          |
+|  | Agent NFTs    | | SEAL v1 Events   |                          |
+|  |  (Core)       | | Hash-Chains      |                          |
+|  | Metadata PDAs | | seal_hash        |                          |
+|  +---------------+ +------------------+                          |
 +-----------------------------------------------------------------+
-          |                    |                    |
-          | CPI                | Events             | Events
-          v                    v                    v
+          |                    |
+          | CPI                | Events
+          v                    v
 +-----------------------------------------------------------------+
 |                    atom-engine (ATOM)                            |
 |         AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8            |
@@ -59,7 +64,7 @@ See [CHANGELOG.md](CHANGELOG.md).
           v                    v
 +-----------------------------------------------------------------+
 |                      Metaplex Core                               |
-|         (Collection + Agent Assets)                              |
+|         (Single Collection + Agent Assets)                       |
 +-----------------------------------------------------------------+
 ```
 
@@ -80,18 +85,8 @@ See **[docs/SEAL.md](docs/SEAL.md)** for full specification.
 | Module | Description |
 |--------|-------------|
 | **Identity** | Metaplex Core NFTs, PDA metadata, immutable option |
-| **Reputation** | Feedback (0-100), revoke, responses, ATOM Engine |
-| **Validation** | Third-party verification, multi-validator, progressive |
+| **Reputation** | Feedback (0-100), revoke, responses, SEAL v1 integrity |
 | **ATOM Engine** | Sybil resistance (HLL), burst detection, trust tiers (0-4) |
-
-### Validation
-
-| Account | Seeds | Fields |
-|---------|-------|--------|
-| ValidationConfig | `["validation_config"]` | authority, counters |
-| ValidationRequest | `["validation", asset, validator, nonce]` | request_hash, response (0-100), responded_at |
-
-Self-validation is blocked.
 
 ## ERC-8004 Compliance
 
@@ -101,7 +96,6 @@ Fully compliant with the [ERC-8004 spec](https://eips.ethereum.org/EIPS/eip-8004
 |--------|-----------|
 | **Identity** | `register()`, `setAgentURI()`, `setMetadata()`, `setAgentWallet()` |
 | **Reputation** | `giveFeedback()`, `revokeFeedback()`, `appendResponse()` |
-| **Validation** | `validationRequest()`, `validationResponse()` |
 
 ### Solana Architecture
 
@@ -109,7 +103,6 @@ Fully compliant with the [ERC-8004 spec](https://eips.ethereum.org/EIPS/eip-8004
 |---------|----------------|
 | Feedback/Response/Revoke | Event-only with hash-chain proof |
 | Metadata | Separate PDAs per entry |
-| Validation | PDA per validation |
 | Agent IDs | Metaplex Core asset pubkey |
 
 ### Beyond the Spec
@@ -117,7 +110,7 @@ Fully compliant with the [ERC-8004 spec](https://eips.ethereum.org/EIPS/eip-8004
 | Feature | What it brings |
 |---------|----------------|
 | **ATOM Engine** | Sybil resistance, burst detection, 5-tier trust |
-| **Multi-Collection** | Scale with collection-based sharding |
+| **SEAL v1** | On-chain hash of feedback parameters for integrity verification |
 | **Immutable Metadata** | Lock critical data forever |
 
 ### Get Started Fast
@@ -134,8 +127,6 @@ Fully compliant with the [ERC-8004 spec](https://eips.ethereum.org/EIPS/eip-8004
 | Register Agent | ~0.006 |
 | Initialize ATOM Stats | ~0.005 |
 | Give Feedback | ~0.000005 |
-| Request Validation | ~0.002 |
-| Respond to Validation | ~0.000005 |
 
 ## Quick Start
 
@@ -158,18 +149,17 @@ After deploying the programs to devnet, **initialize the registry** (one-time se
 export ANCHOR_PROVIDER_URL="https://api.devnet.solana.com"
 export ANCHOR_WALLET="$HOME/.config/solana/id.json"
 
-# Run the init script (creates root_config + base collection)
+# Run the init script (creates config + base collection)
 npx ts-node scripts/init-devnet.ts
 ```
 
 This creates:
-- **RootConfig PDA**: Global config pointing to the base registry
-- **RegistryConfig PDA**: Configuration for the base collection
-- **Base Collection**: Metaplex Core collection for agent NFTs
+- **Config PDA**: Global registry config (authority, collection mint)
+- **Base Collection**: Single Metaplex Core collection for all agent NFTs
 
 | Account | Current Devnet Address |
 |---------|----------------------|
-| Root Config | `EJ3UN1Rp9QCqe5xjHMuoxTmRWm6KBYrxSeATtheFmgZb` |
+| Config | `EJ3UN1Rp9QCqe5xjHMuoxTmRWm6KBYrxSeATtheFmgZb` |
 | Base Collection | `C6W2bq4BoVT8FDvqhdp3sbcHFBjNBXE8TsNak2wTXQs9` |
 
 **Note**: Only the program upgrade authority can call `initialize`.
@@ -207,4 +197,4 @@ Special thanks to [PayAI](https://payai.network) for supporting the mainnet depl
 
 ---
 
-MIT License | v0.6.0 | 2026-01
+MIT License

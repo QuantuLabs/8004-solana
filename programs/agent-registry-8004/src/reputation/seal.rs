@@ -140,24 +140,19 @@ pub fn compute_seal_hash(
 ///     DOMAIN_LEAF_V1 (16 bytes) ||
 ///     asset (32 bytes) ||
 ///     client (32 bytes) ||
-///     feedback_index (4 bytes, u32 LE) ||
+///     feedback_index (8 bytes, u64 LE) ||
 ///     seal_hash (32 bytes) ||
 ///     slot (8 bytes, u64 LE)
 /// )
 /// ```
-///
-/// # Note
-///
-/// Uses u32 for feedback_index (sufficient for ~4 billion feedbacks per agent).
-/// This differs from the legacy leaf which used u64.
 pub fn compute_feedback_leaf_v1(
     asset: &[u8; 32],
     client: &[u8; 32],
-    feedback_index: u32,
+    feedback_index: u64,
     seal_hash: &[u8; 32],
     slot: u64,
 ) -> [u8; 32] {
-    let mut data = Vec::with_capacity(16 + 32 + 32 + 4 + 32 + 8);
+    let mut data = Vec::with_capacity(16 + 32 + 32 + 8 + 32 + 8);
 
     // Domain separator
     data.extend_from_slice(DOMAIN_LEAF_V1);

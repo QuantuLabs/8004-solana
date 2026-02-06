@@ -20,7 +20,7 @@ npx ts-node scripts/deploy.ts --cluster localnet --full
 
 ```
 1. atom-engine        (reputation computation)
-2. agent-registry-8004 (identity + reputation + validation)
+2. agent-registry-8004 (identity + reputation)
 ```
 
 **Important**: `agent-registry-8004` has a compile-time dependency on `atom-engine::ID`. If deploying with new Program IDs, update `declare_id!()` in both programs before building.
@@ -60,12 +60,11 @@ solana program deploy target/deploy/agent_registry_8004.so --program-id target/d
 solana program deploy target/deploy/agent_registry_8004.so --program-id target/deploy/agent_registry_8004-keypair.json -u devnet
 ```
 
-### 5. Initialize Registry & ValidationConfig
+### 5. Initialize Registry
 
 ```bash
 # Run via script
 npx ts-node scripts/deploy.ts --cluster localnet --step init-registry
-npx ts-node scripts/deploy.ts --cluster localnet --step init-validation
 ```
 
 ## Full Deployment (All Steps)
@@ -95,9 +94,6 @@ solana account <atom_config_pda> -u <cluster>
 
 # Check RootConfig
 solana account <root_config_pda> -u <cluster>
-
-# Check ValidationConfig
-solana account <validation_config_pda> -u <cluster>
 ```
 
 ## Troubleshooting

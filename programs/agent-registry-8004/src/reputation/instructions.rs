@@ -171,7 +171,7 @@ pub fn give_feedback(
     let leaf = compute_feedback_leaf_v1(
         &asset_bytes,
         &client_bytes,
-        feedback_index as u32,
+        feedback_index,
         &seal_hash,
         slot,
     );
