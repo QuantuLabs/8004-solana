@@ -82,11 +82,11 @@ The leaf binds the seal to its on-chain context:
 │   0    │  16  │ DOMAIN_LEAF_V1   │ "8004_LEAF_V1____"      │
 │  16    │  32  │ asset            │ Pubkey bytes            │
 │  48    │  32  │ client           │ Pubkey bytes            │
-│  80    │   4  │ feedback_index   │ u32 little-endian       │
-│  84    │  32  │ seal_hash        │ 32 bytes                │
-│ 116    │   8  │ slot             │ u64 little-endian       │
+│  80    │   8  │ feedback_index   │ u64 little-endian       │
+│  88    │  32  │ seal_hash        │ 32 bytes                │
+│ 120    │   8  │ slot             │ u64 little-endian       │
 └────────┴──────┴──────────────────┴─────────────────────────┘
-Total: 124 bytes
+Total: 128 bytes
 ```
 
 ## Domain Separators

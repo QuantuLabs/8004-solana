@@ -86,7 +86,7 @@
 
         .program-id.identity { border-left: 3px solid var(--accent-purple); }
         .program-id.reputation { border-left: 3px solid var(--accent-green); }
-        .program-id.validation { border-left: 3px solid var(--accent-orange); }
+        .program-id.seal { border-left: 3px solid var(--accent-orange); }
 
         nav {
             background: var(--bg-card);
@@ -347,18 +347,18 @@
             <div class="version-tabs" style="margin-bottom: 1rem;">
                 <a href="archive/v0.1.0.html" style="color: var(--text-secondary); margin-right: 1rem; text-decoration: none;">v0.1.0</a>
                 <a href="archive/v0.2.0.html" style="color: var(--text-secondary); margin-right: 1rem; text-decoration: none;">v0.2.0</a>
-                <a href="index.html" style="color: var(--accent-purple); font-weight: bold; text-decoration: none; border-bottom: 2px solid var(--accent-purple); padding-bottom: 2px;">v0.4.0</a>
+                <a href="index.html" style="color: var(--accent-purple); font-weight: bold; text-decoration: none; border-bottom: 2px solid var(--accent-purple); padding-bottom: 2px;">v0.6.0</a>
             </div>
             <h1>8004 on Solana</h1>
             <p class="subtitle">Technical Documentation for AI Agent Identity & Reputation Registry</p>
             <div class="program-ids">
                 <div class="program-id identity" style="border-left: 3px solid var(--accent-blue);">
                     <span class="label">agent-registry-8004 (Devnet)</span>
-                    HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT
+                    8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N
                 </div>
                 <div class="program-id reputation" style="border-left: 3px solid var(--accent-green);">
                     <span class="label">atom-engine (Devnet)</span>
-                    B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7
+                    AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8
                 </div>
             </div>
             <p style="color: var(--text-secondary); margin-top: 1rem; font-size: 0.9rem;">
@@ -374,7 +374,7 @@
                 <li><a href="#atom-engine">ATOM Engine</a></li>
                 <li><a href="#identity">Identity</a></li>
                 <li><a href="#reputation">Reputation</a></li>
-                <li><a href="#validation">Validation</a></li>
+                <li><a href="#seal">SEAL v1</a></li>
                 <li><a href="#costs">Costs</a></li>
                 <li><a href="#pda-reference">PDA Reference</a></li>
             </ul>
@@ -382,7 +382,7 @@
 
         <!-- CHANGELOG SECTION -->
         <section id="changelog">
-            <h2>v0.4.0 Changelog - ATOM Engine</h2>
+            <h2>Changelog</h2>
 
             <div class="success">
                 <strong>New:</strong> ATOM Engine integration for advanced on-chain reputation analytics with Sybil resistance.
@@ -432,7 +432,7 @@
         <!-- OVERVIEW SECTION -->
         <section id="overview">
             <h2>Overview</h2>
-            <p>8004 is a standard for on-chain AI agent registries. This Solana implementation (v0.4.0) features <strong>ATOM Engine</strong> for advanced reputation analytics:</p>
+            <p>8004 is a standard for on-chain AI agent registries. This Solana implementation features <strong>SEAL v1</strong> integrity, <strong>ATOM Engine</strong> reputation, and single-collection architecture:</p>
 
             <div class="grid" style="margin-top: 1.5rem;">
                 <div class="card">
@@ -451,10 +451,10 @@
                 </div>
                 <div class="card">
                     <div class="card-header">
-                        <div class="icon orange">✓</div>
-                        <h4 style="margin: 0;">Validation Module</h4>
+                        <div class="icon orange">🔒</div>
+                        <h4 style="margin: 0;">SEAL v1</h4>
                     </div>
-                    <p>Third-party validation and attestation. Validators provide scores (0-100) with progressive updates.</p>
+                    <p>Solana Event Authenticity Layer. On-chain hash computation ensures feedback integrity — clients cannot lie about what they submitted.</p>
                 </div>
             </div>
 
@@ -485,22 +485,23 @@
             <div class="architecture-diagram">
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                     agent-registry-8004 (Devnet)                             │
-│              <span class="highlight">HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT</span>                  │
+│              <span class="highlight">8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N</span>                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  ┌────────────────────┐ ┌──────────────────┐ ┌────────────────────────────┐ │
-│  │   Identity Module  │ │ Reputation Module│ │    Validation Module       │ │
+│  ┌────────────────────┐ ┌──────────────────┐ ┌────────────────────────────┐ │
+│  │   Identity Module  │ │ Reputation Module│ │       SEAL v1              │ │
 │  ├────────────────────┤ ├──────────────────┤ ├────────────────────────────┤ │
-│  │ • register()       │ │ • give_feedback()│ │ • request_validation()     │ │
-│  │ • set_metadata_pda │ │   └─→ CPI ATOM   │ │ • respond_to_validation()  │ │
-│  │ • delete_meta_pda  │ │ • revoke_feedback│ │ • update_validation()      │ │
-│  │ • set_agent_uri()  │ │   └─→ CPI ATOM   │ │ • close_validation()       │ │
+│  │ • register()       │ │ • give_feedback()│ │ • On-chain seal_hash       │ │
+│  │ • set_metadata_pda │ │   └─→ CPI ATOM   │ │ • Hash-chain digests       │ │
+│  │ • delete_meta_pda  │ │ • revoke_feedback│ │ • Feedback/revoke/response │ │
+│  │ • set_agent_uri()  │ │   └─→ CPI ATOM   │ │   integrity verification   │ │
 │  │ • transfer_agent() │ │ • append_response│ │                            │ │
 │  └────────────────────┘ └────────┬─────────┘ └────────────────────────────┘ │
 ├──────────────────────────────────┼──────────────────────────────────────────┤
 │                                  ▼                                           │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
 │  │                        atom-engine (Devnet)                           │   │
-│  │              <span class="highlight">B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7</span>              │   │
+│  │              <span class="highlight">AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8</span>              │   │
 │  ├──────────────────────────────────────────────────────────────────────┤   │
 │  │  • update_stats() — HLL + Ring Buffer + EMA + Trust Tier              │   │
 │  │  • revoke_stats() — Remove from ring buffer, adjust scores            │   │
@@ -628,7 +629,7 @@ quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
                         <div class="icon green">🔍</div>
                         <h4 style="margin: 0;">Agent Explorer</h4>
                     </div>
-                    <p>Browse and explore all registered 8004 agents on Solana. View agent metadata, reputation scores, and validation history.</p>
+                    <p>Browse and explore all registered 8004 agents on Solana. View agent metadata, reputation scores, and feedback history.</p>
                     <p style="margin-top: 1rem;">
                         <span class="tag" style="background: rgba(63, 185, 80, 0.2); color: var(--accent-green);">Available</span>
                     </p>
@@ -656,7 +657,7 @@ quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
                         <div class="icon orange">IDX</div>
                         <h4 style="margin: 0;">8004 Indexer</h4>
                     </div>
-                    <p>Off-chain indexer for 8004 events and account data. Enables fast queries for agent reputation, feedback history, and validation status.</p>
+                    <p>Off-chain indexer for 8004 events and account data. Enables fast queries for agent reputation and feedback history.</p>
                     <p style="margin-top: 1rem;">
                         <span class="tag" style="background: rgba(210, 153, 34, 0.2); color: var(--accent-orange);">In Development</span>
                         <span style="color: var(--text-secondary); font-size: 0.85rem; margin-left: 0.5rem;">Expected: Q1 2026</span>
@@ -788,7 +789,7 @@ quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
     pub bump: u8,                       // 1 byte
 }
 // Removed: next_agent_id, total_agents (off-chain via indexer)</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["root_config"]</div>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["config"]</div>
             </div>
 
             <div class="card">
@@ -1018,109 +1019,52 @@ agent_reputation.next_feedback_index += 1;</code></pre>
             </div>
         </section>
 
-        <!-- VALIDATION MODULE SECTION -->
-        <section id="validation">
-            <h2>Validation Module</h2>
-            <p>Third-party validation and attestation system. Uses <strong>asset</strong> (Pubkey) as identifier.</p>
+        <!-- SEAL v1 SECTION -->
+        <section id="seal">
+            <h2>SEAL v1 - Solana Event Authenticity Layer</h2>
+            <p>Trustless on-chain hash computation for feedback integrity. The program computes <code>seal_hash</code> deterministically from all instruction parameters.</p>
 
-            <h3>Key Design: Cost-Optimized Storage</h3>
             <div class="success">
-                <strong>v0.3.0:</strong> ValidationRequest is 151 bytes. URIs stored in events only. <code>ValidationStats</code> removed (counters off-chain).
+                <strong>On-chain truth:</strong> seal_hash is computed BY the program, not supplied by the client. Clients cannot lie about what they submitted.
             </div>
 
-            <h3>Instructions</h3>
-
-            <!-- request_validation -->
-            <div class="card">
-                <h4>request_validation(validator_address, nonce, request_uri, request_hash)</h4>
-                <p>Request validation for an agent. Only NFT holder can request. Asset passed via account context.</p>
-
-                <p><strong>Parameters:</strong></p>
-                <table>
-                    <tr><th>Param</th><th>Type</th><th>Description</th></tr>
-                    <tr><td>validator_address</td><td>Pubkey</td><td>Who can respond</td></tr>
-                    <tr><td>nonce</td><td>u32</td><td>Sequence number (enables multiple validations from same validator)</td></tr>
-                    <tr><td>request_uri</td><td>String</td><td>Max 200 bytes (stored in event only)</td></tr>
-                    <tr><td>request_hash</td><td>[u8; 32]</td><td>SHA-256 hash (stored on-chain)</td></tr>
-                </table>
-
-                <div class="pda-seed">
-                    <strong>ValidationRequest PDA:</strong> seeds = ["validation", asset.key(), validator_address, nonce (LE)]
-                </div>
+            <h3>How It Works</h3>
+            <div class="architecture-diagram">
+CLIENT submits instruction params (value, score, tags, uri, ...)
+                    │
+                    ▼
+PROGRAM computes: seal_hash = keccak256(canonical_encoding(params))
+                    │
+                    ▼
+LEAF binds seal to context: keccak256(DOMAIN || asset || client || index || seal_hash || slot)
+                    │
+                    ▼
+HASH-CHAIN: digest = keccak256(prev_digest || DOMAIN || leaf)
+                    │
+                    ▼
+INDEXER stores events with seal_hash for off-chain verification
             </div>
 
-            <!-- respond_to_validation -->
-            <div class="card">
-                <h4>respond_to_validation(response, response_uri, response_hash, tag)</h4>
-                <p>Validator responds to validation request. Only designated validator can respond.</p>
-
-                <p><strong>Parameters:</strong></p>
-                <table>
-                    <tr><th>Param</th><th>Type</th><th>Description</th></tr>
-                    <tr><td>response</td><td>u8</td><td>0-100 (0=failed, 100=passed)</td></tr>
-                    <tr><td>response_uri</td><td>String</td><td>Max 200 bytes (stored in event)</td></tr>
-                    <tr><td>response_hash</td><td>[u8; 32]</td><td>SHA-256 hash</td></tr>
-                    <tr><td>tag</td><td>String</td><td>Max 32 bytes (e.g., "oasf-v0.8.0", "zkml-verified")</td></tr>
-                </table>
-            </div>
-
-            <!-- update_validation -->
-            <div class="card">
-                <h4>update_validation(...) - Progressive Validation</h4>
-                <p>Same as respond_to_validation. Allows validators to update scores as agents improve.</p>
-            </div>
-
-            <!-- close_validation -->
-            <div class="card">
-                <h4>close_validation()</h4>
-                <p>Close validation request to recover rent. Only agent owner or program authority can close.</p>
-            </div>
-
-            <h3>Account Structures</h3>
-
-            <div class="card">
-                <h4>ValidationRequest (151 bytes)</h4>
-                <pre><code>pub struct ValidationRequest {
-    pub asset: Pubkey,               // 32 bytes (unique identifier)
-    pub validator_address: Pubkey,   // 32 bytes
-    pub nonce: u32,                  // 4 bytes
-    pub request_hash: [u8; 32],      // 32 bytes
-    pub response_hash: [u8; 32],     // 32 bytes (empty until response)
-    pub response: u8,                // 1 byte (0-100)
-    pub last_update: i64,            // 8 bytes (timestamp of last update)
-    pub has_response: bool,          // 1 byte (explicit flag)
-    pub bump: u8,                    // 1 byte
-}
-// Removed: agent_id, collection, created_at, responded_at
-// Uses last_update + has_response instead</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["validation", asset.key(), validator_address, nonce (LE)]</div>
-            </div>
-
-            <div class="warning">
-                <strong>Removed:</strong> <code>ValidationStats</code> account entirely. Total requests/responses computed off-chain via indexer.
-            </div>
-
-            <h3>Error Codes</h3>
+            <h3>Domain Separators</h3>
             <table>
-                <tr><th>Error</th><th>Message</th><th>Condition</th></tr>
-                <tr><td>RequestUriTooLong</td><td>"ReqURI&gt;200"</td><td>Request URI exceeds 200 bytes</td></tr>
-                <tr><td>ResponseUriTooLong</td><td>"RespURI&gt;200"</td><td>Response URI exceeds 200 bytes</td></tr>
-                <tr><td>InvalidResponse</td><td>"Resp[0-100]"</td><td>Response not in 0-100 range</td></tr>
-                <tr><td>UnauthorizedValidator</td><td>"!Validator"</td><td>Not the designated validator</td></tr>
-                <tr><td>UnauthorizedRequester</td><td>"!Owner"</td><td>Not the NFT holder</td></tr>
-                <tr><td>AgentNotFound</td><td>"!Agent"</td><td>Agent doesn't exist</td></tr>
-                <tr><td>InvalidIdentityRegistry</td><td>"!IdReg"</td><td>Wrong Identity Registry</td></tr>
+                <tr><th>Constant</th><th>Value (16 bytes)</th><th>Usage</th></tr>
+                <tr><td>DOMAIN_SEAL_V1</td><td><code>8004_SEAL_V1____</code></td><td>Seal hash prefix</td></tr>
+                <tr><td>DOMAIN_LEAF_V1</td><td><code>8004_LEAF_V1____</code></td><td>Leaf hash prefix</td></tr>
+                <tr><td>DOMAIN_FEEDBACK</td><td><code>8004_FEED_V1___</code></td><td>Feedback chain</td></tr>
+                <tr><td>DOMAIN_RESPONSE</td><td><code>8004_RESP_V1___</code></td><td>Response chain</td></tr>
+                <tr><td>DOMAIN_REVOKE</td><td><code>8004_REVK_V1___</code></td><td>Revoke chain</td></tr>
             </table>
 
-            <h3>Events</h3>
+            <h3>Hash-Chain Digests</h3>
+            <p>Three independent rolling hash-chains stored in <code>AgentAccount</code>:</p>
             <table>
-                <tr><th>Event</th><th>Fields</th></tr>
-                <tr><td>ValidationRequested</td><td><strong>asset</strong>, validator_address, nonce, request_uri, request_hash, requester</td></tr>
-                <tr><td>ValidationResponded</td><td><strong>asset</strong>, validator_address, nonce, response, response_uri, response_hash, tag</td></tr>
+                <tr><th>Field</th><th>Updated By</th><th>Format</th></tr>
+                <tr><td>feedback_digest + feedback_count</td><td>give_feedback()</td><td>40 bytes</td></tr>
+                <tr><td>response_digest + response_count</td><td>append_response()</td><td>40 bytes</td></tr>
+                <tr><td>revoke_digest + revoke_count</td><td>revoke_feedback()</td><td>40 bytes</td></tr>
             </table>
-            <div class="info" style="margin-top: 0.5rem;">
-                <strong>v0.3.0:</strong> All events use <code>asset: Pubkey</code>. Timestamps via blockTime.
-            </div>
+
+            <p>See <a href="SEAL.md" style="color: var(--accent-blue);">SEAL.md</a> for full binary format specification and cross-validation vectors.</p>
         </section>
 
         <!-- SECURITY SECTION -->
@@ -1130,7 +1074,7 @@ agent_reputation.next_feedback_index += 1;</code></pre>
 
             <div class="card">
                 <h4>Agent Existence Verification</h4>
-                <p>Reputation and Validation modules verify agent existence internally by checking the AgentAccount PDA exists before processing.</p>
+                <p>Reputation module verifies agent existence by checking the AgentAccount PDA exists before processing.</p>
                 <pre><code>// Agent PDA must exist (asset = unique identifier)
 #[account(
     seeds = [b"agent", asset.key().as_ref()],
@@ -1148,17 +1092,18 @@ constraint = asset.owner == owner.key()</code></pre>
             </div>
 
             <div class="card">
-                <h4>Feedback Authorization</h4>
-                <p>Only the original feedback author can revoke:</p>
-                <pre><code>constraint = feedback.client_address == client.key()
-    @ ReputationError::Unauthorized</code></pre>
+                <h4>Events-Only Reputation</h4>
+                <p>Feedbacks, responses, and revocations are events-only (no per-feedback PDAs). Integrity ensured via SEAL v1 hash-chains:</p>
+                <pre><code>// Hash-chain rolling digests in AgentAccount
+agent.feedback_digest = chain_hash(prev_digest, DOMAIN_FEEDBACK, leaf);
+agent.feedback_count += 1;</code></pre>
             </div>
 
             <div class="card">
-                <h4>Validation Authorization</h4>
-                <p>Only the designated validator can respond:</p>
-                <pre><code>constraint = validation_request.validator_address == validator.key()
-    @ ValidationError::UnauthorizedValidator</code></pre>
+                <h4>SEAL v1 Integrity</h4>
+                <p>seal_hash computed on-chain from all feedback parameters. Indexers verify by replaying events against on-chain digests.</p>
+                <pre><code>let seal_hash = compute_seal_hash_v1(value, decimals, score, ...);
+// seal_hash emitted in event, bound into hash-chain leaf</code></pre>
             </div>
         </section>
 
@@ -1173,7 +1118,7 @@ constraint = asset.owner == owner.key()</code></pre>
                 <tr><td>Set Metadata</td><td>~0.0032</td><td>MetadataEntryPda</td></tr>
                 <tr><td>Give Feedback</td><td>~0.0014</td><td>FeedbackAccount (optimized)</td></tr>
                 <tr><td>Append Response</td><td>~0.0012</td><td>ResponseAccount (minimal)</td></tr>
-                <tr><td>Request Validation</td><td>~0.0017</td><td>ValidationRequest</td></tr>
+                <tr><td>Initialize ATOM Stats</td><td>~0.005</td><td>AtomStats PDA</td></tr>
             </table>
 
             <h3>v0.3.0 Account Size Optimizations</h3>
@@ -1184,17 +1129,16 @@ constraint = asset.owner == owner.key()</code></pre>
                 <tr><td>ResponseIndexAccount</td><td>33 bytes</td><td>17 bytes</td><td class="highlight"><strong>-48%</strong></td></tr>
                 <tr><td>FeedbackAccount</td><td>99 bytes</td><td>83 bytes</td><td>-16%</td></tr>
                 <tr><td>FeedbackTagsPda</td><td>97 bytes</td><td>81 bytes</td><td>-16%</td></tr>
-                <tr><td>ValidationRequest</td><td>166 bytes</td><td>151 bytes</td><td>-9%</td></tr>
                 <tr><td>AgentAccount</td><td>343 bytes</td><td>313 bytes</td><td>-9%</td></tr>
                 <tr><td>RegistryConfig</td><td>94 bytes</td><td>78 bytes</td><td>-17%</td></tr>
             </table>
-            <p><strong>Per agent (1 feedback, 1 response, 1 validation): -158 bytes (-18%), ~0.14 SOL savings</strong></p>
+            <p><strong>Per agent (1 feedback, 1 response): significant rent savings via events-only design</strong></p>
 
             <h3>What Was Removed</h3>
 
             <div class="card">
-                <h4>1. ValidationStats Account</h4>
-                <p><strong>Removed entirely.</strong> Total requests/responses computed off-chain via indexer.</p>
+                <h4>1. Validation Module</h4>
+                <p><strong>Removed entirely.</strong> Archived for future upgrade.</p>
             </div>
 
             <div class="card">
@@ -1210,7 +1154,7 @@ constraint = asset.owner == owner.key()</code></pre>
                 <h4>3. Redundant Fields</h4>
                 <ul>
                     <li><code>agent_id</code> everywhere (replaced by <code>asset</code>)</li>
-                    <li><code>collection</code> from FeedbackAccount, ValidationRequest</li>
+                    <li><code>collection</code> from FeedbackAccount</li>
                     <li><code>created_at</code> from all accounts (use blockTime)</li>
                     <li><code>nft_symbol</code> from AgentAccount (read from Metaplex)</li>
                     <li><code>response_hash</code>, indices from ResponseAccount (in events)</li>
@@ -1222,7 +1166,6 @@ constraint = asset.owner == owner.key()</code></pre>
                 <p>Accounts can be closed to recover rent:</p>
                 <ul>
                     <li><code>delete_metadata_pda()</code> - Returns ~0.0029 SOL per entry</li>
-                    <li><code>close_validation()</code> - Returns rent to current Core asset owner</li>
                 </ul>
             </div>
         </section>
@@ -1238,7 +1181,7 @@ constraint = asset.owner == owner.key()</code></pre>
             <h3>Identity Module PDAs</h3>
             <table>
                 <tr><th>Account</th><th>Seeds</th></tr>
-                <tr><td>RootConfig</td><td><code>["root_config"]</code></td></tr>
+                <tr><td>Config</td><td><code>["config"]</code></td></tr>
                 <tr><td>Agent</td><td><code>["agent", asset.key()]</code></td></tr>
                 <tr><td>Metadata Entry</td><td><code>["agent_meta", asset.key(), key_hash[0..8]]</code></td></tr>
             </table>
@@ -1253,23 +1196,24 @@ constraint = asset.owner == owner.key()</code></pre>
                 <tr><td>Response Index</td><td><code>["response_index", asset.key(), feedback_index (LE)]</code></td></tr>
             </table>
 
-            <h3>Validation Module PDAs</h3>
+            <h3>ATOM Engine PDAs</h3>
             <table>
                 <tr><th>Account</th><th>Seeds</th></tr>
-                <tr><td>Validation Request</td><td><code>["validation", asset.key(), validator_address, nonce (LE)]</code></td></tr>
+                <tr><td>AtomStats</td><td><code>["atom_stats", asset.key()]</code></td></tr>
+                <tr><td>ATOM Config</td><td><code>["atom_config"]</code></td></tr>
             </table>
 
             <h3>Metaplex Core (External)</h3>
             <table>
                 <tr><th>Account</th><th>Description</th></tr>
-                <tr><td>Collection</td><td>Core Collection asset (stored in root_config.collection)</td></tr>
+                <tr><td>Collection</td><td>Core Collection asset (stored in config.collection_mint)</td></tr>
                 <tr><td>Asset</td><td>Core Asset for each agent = <strong>unique identifier</strong></td></tr>
             </table>
         </section>
 
         <footer>
-            <p>8004 Solana Implementation v0.4.0 - Technical Documentation</p>
-            <p>Updated: January 12, 2026 | Programs deployed on Devnet</p>
+            <p>8004 Solana Implementation v0.6.0 - Technical Documentation</p>
+            <p>Updated: February 2026 | Programs deployed on Devnet</p>
             <p style="margin-top: 1rem;">
                 <a href="https://eips.ethereum.org/EIPS/eip-8004" style="color: var(--accent-blue);">8004 Spec</a> ·
                 <a href="https://github.com/QuantuLabs/8004-solana" style="color: var(--accent-blue);">GitHub Repository</a>
