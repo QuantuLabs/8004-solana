@@ -82,5 +82,6 @@ CLAUDE.md
 # Claude Code local settings
 .claude/settings.local.json
 
-# Local cargo config for path overrides
-.cargo/
+# Local cargo config for path overrides (keep example template)
+.cargo/*
+!.cargo/config.toml.example

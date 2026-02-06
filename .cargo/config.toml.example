@@ -1,0 +1,15 @@
+# Local ATOM Engine Development
+#
+# Copy this file to .cargo/config.toml and adjust the path to your local
+# 8004-atom checkout. This makes `cargo build` / `anchor build` use your
+# local ATOM source instead of fetching from GitHub.
+#
+# .cargo/config.toml is gitignored — your local path stays private.
+#
+# Usage:
+#   cp .cargo/config.toml.example .cargo/config.toml
+#   # Edit the path below to point to your 8004-atom clone
+#   anchor build
+
+[patch."https://github.com/QuantuLabs/8004-atom.git"]
+atom-engine = { path = "../8004-atom/programs/atom-engine" }
