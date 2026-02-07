@@ -135,7 +135,7 @@ pub fn give_feedback(
 ```rust
 pub fn revoke_feedback(
     feedback_index: u64,
-    seal_hash: [u8; 32],  // Must match original (client recomputes)
+    seal_hash: [u8; 32],  // Should match original for digest integrity (not verified on-chain)
 )
 ```
 
@@ -148,7 +148,7 @@ pub fn append_response(
     feedback_index: u64,
     response_uri: String,
     response_hash: [u8; 32],
-    seal_hash: [u8; 32],  // Must match original feedback
+    seal_hash: [u8; 32],  // Should match original for digest integrity (not verified on-chain)
 )
 ```
 

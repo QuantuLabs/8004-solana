@@ -879,120 +879,75 @@ quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
 require!(feedback_index == agent_reputation.next_feedback_index);
 agent_reputation.next_feedback_index += 1;</code></pre>
 
-                <div class="pda-seed">
-                    <strong>Feedback PDA:</strong> seeds = ["feedback", asset.key(), feedback_index (LE)]
+                <div class="info" style="margin-top: 0.5rem;">
+                    <strong>Event-only:</strong> No Feedback PDA. Data stored in <code>NewFeedback</code> event + rolling hash-chain digest on <code>AgentAccount</code>.
                 </div>
             </div>
 
             <!-- revoke_feedback -->
             <div class="card">
-                <h4>revoke_feedback(feedback_index)</h4>
-                <p>Mark feedback as revoked (preserves audit trail). Only original author can revoke.</p>
+                <h4>revoke_feedback(feedback_index, seal_hash)</h4>
+                <p>Emit revocation event and update hash-chain digest. Permissionless (indexer validates authorship).</p>
 
                 <p><strong>Parameters:</strong></p>
                 <table>
                     <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
-                    <tr><td>feedback_index</td><td>u64</td><td>Index of feedback to revoke</td></tr>
+                    <tr><td>feedback_index</td><td>u64</td><td>Must be &lt; agent.feedback_count</td></tr>
+                    <tr><td>seal_hash</td><td>[u8; 32]</td><td>SEAL hash of original feedback (for digest integrity)</td></tr>
                 </table>
 
                 <p><strong>State Changes:</strong></p>
                 <ul>
-                    <li><code>feedback.is_revoked = true</code></li>
+                    <li><code>agent.revoke_digest</code> updated (hash-chain)</li>
+                    <li><code>agent.revoke_count += 1</code></li>
+                    <li>CPI to ATOM <code>revoke_stats</code> (if enabled)</li>
                 </ul>
                 <div class="info" style="margin-top: 0.5rem;">
-                    <strong>v0.3.0:</strong> No aggregate updates on-chain. Indexer recalculates totals.
+                    <strong>Event-only:</strong> No PDA. Emits <code>FeedbackRevoked</code> event.
                 </div>
             </div>
 
             <!-- append_response -->
             <div class="card">
-                <h4>append_response(feedback_index, response_uri, response_hash)</h4>
-                <p>Append response to existing feedback. <strong>Anyone can respond</strong> (permissionless).</p>
+                <h4>append_response(asset_key, client_address, feedback_index, response_uri, response_hash, seal_hash)</h4>
+                <p>Append response to existing feedback. <strong>Authorized only</strong> (agent owner or agent wallet).</p>
 
                 <p><strong>Parameters:</strong></p>
                 <table>
                     <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
-                    <tr><td>feedback_index</td><td>u64</td><td>Index of feedback to respond to</td></tr>
+                    <tr><td>asset_key</td><td>Pubkey</td><td>Agent asset key</td></tr>
+                    <tr><td>client_address</td><td>Pubkey</td><td>Original feedback author</td></tr>
+                    <tr><td>feedback_index</td><td>u64</td><td>Must be &lt; agent.feedback_count</td></tr>
                     <tr><td>response_uri</td><td>String</td><td>Max 200 bytes (in event)</td></tr>
                     <tr><td>response_hash</td><td>[u8; 32]</td><td>SHA-256 hash (in event)</td></tr>
+                    <tr><td>seal_hash</td><td>[u8; 32]</td><td>SEAL hash of original feedback (for digest integrity)</td></tr>
                 </table>
 
-                <p><strong>Use Cases:</strong></p>
+                <p><strong>State Changes:</strong></p>
                 <ul>
-                    <li>Agent showing refund/resolution</li>
-                    <li>Data aggregator flagging spam</li>
-                    <li>Community providing context</li>
+                    <li><code>agent.response_digest</code> updated (hash-chain)</li>
+                    <li><code>agent.response_count += 1</code></li>
                 </ul>
-
-                <div class="pda-seed">
-                    <strong>Response PDA:</strong> seeds = ["response", asset.key(), feedback_index (LE), response_index (LE)]
-                </div>
-                <p><em>Unlimited responses per feedback via ResponseIndexAccount tracking.</em></p>
-            </div>
-
-            <h3>Account Structures</h3>
-
-            <div class="card">
-                <h4>FeedbackAccount (83 bytes)</h4>
-                <pre><code>pub struct FeedbackAccount {
-    pub asset: Pubkey,           // 32 bytes (unique identifier)
-    pub client_address: Pubkey,  // 32 bytes (who gave feedback)
-    pub feedback_index: u64,     // 8 bytes (global index)
-    pub score: u8,               // 1 byte (0-100)
-    pub is_revoked: bool,        // 1 byte
-    pub bump: u8,                // 1 byte
-}
-// Removed: agent_id, collection, created_at, file_hash
-// Tags in optional FeedbackTagsPda, URIs/hash in events</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback", asset.key(), feedback_index (LE)]</div>
-            </div>
-
-            <div class="card">
-                <h4>FeedbackTagsPda (81 bytes) - Optional</h4>
-                <pre><code>pub struct FeedbackTagsPda {
-    pub bump: u8,                // 1 byte
-    pub tag1: String,            // 4 + 32 = 36 bytes
-    pub tag2: String,            // 4 + 32 = 36 bytes
-}
-// Removed: agent_id, feedback_index (implicit via PDA)
-// Created only when tags are set via setFeedbackTags</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["feedback_tags", asset.key(), feedback_index (LE)]</div>
                 <div class="info" style="margin-top: 0.5rem;">
-                    Use <code>setFeedbackTags</code> after <code>giveFeedback</code> to add tags on-chain.
-                    Tags always included in NewFeedback event for indexers.
+                    <strong>Event-only:</strong> No Response PDA. Emits <code>ResponseAppended</code> event.
                 </div>
             </div>
 
-            <div class="card">
-                <h4>AgentReputationMetadata (17 bytes) - Sequencer Only</h4>
-                <pre><code>pub struct AgentReputationMetadata {
-    pub next_feedback_index: u64,   // 8 bytes (global counter)
-    pub bump: u8,                   // 1 byte
-}
-// Removed: agent_id, total_feedbacks, total_score_sum, average_score, last_updated
-// Aggregates computed off-chain via indexer</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_reputation", asset.key()]</div>
-            </div>
+            <h3>Reputation Data Model</h3>
 
             <div class="card">
-                <h4>ResponseAccount (41 bytes) - Minimal</h4>
-                <pre><code>pub struct ResponseAccount {
-    pub responder: Pubkey,       // 32 bytes (who responded)
-    pub bump: u8,                // 1 byte
-}
-// Removed: agent_id, feedback_index, response_index, response_hash, created_at
-// All content stored in ResponseAppended event</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response", asset.key(), feedback_index (LE), response_index (LE)]</div>
-            </div>
-
-            <div class="card">
-                <h4>ResponseIndexAccount (17 bytes)</h4>
-                <pre><code>pub struct ResponseIndexAccount {
-    pub next_index: u64,         // 8 bytes
-    pub bump: u8,                // 1 byte
-}
-// Removed: agent_id, feedback_index (implicit via PDA)</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["response_index", asset.key(), feedback_index (LE)]</div>
+                <h4>Event-Only Architecture</h4>
+                <p>Feedback, revocation, and response data are stored as <strong>Solana events</strong> (not PDAs) for rent optimization.
+                   Integrity is guaranteed by rolling hash-chain digests stored in <code>AgentAccount</code>:</p>
+                <pre><code>// In AgentAccount (120 bytes for reputation)
+pub feedback_digest: [u8; 32],   // Rolling keccak256 hash-chain
+pub feedback_count: u64,         // Global feedback counter
+pub response_digest: [u8; 32],   // Rolling keccak256 hash-chain
+pub response_count: u64,         // Response counter
+pub revoke_digest: [u8; 32],     // Rolling keccak256 hash-chain
+pub revoke_count: u64,           // Revoke counter</code></pre>
+                <p>Each operation updates its chain: <code>new_digest = keccak256(old_digest || domain || leaf_data)</code>.</p>
+                <p>Clients verify by replaying all events and comparing final digest against on-chain value.</p>
             </div>
 
             <h3>Error Codes</h3>
@@ -1000,8 +955,7 @@ agent_reputation.next_feedback_index += 1;</code></pre>
                 <tr><th>Error</th><th>Message</th><th>Condition</th></tr>
                 <tr><td>InvalidScore</td><td>"Score[0-100]"</td><td>score &gt; 100</td></tr>
                 <tr><td>UriTooLong</td><td>"URI&gt;200"</td><td>file_uri exceeds 200 bytes</td></tr>
-                <tr><td>Unauthorized</td><td>"!author"</td><td>Non-author attempts revoke</td></tr>
-                <tr><td>AlreadyRevoked</td><td>"Revoked"</td><td>Already revoked</td></tr>
+                <tr><td>Unauthorized</td><td>"!author"</td><td>Non-owner attempts append_response</td></tr>
                 <tr><td>AgentNotFound</td><td>"!Agent"</td><td>Agent doesn't exist in Identity Registry</td></tr>
                 <tr><td>InvalidFeedbackIndex</td><td>"!FbIdx"</td><td>Index mismatch</td></tr>
                 <tr><td>InvalidIdentityRegistry</td><td>"!IdReg"</td><td>Wrong Identity Registry program</td></tr>
