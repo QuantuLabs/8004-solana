@@ -85,3 +85,6 @@ CLAUDE.md
 # Local cargo config for path overrides (keep example template)
 .cargo/*
 !.cargo/config.toml.example
+
+# Audit files (local only)
+audit.md
