@@ -141,6 +141,24 @@ async function fundKeypair(
   await provider.sendAndConfirm(tx);
 }
 
+async function waitForTransaction(
+  connection: anchor.web3.Connection,
+  signature: string,
+  maxAttempts = 12
+): Promise<anchor.web3.VersionedTransactionResponse> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const tx = await connection.getTransaction(signature, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+    if (tx) {
+      return tx;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  throw new Error(`Transaction not available after retries: ${signature}`);
+}
+
 describe("Security Fix Validation", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
@@ -474,14 +492,17 @@ describe("Security Fix Validation", () => {
         .signers([digestAgentAsset])
         .rpc();
 
-      await program.methods
-        .enableAtom()
-        .accountsPartial({
-          owner: provider.wallet.publicKey,
-          asset: digestAgentAsset.publicKey,
-          agentAccount: digestAgentPda,
-        })
-        .rpc();
+      const digestAgentInfo = await program.account.agentAccount.fetch(digestAgentPda);
+      if (!digestAgentInfo.atomEnabled) {
+        await program.methods
+          .enableAtom()
+          .accountsPartial({
+            owner: provider.wallet.publicKey,
+            asset: digestAgentAsset.publicKey,
+            agentAccount: digestAgentPda,
+          })
+          .rpc();
+      }
 
       await atomProgram.methods
         .initializeStats()
@@ -538,9 +559,7 @@ describe("Security Fix Validation", () => {
         fileHash,
       );
 
-      const feedbackTx = await provider.connection.getTransaction(feedbackTxSig, {
-        commitment: "confirmed",
-      });
+      const feedbackTx = await waitForTransaction(provider.connection, feedbackTxSig);
       const feedbackSlot = new BN(feedbackTx!.slot);
 
       const feedbackLeaf = computeFeedbackLeafV1(
@@ -570,9 +589,7 @@ describe("Security Fix Validation", () => {
         .signers([digestClientKeypair])
         .rpc();
 
-      const revokeTx = await provider.connection.getTransaction(revokeTxSig, {
-        commitment: "confirmed",
-      });
+      const revokeTx = await waitForTransaction(provider.connection, revokeTxSig);
       const revokeSlot = new BN(revokeTx!.slot);
 
       const revokeLeaf = computeRevokeLeaf(
@@ -651,9 +668,7 @@ describe("Security Fix Validation", () => {
       const agentAfterForgedRevoke = await program.account.agentAccount.fetch(digestAgentPda);
       const forgedRevokeDigest = Buffer.from(agentAfterForgedRevoke.revokeDigest);
 
-      const forgedRevokeTx = await provider.connection.getTransaction(forgedRevokeTxSig, {
-        commitment: "confirmed",
-      });
+      const forgedRevokeTx = await waitForTransaction(provider.connection, forgedRevokeTxSig);
       const forgedRevokeSlot = new BN(forgedRevokeTx!.slot);
 
       const correctRevokeLeaf = computeRevokeLeaf(
@@ -694,9 +709,7 @@ describe("Security Fix Validation", () => {
       const agentAfterReal = await program.account.agentAccount.fetch(digestAgentPda);
       const realResponseDigest = Buffer.from(agentAfterReal.responseDigest);
 
-      const realTx = await provider.connection.getTransaction(realResponseTxSig, {
-        commitment: "confirmed",
-      });
+      const realTx = await waitForTransaction(provider.connection, realResponseTxSig);
       const realSlot = new BN(realTx!.slot);
       const responseDigestBeforeReal = Buffer.from(agentBefore.responseDigest);
 

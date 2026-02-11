@@ -27,6 +27,23 @@ import {
 import { Ed25519Program, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import * as nacl from "tweetnacl";
 
+async function rpcWithBlockhashRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err);
+      if (!msg.includes("Blockhash not found") || i === retries - 1) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+  throw lastErr;
+}
+
 describe("Identity Module Tests", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
@@ -852,16 +869,18 @@ describe("Identity Module Tests", () => {
 
       // Call setAgentWallet with Ed25519 instruction prepended
       // NOTE: No separate PDA anymore - wallet stored in AgentAccount
-      const tx = await program.methods
-        .setAgentWallet(walletKeypair.publicKey, deadline)
-        .accounts({
-          owner: provider.wallet.publicKey,
-          agentAccount: agentPda,
-          asset: assetKeypair.publicKey,
-          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-        })
-        .preInstructions([ed25519Ix])
-        .rpc({ commitment: "confirmed" });
+      const tx = await rpcWithBlockhashRetry(() =>
+        program.methods
+          .setAgentWallet(walletKeypair.publicKey, deadline)
+          .accounts({
+            owner: provider.wallet.publicKey,
+            agentAccount: agentPda,
+            asset: assetKeypair.publicKey,
+            instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          })
+          .preInstructions([ed25519Ix])
+          .rpc({ commitment: "confirmed" })
+      );
 
       console.log("SetAgentWallet tx:", tx);
 

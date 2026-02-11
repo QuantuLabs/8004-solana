@@ -1,6 +1,8 @@
 pub mod chain;
 pub mod contexts;
 pub mod events;
+#[cfg(kani)]
+pub mod formal;
 pub mod instructions;
 pub mod seal;
 pub mod state;

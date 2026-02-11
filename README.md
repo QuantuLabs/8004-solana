@@ -105,6 +105,18 @@ Fully compliant with the [ERC-8004 spec](https://eips.ethereum.org/EIPS/eip-8004
 | Metadata | Separate PDAs per entry |
 | Agent IDs | Metaplex Core asset pubkey |
 
+### Events-Only Integrity Note
+
+Feedback, revoke, and response are intentionally events-only. For production reads, consumers must use the verified indexer pipeline, not raw event streams.
+
+The maintained indexer enforces the critical checks:
+- Revocation with missing parent feedback is marked `ORPHANED`
+- Revocation with `seal_hash` mismatch vs stored feedback is marked `ORPHANED`
+- Response with missing parent feedback is marked `ORPHANED`
+- Response with `seal_hash` mismatch vs stored feedback is marked `ORPHANED`
+
+Reference implementation: [8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
+
 ### Beyond the Spec
 
 | Feature | What it brings |

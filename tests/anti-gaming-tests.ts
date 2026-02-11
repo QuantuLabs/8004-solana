@@ -85,15 +85,18 @@ describe("Anti-Gaming Security (Events-Only v2.0.0)", () => {
       .signers([testAgentAsset])
       .rpc();
 
-    // Enable ATOM
-    await program.methods
-      .enableAtom()
-      .accountsPartial({
-        owner: provider.wallet.publicKey,
-        asset: testAgentAsset.publicKey,
-        agentAccount: testAgentPda,
-      })
-      .rpc();
+    // Register defaults to atom_enabled=true. Keep setup idempotent if that default changes.
+    const initialAgent = await program.account.agentAccount.fetch(testAgentPda);
+    if (!initialAgent.atomEnabled) {
+      await program.methods
+        .enableAtom()
+        .accountsPartial({
+          owner: provider.wallet.publicKey,
+          asset: testAgentAsset.publicKey,
+          agentAccount: testAgentPda,
+        })
+        .rpc();
+    }
 
     // Initialize AtomStats
     const atomProgram = getAtomProgram(provider);
