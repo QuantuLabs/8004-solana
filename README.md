@@ -117,6 +117,21 @@ The maintained indexer enforces the critical checks:
 
 Reference implementation: [8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
 
+### Formal Verification (Kani)
+
+Kani checks in this repo are **development-time only** and are not deployed on-chain.
+
+- Scope: local Rust proof harnesses for reputation invariants
+- Build gating: compiled only with `#[cfg(kani)]`
+- Runtime impact: none
+- IDL/ABI impact: none
+
+Run locally:
+
+```bash
+cargo kani -p agent-registry-8004
+```
+
 ### Beyond the Spec
 
 | Feature | What it brings |
