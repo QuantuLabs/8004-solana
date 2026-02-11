@@ -16,7 +16,7 @@
 ## Highlights
 
 - **SEAL v1** (Solana Event Authenticity Layer): Trustless on-chain hash computation
-- **[ATOM Engine](programs/atom-engine/README.md)**: Hardened EMA arithmetic, tier vesting, platinum loyalty gate
+- **[ATOM Engine](https://github.com/QuantuLabs/8004-atom)**: Hardened EMA arithmetic, tier vesting, platinum loyalty gate
 - **Hash-chain integrity**: Rolling digests for feedback, response, and revoke events
 - **Single-collection architecture**: All agents in one Metaplex Core collection
 
@@ -193,7 +193,7 @@ This creates:
 
 ## Documentation
 
-- [ATOM Engine](programs/atom-engine/README.md)
+- [ATOM Engine](https://github.com/QuantuLabs/8004-atom)
 - [CHANGELOG](CHANGELOG.md)
 - [TypeScript SDK](https://github.com/QuantuLabs/8004-solana-ts)
 - [Indexer](https://github.com/QuantuLabs/8004-solana-indexer)
