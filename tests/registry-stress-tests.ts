@@ -29,6 +29,7 @@ import {
   MPL_CORE_PROGRAM_ID,
   ATOM_ENGINE_PROGRAM_ID,
   getRootConfigPda,
+  getRegistryConfigPda,
   getAgentPda,
   getAtomConfigPda,
   getAtomStatsPda,
@@ -262,19 +263,10 @@ describe("Program Stress Tests (Agent Registry)", function () {
   });
 
   it("creates feedback at scale and appends responses", async () => {
-    const feedbackIndexMap = new Map<string, number>();
-
-    const nextIndex = (asset: PublicKey, client: PublicKey): anchor.BN => {
-      const key = `${asset.toBase58()}:${client.toBase58()}`;
-      const next = feedbackIndexMap.get(key) ?? 0;
-      feedbackIndexMap.set(key, next + 1);
-      return new anchor.BN(next);
-    };
-
     for (const agent of agents) {
       for (let i = 0; i < STRESS_FEEDBACKS_PER_AGENT; i++) {
         const client = clients[i % clients.length];
-        const feedbackIndex = nextIndex(agent.asset.publicKey, client.publicKey);
+        const feedbackIndex = new anchor.BN(i);
         const value = new anchor.BN(100 + i); // raw metric
         const valueDecimals = 2;
         const score = 70 + (i % 25);
@@ -285,7 +277,6 @@ describe("Program Stress Tests (Agent Registry)", function () {
             valueDecimals,
             score,
             Array.from(randomHash()),
-            feedbackIndex,
             "stress",
             "load",
             "https://stress.test/api",
@@ -320,10 +311,10 @@ describe("Program Stress Tests (Agent Registry)", function () {
     for (const rec of responseTargets) {
       await program.methods
         .appendResponse(
-          rec.asset,
           rec.client.publicKey,
           rec.index,
           `https://stress.test/response/${Date.now()}`,
+          Array.from(randomHash()),
           Array.from(randomHash())
         )
         .accounts({

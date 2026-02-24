@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
-use mpl_core::accounts::BaseAssetV1;
 
 use super::chain::{
     chain_hash, compute_response_leaf, compute_revoke_leaf,
@@ -10,23 +9,12 @@ use super::seal::{compute_feedback_leaf_v1, compute_seal_hash};
 use super::contexts::{*, ATOM_CPI_AUTHORITY_SEED};
 use super::events::*;
 use super::state::*;
+use crate::core_asset::get_core_owner;
 use crate::error::RegistryError;
-
-fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
-    require!(
-        *asset_info.owner == mpl_core::ID,
-        RegistryError::InvalidAsset
-    );
-
-    let data = asset_info.try_borrow_data()?;
-    let asset = BaseAssetV1::from_bytes(&data).map_err(|_| RegistryError::InvalidAsset)?;
-
-    Ok(asset.owner)
-}
 
 pub fn give_feedback(
     ctx: Context<GiveFeedback>,
-    value: i64,
+    value: i128,
     value_decimals: u8,
     score: Option<u8>,
     feedback_file_hash: Option<[u8; 32]>,
@@ -356,13 +344,13 @@ pub fn revoke_feedback(
 /// SEAL v1: Client provides seal_hash (the on-chain computed hash from the original feedback)
 pub fn append_response(
     ctx: Context<AppendResponse>,
-    asset_key: Pubkey,
     client_address: Pubkey,
     feedback_index: u64,
     response_uri: String,
     response_hash: [u8; 32],
     seal_hash: [u8; 32],
 ) -> Result<()> {
+    let asset_key = ctx.accounts.asset.key();
     let responder = ctx.accounts.responder.key();
     let feedback_count = ctx.accounts.agent_account.feedback_count;
 
@@ -370,16 +358,6 @@ pub fn append_response(
         feedback_index < feedback_count,
         RegistryError::InvalidFeedbackIndex
     );
-
-    let core_owner = get_core_owner(&ctx.accounts.asset)?;
-    let cached_owner = ctx.accounts.agent_account.owner;
-    let agent_wallet = ctx.accounts.agent_account.agent_wallet;
-
-    let is_authorized = responder == core_owner ||
-        (cached_owner == core_owner &&
-         agent_wallet.is_some_and(|wallet| responder == wallet));
-
-    require!(is_authorized, RegistryError::Unauthorized);
 
     require!(
         response_uri.len() <= MAX_URI_LENGTH,

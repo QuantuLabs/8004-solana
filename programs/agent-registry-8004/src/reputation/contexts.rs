@@ -6,7 +6,7 @@ use crate::identity::state::AgentAccount;
 pub const ATOM_CPI_AUTHORITY_SEED: &[u8] = b"atom_cpi_authority";
 
 #[derive(Accounts)]
-#[instruction(_value: i64, _value_decimals: u8, _score: Option<u8>, _feedback_file_hash: Option<[u8; 32]>, _tag1: String, _tag2: String, _endpoint: String, _feedback_uri: String)]
+#[instruction(_value: i128, _value_decimals: u8, _score: Option<u8>, _feedback_file_hash: Option<[u8; 32]>, _tag1: String, _tag2: String, _endpoint: String, _feedback_uri: String)]
 pub struct GiveFeedback<'info> {
     #[account(mut)]
     pub client: Signer<'info>,
@@ -105,15 +105,14 @@ pub struct RevokeFeedback<'info> {
 
 /// SEAL v1: Uses seal_hash instead of feedback_hash
 #[derive(Accounts)]
-#[instruction(asset_key: Pubkey, _client_address: Pubkey, _feedback_index: u64, _response_uri: String, _response_hash: [u8; 32], _seal_hash: [u8; 32])]
 pub struct AppendResponse<'info> {
-    /// Responder must be agent owner or agent wallet
+    /// Any signer can append a response (permissionless profile)
     pub responder: Signer<'info>,
 
     /// Agent account for authorization check and hash-chain update
     #[account(
         mut,
-        seeds = [b"agent", asset_key.as_ref()],
+        seeds = [b"agent", asset.key().as_ref()],
         bump = agent_account.bump,
     )]
     pub agent_account: Account<'info, AgentAccount>,
@@ -121,7 +120,7 @@ pub struct AppendResponse<'info> {
     /// Core asset (for PDA derivation)
     /// CHECK: Verified via agent_account constraint
     #[account(
-        constraint = asset.key() == asset_key @ RegistryError::InvalidAsset
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
     )]
     pub asset: UncheckedAccount<'info>,
 }

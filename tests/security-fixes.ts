@@ -29,6 +29,8 @@ const DOMAIN_LEAF_V1 = Buffer.from("8004_LEAF_V1____");
 const DOMAIN_FEEDBACK = Buffer.from("8004_FEEDBACK_V1");
 const DOMAIN_REVOKE = Buffer.from("8004_REVOKE_V1");
 const DOMAIN_RESPONSE = Buffer.from("8004_RESPONSE_V1");
+const DOMAIN_REVOKE_LEAF_V1 = Buffer.from("8004_RVK_LEAF_V1");
+const DOMAIN_RESPONSE_LEAF_V1 = Buffer.from("8004_RSP_LEAF_V1");
 
 function keccak256Buf(data: Buffer): Buffer {
   return Buffer.from(keccak256.arrayBuffer(data));
@@ -46,8 +48,7 @@ function computeSealHash(
 ): Buffer {
   const parts: Buffer[] = [];
   parts.push(DOMAIN_SEAL_V1);
-  const valueBuf = Buffer.alloc(8);
-  value.toArrayLike(Buffer, "le", 8).copy(valueBuf);
+  const valueBuf = value.toTwos(128).toArrayLike(Buffer, "le", 16);
   parts.push(valueBuf);
   parts.push(Buffer.from([valueDecimals]));
   if (score !== null) {
@@ -94,6 +95,7 @@ function computeRevokeLeaf(
   slot: BN,
 ): Buffer {
   return keccak256Buf(Buffer.concat([
+    DOMAIN_REVOKE_LEAF_V1,
     asset,
     client,
     feedbackIndex.toArrayLike(Buffer, "le", 8),
@@ -112,6 +114,7 @@ function computeResponseLeaf(
   slot: BN,
 ): Buffer {
   return keccak256Buf(Buffer.concat([
+    DOMAIN_RESPONSE_LEAF_V1,
     asset,
     client,
     feedbackIndex.toArrayLike(Buffer, "le", 8),
@@ -413,7 +416,6 @@ describe("Security Fix Validation", () => {
 
       await program.methods
         .appendResponse(
-          agentAsset.publicKey,
           clientKeypair.publicKey,
           new BN(feedbackIndex),
           "https://example.com/response/counter-test",
@@ -692,7 +694,6 @@ describe("Security Fix Validation", () => {
 
       const realResponseTxSig = await program.methods
         .appendResponse(
-          digestAgentAsset.publicKey,
           digestClientKeypair.publicKey,
           feedbackIndex,
           responseUri,
@@ -730,7 +731,6 @@ describe("Security Fix Validation", () => {
 
       await program.methods
         .appendResponse(
-          digestAgentAsset.publicKey,
           fakeClient,
           feedbackIndex,
           fakeResponseUri,

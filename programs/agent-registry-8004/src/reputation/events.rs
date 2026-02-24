@@ -11,7 +11,7 @@ pub struct NewFeedback {
     pub client_address: Pubkey,
     pub feedback_index: u64,
     pub slot: u64,
-    pub value: i64,
+    pub value: i128,
     pub value_decimals: u8,
     pub score: Option<u8>,
     /// SEAL v1: Optional hash of the feedback file content (ERC-8004 spec)
