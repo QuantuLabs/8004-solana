@@ -47,6 +47,9 @@ pub struct AgentAccount {
     /// Collection this agent belongs to (offset 8 - for filtering)
     pub collection: Pubkey,
 
+    /// Immutable creator snapshot at registration time
+    pub creator: Pubkey,
+
     /// Agent owner (cached from Core asset)
     pub owner: Pubkey,
 
@@ -70,6 +73,15 @@ pub struct AgentAccount {
     pub revoke_digest: [u8; 32],
     pub revoke_count: u64,
 
+    /// Parent asset link (optional, first-write-wins when locked)
+    pub parent_asset: Option<Pubkey>,
+
+    /// Parent link lock (once true, parent cannot be modified)
+    pub parent_locked: bool,
+
+    /// Collection pointer lock (once true, collection pointer cannot be modified)
+    pub col_locked: bool,
+
     // === Dynamic-size fields last ===
 
     /// Agent URI (IPFS/Arweave/HTTP link, max 250 bytes)
@@ -80,12 +92,19 @@ pub struct AgentAccount {
     /// Kept to avoid extra RPC to Metaplex for display
     #[max_len(32)]
     pub nft_name: String,
+
+    /// Canonical collection pointer: c1:<cid_norm>
+    #[max_len(128)]
+    pub col: String,
 }
 
 impl AgentAccount {
     /// Maximum URI length in bytes (used for validation)
     /// MUST match #[max_len(250)] to prevent runtime serialization errors
     pub const MAX_URI_LENGTH: usize = 250;
+
+    /// Maximum collection pointer length in bytes (c1:<cid_norm>)
+    pub const MAX_COL_LENGTH: usize = 128;
 }
 
 /// Individual metadata entry stored as separate PDA
@@ -124,5 +143,4 @@ impl MetadataEntryPda {
     /// Maximum value length in bytes (used for validation)
     pub const MAX_VALUE_LENGTH: usize = 250;
 }
-
 

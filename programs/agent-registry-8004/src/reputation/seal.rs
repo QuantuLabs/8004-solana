@@ -36,15 +36,15 @@ pub const DOMAIN_LEAF_V1: &[u8; 16] = b"8004_LEAF_V1____";
 ///
 /// # Binary Format (canonical)
 ///
-/// FIXED FIELDS (28 bytes total, known offsets):
+/// FIXED FIELDS (36 bytes total, known offsets):
 /// - offset 0:  DOMAIN_SEAL_V1 (16 bytes)
-/// - offset 16: value (8 bytes, i64 LE)
-/// - offset 24: value_decimals (1 byte)
-/// - offset 25: score_flag (1 byte: 0=None, 1=Some)
-/// - offset 26: score_value (1 byte, 0 if flag=0)
-/// - offset 27: file_hash_flag (1 byte: 0=None, 1=Some)
+/// - offset 16: value (16 bytes, i128 LE)
+/// - offset 32: value_decimals (1 byte)
+/// - offset 33: score_flag (1 byte: 0=None, 1=Some)
+/// - offset 34: score_value (1 byte, 0 if flag=0)
+/// - offset 35: file_hash_flag (1 byte: 0=None, 1=Some)
 ///
-/// DYNAMIC FIELDS (after offset 28, strict order):
+/// DYNAMIC FIELDS (after offset 36, strict order):
 /// - file_hash (32 bytes, only if flag=1)
 /// - tag1_len (2 bytes, u16 LE) + tag1_bytes (UTF-8)
 /// - tag2_len (2 bytes, u16 LE) + tag2_bytes (UTF-8)
@@ -53,8 +53,8 @@ pub const DOMAIN_LEAF_V1: &[u8; 16] = b"8004_LEAF_V1____";
 ///
 /// # Arguments
 ///
-/// * `value` - Metric value (i64, may be negative)
-/// * `value_decimals` - Decimal precision (0-6)
+/// * `value` - Metric value (i128, may be negative)
+/// * `value_decimals` - Decimal precision (0-18)
 /// * `score` - Quality score (0-100, optional)
 /// * `tag1` - Category tag (validated externally)
 /// * `tag2` - Period/network tag (validated externally)
@@ -66,7 +66,7 @@ pub const DOMAIN_LEAF_V1: &[u8; 16] = b"8004_LEAF_V1____";
 ///
 /// 32-byte Keccak256 hash of the canonical binary representation.
 pub fn compute_seal_hash(
-    value: i64,
+    value: i128,
     value_decimals: u8,
     score: Option<u8>,
     tag1: &str,
@@ -76,7 +76,7 @@ pub fn compute_seal_hash(
     feedback_file_hash: Option<[u8; 32]>,
 ) -> [u8; 32] {
     // Pre-calculate capacity for efficiency
-    let capacity = 28 // fixed header
+    let capacity = 36 // fixed header
         + if feedback_file_hash.is_some() { 32 } else { 0 }
         + 2 + tag1.len()
         + 2 + tag2.len()
@@ -85,18 +85,18 @@ pub fn compute_seal_hash(
 
     let mut data = Vec::with_capacity(capacity);
 
-    // === FIXED FIELDS (28 bytes, known offsets) ===
+    // === FIXED FIELDS (36 bytes, known offsets) ===
 
     // offset 0: Domain separator (16 bytes)
     data.extend_from_slice(DOMAIN_SEAL_V1);
 
-    // offset 16: Value (8 bytes, i64 LE)
+    // offset 16: Value (16 bytes, i128 LE)
     data.extend_from_slice(&value.to_le_bytes());
 
-    // offset 24: Value decimals (1 byte)
+    // offset 32: Value decimals (1 byte)
     data.push(value_decimals);
 
-    // offset 25-26: Score (2 bytes, fixed layout)
+    // offset 33-34: Score (2 bytes, fixed layout)
     match score {
         Some(s) => {
             data.push(1); // flag = present
@@ -108,10 +108,10 @@ pub fn compute_seal_hash(
         }
     }
 
-    // offset 27: File hash flag (1 byte)
+    // offset 35: File hash flag (1 byte)
     data.push(if feedback_file_hash.is_some() { 1 } else { 0 });
 
-    // === DYNAMIC FIELDS (after offset 28, strict order) ===
+    // === DYNAMIC FIELDS (after offset 36, strict order) ===
 
     // File hash (32 bytes if present)
     if let Some(hash) = feedback_file_hash {

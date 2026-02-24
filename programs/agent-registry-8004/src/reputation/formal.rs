@@ -6,7 +6,9 @@
 
 #![cfg(kani)]
 
-use super::chain::{DOMAIN_FEEDBACK, DOMAIN_RESPONSE, DOMAIN_REVOKE};
+use super::chain::{
+    DOMAIN_FEEDBACK, DOMAIN_RESPONSE, DOMAIN_RESPONSE_LEAF_V1, DOMAIN_REVOKE, DOMAIN_REVOKE_LEAF_V1,
+};
 use super::seal::{DOMAIN_LEAF_V1, DOMAIN_SEAL_V1};
 
 fn encode_score(score: Option<u8>) -> [u8; 2] {
@@ -36,5 +38,8 @@ fn proof_domain_separators_are_distinct() {
     assert_ne!(DOMAIN_FEEDBACK, DOMAIN_RESPONSE);
     assert_ne!(DOMAIN_FEEDBACK, DOMAIN_REVOKE);
     assert_ne!(DOMAIN_RESPONSE, DOMAIN_REVOKE);
+    assert_ne!(DOMAIN_RESPONSE_LEAF_V1, DOMAIN_REVOKE_LEAF_V1);
+    assert_ne!(DOMAIN_LEAF_V1, DOMAIN_RESPONSE_LEAF_V1);
+    assert_ne!(DOMAIN_LEAF_V1, DOMAIN_REVOKE_LEAF_V1);
     assert_ne!(DOMAIN_SEAL_V1, DOMAIN_LEAF_V1);
 }

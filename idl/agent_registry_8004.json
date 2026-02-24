@@ -27,7 +27,7 @@
         {
           "name": "responder",
           "docs": [
-            "Responder must be agent owner or agent wallet"
+            "Any signer can append a response (permissionless profile)"
           ],
           "signer": true
         },
@@ -50,8 +50,8 @@
                 ]
               },
               {
-                "kind": "arg",
-                "path": "asset_key"
+                "kind": "account",
+                "path": "asset"
               }
             ]
           }
@@ -64,10 +64,6 @@
         }
       ],
       "args": [
-        {
-          "name": "asset_key",
-          "type": "pubkey"
-        },
         {
           "name": "client_address",
           "type": "pubkey"
@@ -386,7 +382,7 @@
       "args": [
         {
           "name": "value",
-          "type": "i64"
+          "type": "i128"
         },
         {
           "name": "value_decimals",
@@ -1235,6 +1231,130 @@
       ]
     },
     {
+      "name": "set_collection_pointer",
+      "docs": [
+        "Set canonical collection pointer once (first-write-wins)"
+      ],
+      "discriminator": [
+        14,
+        56,
+        210,
+        16,
+        123,
+        165,
+        157,
+        124
+      ],
+      "accounts": [
+        {
+          "name": "agent_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset",
+          "docs": [
+            "Core asset - ownership verified in instruction"
+          ]
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Creator signer (must match immutable AgentAccount.creator)"
+          ],
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "col",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "set_collection_pointer_with_options",
+      "docs": [
+        "Set canonical collection pointer with optional lock behavior"
+      ],
+      "discriminator": [
+        141,
+        4,
+        149,
+        182,
+        0,
+        171,
+        218,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "agent_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset",
+          "docs": [
+            "Core asset - ownership verified in instruction"
+          ]
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Creator signer (must match immutable AgentAccount.creator)"
+          ],
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "col",
+          "type": "string"
+        },
+        {
+          "name": "lock",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "set_metadata_pda",
       "docs": [
         "Set agent metadata as individual PDA (key_hash = SHA256(key)[0..16])"
@@ -1341,6 +1461,184 @@
         },
         {
           "name": "immutable",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "set_parent_asset",
+      "docs": [
+        "Set parent link once (first-write-wins)"
+      ],
+      "discriminator": [
+        14,
+        229,
+        85,
+        57,
+        214,
+        63,
+        197,
+        52
+      ],
+      "accounts": [
+        {
+          "name": "agent_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset",
+          "docs": [
+            "Core child asset - ownership verified in instruction"
+          ]
+        },
+        {
+          "name": "parent_agent_account",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "parent_asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "parent_asset_account",
+          "docs": [
+            "Core parent asset account"
+          ]
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Current owner of child asset"
+          ],
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "parent_asset",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_parent_asset_with_options",
+      "docs": [
+        "Set parent link with optional lock behavior"
+      ],
+      "discriminator": [
+        254,
+        47,
+        83,
+        24,
+        41,
+        87,
+        242,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "agent_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset",
+          "docs": [
+            "Core child asset - ownership verified in instruction"
+          ]
+        },
+        {
+          "name": "parent_agent_account",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "parent_asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "parent_asset_account",
+          "docs": [
+            "Core parent asset account"
+          ]
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Current owner of child asset"
+          ],
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "parent_asset",
+          "type": "pubkey"
+        },
+        {
+          "name": "lock",
           "type": "bool"
         }
       ]
@@ -1564,6 +1862,19 @@
       ]
     },
     {
+      "name": "CollectionPointerSet",
+      "discriminator": [
+        251,
+        129,
+        214,
+        123,
+        188,
+        183,
+        173,
+        212
+      ]
+    },
+    {
       "name": "FeedbackRevoked",
       "discriminator": [
         205,
@@ -1616,6 +1927,19 @@
       ]
     },
     {
+      "name": "ParentAssetSet",
+      "discriminator": [
+        46,
+        215,
+        113,
+        35,
+        166,
+        171,
+        198,
+        160
+      ]
+    },
+    {
       "name": "RegistryInitialized",
       "discriminator": [
         144,
@@ -1652,6 +1976,19 @@
         84,
         102,
         11
+      ]
+    },
+    {
+      "name": "WalletResetOnOwnerSync",
+      "discriminator": [
+        193,
+        62,
+        150,
+        111,
+        61,
+        218,
+        169,
+        223
       ]
     },
     {
@@ -1740,6 +2077,41 @@
       "msg": "Metadata is immutable and cannot be modified or deleted"
     },
     {
+      "code": 12014,
+      "name": "ParentAlreadySet",
+      "msg": "Parent link is locked"
+    },
+    {
+      "code": 12015,
+      "name": "ParentSelfReference",
+      "msg": "Parent cannot reference self"
+    },
+    {
+      "code": 12016,
+      "name": "InvalidParentAsset",
+      "msg": "Invalid parent asset"
+    },
+    {
+      "code": 12017,
+      "name": "NotParentCreator",
+      "msg": "Only parent creator can link this child"
+    },
+    {
+      "code": 12018,
+      "name": "InvalidCollectionPointer",
+      "msg": "Invalid collection pointer format"
+    },
+    {
+      "code": 12019,
+      "name": "CollectionPointerAlreadySet",
+      "msg": "Collection pointer is locked"
+    },
+    {
+      "code": 12020,
+      "name": "NotAgentCreator",
+      "msg": "Only agent creator can set collection pointer"
+    },
+    {
       "code": 12050,
       "name": "InvalidScore",
       "msg": "Score must be 0-100"
@@ -1787,7 +2159,7 @@
     {
       "code": 12061,
       "name": "InvalidDecimals",
-      "msg": "Invalid decimals (max 6)"
+      "msg": "Invalid decimals (max 18)"
     },
     {
       "code": 12058,
@@ -1920,6 +2292,13 @@
             "type": "pubkey"
           },
           {
+            "name": "creator",
+            "docs": [
+              "Immutable creator snapshot at registration time"
+            ],
+            "type": "pubkey"
+          },
+          {
             "name": "owner",
             "docs": [
               "Agent owner (cached from Core asset)"
@@ -1997,6 +2376,29 @@
             "type": "u64"
           },
           {
+            "name": "parent_asset",
+            "docs": [
+              "Parent asset link (optional, first-write-wins when locked)"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "parent_locked",
+            "docs": [
+              "Parent link lock (once true, parent cannot be modified)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "col_locked",
+            "docs": [
+              "Collection pointer lock (once true, collection pointer cannot be modified)"
+            ],
+            "type": "bool"
+          },
+          {
             "name": "agent_uri",
             "docs": [
               "Agent URI (IPFS/Arweave/HTTP link, max 250 bytes)"
@@ -2008,6 +2410,13 @@
             "docs": [
               "NFT name (e.g., \"Agent #123\", max 32 bytes)",
               "Kept to avoid extra RPC to Metaplex for display"
+            ],
+            "type": "string"
+          },
+          {
+            "name": "col",
+            "docs": [
+              "Canonical collection pointer: c1:<cid_norm>"
             ],
             "type": "string"
           }
@@ -2084,6 +2493,29 @@
           {
             "name": "enabled_by",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CollectionPointerSet",
+      "docs": [
+        "Event emitted when collection pointer is first set"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "set_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "col",
+            "type": "string"
           }
         ]
       }
@@ -2301,7 +2733,7 @@
           },
           {
             "name": "value",
-            "type": "i64"
+            "type": "i128"
           },
           {
             "name": "value_decimals",
@@ -2397,6 +2829,33 @@
           {
             "name": "feedback_uri",
             "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ParentAssetSet",
+      "docs": [
+        "Event emitted when parent link is first set"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "parent_asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "parent_creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "set_by",
+            "type": "pubkey"
           }
         ]
       }
@@ -2576,6 +3035,36 @@
           {
             "name": "new_uri",
             "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WalletResetOnOwnerSync",
+      "docs": [
+        "Event emitted when sync_owner resets a stale wallet after ownership change.",
+        "This flow is permissionless, so we record the owner after sync rather than a caller."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_wallet",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "new_wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner_after_sync",
+            "type": "pubkey"
           }
         ]
       }

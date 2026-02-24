@@ -44,6 +44,53 @@ async function rpcWithBlockhashRetry<T>(fn: () => Promise<T>, retries = 2): Prom
   throw lastErr;
 }
 
+async function getTransactionWithRetry(
+  connection: anchor.web3.Connection,
+  signature: string,
+  retries = 5
+) {
+  let tx: anchor.web3.VersionedTransactionResponse | null = null;
+  for (let i = 0; i < retries; i++) {
+    tx = await connection.getTransaction(signature, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+    if (tx) return tx;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  return tx;
+}
+
+/**
+ * Execute a direct mpl-core TransferV1 (outside registry program) so AgentAccount owner cache
+ * remains stale until syncOwner() is called.
+ */
+async function transferCoreAssetExternally(
+  provider: anchor.AnchorProvider,
+  asset: PublicKey,
+  collection: PublicKey,
+  authority: PublicKey,
+  newOwner: PublicKey
+): Promise<string> {
+  // mpl-core TransferV1: discriminator=14, args.compression_proof=None (0)
+  const transferIx = new anchor.web3.TransactionInstruction({
+    programId: MPL_CORE_PROGRAM_ID,
+    keys: [
+      { pubkey: asset, isSigner: false, isWritable: true },
+      { pubkey: collection, isSigner: false, isWritable: false },
+      { pubkey: authority, isSigner: true, isWritable: true }, // payer
+      { pubkey: authority, isSigner: true, isWritable: false }, // authority
+      { pubkey: newOwner, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      // Optional log wrapper omitted by using mpl-core sentinel account.
+      { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([14, 0]),
+  });
+
+  return provider.sendAndConfirm(new anchor.web3.Transaction().add(transferIx));
+}
+
 describe("Identity Module Tests", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
@@ -806,6 +853,124 @@ describe("Identity Module Tests", () => {
       const agent = await program.account.agentAccount.fetch(agentPda);
       expect(agent.owner.toBase58()).to.equal(provider.wallet.publicKey.toBase58());
     });
+
+    it("syncOwner() emits WalletResetOnOwnerSync after external Core transfer", async () => {
+      const assetKeypair = Keypair.generate();
+      const [agentPda] = getAgentPda(assetKeypair.publicKey, program.programId);
+      const walletKeypair = Keypair.generate();
+      const newOwner = Keypair.generate();
+      const zeroPubkey = new PublicKey(new Uint8Array(32));
+
+      // Ensure newOwner account exists on-chain for Core transfer account loading.
+      const fundTx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: provider.wallet.publicKey,
+          toPubkey: newOwner.publicKey,
+          lamports: 50_000_000,
+        })
+      );
+      await provider.sendAndConfirm(fundTx);
+
+      // 1) Register agent with current owner.
+      await program.methods
+        .register("https://example.com/agent/sync-owner-event-test")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([assetKeypair])
+        .rpc();
+
+      // 2) Set wallet so sync_owner reset path has old_wallet = Some(_).
+      const clock = await provider.connection.getSlot();
+      const blockTime = await provider.connection.getBlockTime(clock);
+      const deadline = new anchor.BN((blockTime ?? Math.floor(Date.now() / 1000)) + 60);
+      const message = buildWalletSetMessage(
+        assetKeypair.publicKey,
+        walletKeypair.publicKey,
+        provider.wallet.publicKey,
+        deadline
+      );
+      const signature = nacl.sign.detached(message, walletKeypair.secretKey);
+      const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
+        publicKey: walletKeypair.publicKey.toBytes(),
+        message,
+        signature,
+      });
+
+      await program.methods
+        .setAgentWallet(walletKeypair.publicKey, deadline)
+        .accounts({
+          owner: provider.wallet.publicKey,
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .preInstructions([ed25519Ix])
+        .rpc();
+
+      // 3) Transfer Core asset directly through mpl-core (bypasses registry transferAgent).
+      const coreTransferSig = await transferCoreAssetExternally(
+        provider,
+        assetKeypair.publicKey,
+        collectionPubkey,
+        provider.wallet.publicKey,
+        newOwner.publicKey
+      );
+      console.log("External Core transfer tx:", coreTransferSig);
+
+      // 4) Sync owner and verify the dedicated wallet-reset event.
+      const syncSig = await program.methods
+        .syncOwner()
+        .accounts({
+          asset: assetKeypair.publicKey,
+          agentAccount: agentPda,
+        })
+        .rpc();
+      console.log("SyncOwner (wallet reset event) tx:", syncSig);
+
+      const syncTx = await getTransactionWithRetry(provider.connection, syncSig);
+      expect(syncTx).to.not.be.null;
+
+      const logs = syncTx?.meta?.logMessages ?? [];
+      const parser = new anchor.EventParser(program.programId, program.coder);
+      const parsedEvents = Array.from(parser.parseLogs(logs));
+      const decodedEvents = logs
+        .map((log) => program.coder.events.decode(log))
+        .filter((event): event is { name: string; data: any } => event !== null);
+      const events = [...parsedEvents, ...decodedEvents];
+      const resetEvent = events.find(
+        (event) =>
+          event.name === "WalletResetOnOwnerSync" || event.name === "walletResetOnOwnerSync"
+      );
+
+      if (!resetEvent) {
+        console.log(
+          "Decoded sync_owner events:",
+          events.map((event) => event.name)
+        );
+      }
+      expect(resetEvent, "WalletResetOnOwnerSync event missing").to.not.be.undefined;
+      const ownerAfterSync = resetEvent!.data.ownerAfterSync ?? resetEvent!.data.owner_after_sync;
+      const oldWallet = resetEvent!.data.oldWallet ?? resetEvent!.data.old_wallet;
+      const newWallet = resetEvent!.data.newWallet ?? resetEvent!.data.new_wallet;
+      expect(resetEvent!.data.asset.toBase58()).to.equal(assetKeypair.publicKey.toBase58());
+      expect(ownerAfterSync.toBase58()).to.equal(newOwner.publicKey.toBase58());
+      expect(newWallet.toBase58()).to.equal(zeroPubkey.toBase58());
+      expect(oldWallet).to.not.be.null;
+      expect(oldWallet.toBase58()).to.equal(walletKeypair.publicKey.toBase58());
+
+      const updatedAgent = await program.account.agentAccount.fetch(agentPda);
+      expect(updatedAgent.owner.toBase58()).to.equal(newOwner.publicKey.toBase58());
+      expect(updatedAgent.agentWallet).to.be.null;
+    });
   });
 
   // ============================================================================
@@ -1188,6 +1353,490 @@ describe("Identity Module Tests", () => {
       const agent = await program.account.agentAccount.fetch(agentPda);
       expect(agent.agentWallet).to.not.be.null;
       expect(agent.agentWallet!.toBase58()).to.equal(newWallet.publicKey.toBase58());
+    });
+  });
+
+  // ============================================================================
+  // INLINE COLLECTION/PARENT FIELDS (AgentAccount)
+  // ============================================================================
+  describe("Inline Collection + Parent", () => {
+    const validCol = "c1:bafybeigdyrzt5h4x6xevf7j6sfx4c5j7vix7lpt2w6xk3ej4q2f3m5p7m";
+
+    it("register() stores creator snapshot and default inline fields", async () => {
+      const assetKeypair = Keypair.generate();
+      const [agentPda] = getAgentPda(assetKeypair.publicKey, program.programId);
+
+      await program.methods
+        .register("https://example.com/agent/inline-defaults")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([assetKeypair])
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      expect(agent.creator.toBase58()).to.equal(provider.wallet.publicKey.toBase58());
+      expect(agent.parentAsset).to.be.null;
+      expect(agent.parentLocked).to.equal(false);
+      expect(agent.colLocked).to.equal(false);
+      expect(agent.col).to.equal("");
+    });
+
+    it("setCollectionPointer() sets col once and rejects second write", async () => {
+      const assetKeypair = Keypair.generate();
+      const [agentPda] = getAgentPda(assetKeypair.publicKey, program.programId);
+
+      await program.methods
+        .register("https://example.com/agent/inline-col")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([assetKeypair])
+        .rpc();
+
+      await program.methods
+        .setCollectionPointer(validCol)
+        .accounts({
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      expect(agent.col).to.equal(validCol);
+      expect(agent.colLocked).to.equal(true);
+
+      await expectAnchorError(
+        program.methods
+          .setCollectionPointer("c1:bafybeibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+          .accounts({
+            agentAccount: agentPda,
+            asset: assetKeypair.publicKey,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc(),
+        "CollectionPointerAlreadySet"
+      );
+    });
+
+    it("setCollectionPointer() rejects invalid pointer format", async () => {
+      const assetKeypair = Keypair.generate();
+      const [agentPda] = getAgentPda(assetKeypair.publicKey, program.programId);
+
+      await program.methods
+        .register("https://example.com/agent/inline-col-invalid")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([assetKeypair])
+        .rpc();
+
+      await expectAnchorError(
+        program.methods
+          .setCollectionPointer("bafybeigdyrzt5h4x6xevf7j6sfx4c5j7vix7lpt2w6xk3ej4q2f3m5p7m")
+          .accounts({
+            agentAccount: agentPda,
+            asset: assetKeypair.publicKey,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc(),
+        "InvalidCollectionPointer"
+      );
+    });
+
+    it("setCollectionPointer() allows creator after transfer, rejects new owner", async () => {
+      const assetKeypair = Keypair.generate();
+      const newOwner = Keypair.generate();
+      const [agentPda] = getAgentPda(assetKeypair.publicKey, program.programId);
+      const col = "c1:bafybeihz3xq5ty7fsw5m3r53p5hx5s6wbbvln6e6jox4n7g2c5g3h2w4cq";
+
+      const fundTx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: provider.wallet.publicKey,
+          toPubkey: newOwner.publicKey,
+          lamports: 50_000_000,
+        })
+      );
+      await provider.sendAndConfirm(fundTx);
+
+      await program.methods
+        .register("https://example.com/agent/inline-col-creator-only")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([assetKeypair])
+        .rpc();
+
+      await program.methods
+        .transferAgent()
+        .accounts({
+          asset: assetKeypair.publicKey,
+          agentAccount: agentPda,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          newOwner: newOwner.publicKey,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .rpc();
+
+      await expectAnchorError(
+        program.methods
+          .setCollectionPointer(col)
+          .accounts({
+            agentAccount: agentPda,
+            asset: assetKeypair.publicKey,
+            owner: newOwner.publicKey,
+          })
+          .signers([newOwner])
+          .rpc(),
+        "NotAgentCreator"
+      );
+
+      await program.methods
+        .setCollectionPointer(col)
+        .accounts({
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      const agent = await program.account.agentAccount.fetch(agentPda);
+      expect(agent.col).to.equal(col);
+      expect(agent.colLocked).to.equal(true);
+    });
+
+    it("setCollectionPointerWithOptions() allows updates until explicit lock", async () => {
+      const assetKeypair = Keypair.generate();
+      const [agentPda] = getAgentPda(assetKeypair.publicKey, program.programId);
+      const colV1 = "c1:bafybeif7u5v2j3xomqjxjv2r3h5k7nyx54jsw2d4tq3pq53l7y5m4zt6iu";
+      const colV2 = "c1:bafybeib4jv3hk3r6p2qv35hnfco4zv4z3v5yx2d4v6u7s3c2n4y5k7x3me";
+
+      await program.methods
+        .register("https://example.com/agent/inline-col-options")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([assetKeypair])
+        .rpc();
+
+      await program.methods
+        .setCollectionPointerWithOptions(colV1, false)
+        .accounts({
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      await program.methods
+        .setCollectionPointerWithOptions(colV2, false)
+        .accounts({
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      let agent = await program.account.agentAccount.fetch(agentPda);
+      expect(agent.col).to.equal(colV2);
+      expect(agent.colLocked).to.equal(false);
+
+      await program.methods
+        .setCollectionPointerWithOptions(colV2, true)
+        .accounts({
+          agentAccount: agentPda,
+          asset: assetKeypair.publicKey,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      agent = await program.account.agentAccount.fetch(agentPda);
+      expect(agent.colLocked).to.equal(true);
+
+      await expectAnchorError(
+        program.methods
+          .setCollectionPointerWithOptions(colV1, false)
+          .accounts({
+            agentAccount: agentPda,
+            asset: assetKeypair.publicKey,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc(),
+        "CollectionPointerAlreadySet"
+      );
+    });
+
+    it("setParentAsset() links parent and locks it", async () => {
+      const parentAsset = Keypair.generate();
+      const childAsset = Keypair.generate();
+      const [parentPda] = getAgentPda(parentAsset.publicKey, program.programId);
+      const [childPda] = getAgentPda(childAsset.publicKey, program.programId);
+
+      await program.methods
+        .register("https://example.com/agent/inline-parent")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: parentPda,
+          asset: parentAsset.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([parentAsset])
+        .rpc();
+
+      await program.methods
+        .register("https://example.com/agent/inline-child")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: childPda,
+          asset: childAsset.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([childAsset])
+        .rpc();
+
+      await program.methods
+        .setParentAsset(parentAsset.publicKey)
+        .accounts({
+          agentAccount: childPda,
+          asset: childAsset.publicKey,
+          parentAgentAccount: parentPda,
+          parentAssetAccount: parentAsset.publicKey,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      const child = await program.account.agentAccount.fetch(childPda);
+      expect(child.parentAsset).to.not.be.null;
+      expect(child.parentAsset!.toBase58()).to.equal(parentAsset.publicKey.toBase58());
+      expect(child.parentLocked).to.equal(true);
+    });
+
+    it("setParentAsset() rejects child owner when parent creator differs", async () => {
+      const parentAsset = Keypair.generate();
+      const childAsset = Keypair.generate();
+      const childOwner = Keypair.generate();
+      const [parentPda] = getAgentPda(parentAsset.publicKey, program.programId);
+      const [childPda] = getAgentPda(childAsset.publicKey, program.programId);
+
+      const fundTx = new anchor.web3.Transaction().add(
+        anchor.web3.SystemProgram.transfer({
+          fromPubkey: provider.wallet.publicKey,
+          toPubkey: childOwner.publicKey,
+          lamports: 50_000_000,
+        })
+      );
+      await provider.sendAndConfirm(fundTx);
+
+      await program.methods
+        .register("https://example.com/agent/inline-parent-auth")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: parentPda,
+          asset: parentAsset.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([parentAsset])
+        .rpc();
+
+      await program.methods
+        .register("https://example.com/agent/inline-child-auth")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: childPda,
+          asset: childAsset.publicKey,
+          collection: collectionPubkey,
+          owner: childOwner.publicKey,
+          payer: childOwner.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([childOwner, childAsset])
+        .rpc();
+
+      await expectAnchorError(
+        program.methods
+          .setParentAsset(parentAsset.publicKey)
+          .accounts({
+            agentAccount: childPda,
+            asset: childAsset.publicKey,
+            parentAgentAccount: parentPda,
+            parentAssetAccount: parentAsset.publicKey,
+            owner: childOwner.publicKey,
+          })
+          .signers([childOwner])
+          .rpc(),
+        "NotParentCreator"
+      );
+    });
+
+    it("setParentAssetWithOptions() allows updates until explicit lock", async () => {
+      const parentAsset1 = Keypair.generate();
+      const parentAsset2 = Keypair.generate();
+      const childAsset = Keypair.generate();
+      const [parentPda1] = getAgentPda(parentAsset1.publicKey, program.programId);
+      const [parentPda2] = getAgentPda(parentAsset2.publicKey, program.programId);
+      const [childPda] = getAgentPda(childAsset.publicKey, program.programId);
+
+      await program.methods
+        .register("https://example.com/agent/inline-parent-opt-1")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: parentPda1,
+          asset: parentAsset1.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([parentAsset1])
+        .rpc();
+
+      await program.methods
+        .register("https://example.com/agent/inline-parent-opt-2")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: parentPda2,
+          asset: parentAsset2.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([parentAsset2])
+        .rpc();
+
+      await program.methods
+        .register("https://example.com/agent/inline-child-opt")
+        .accounts({
+          rootConfig: rootConfigPda,
+          registryConfig: registryConfigPda,
+          agentAccount: childPda,
+          asset: childAsset.publicKey,
+          collection: collectionPubkey,
+          owner: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        })
+        .signers([childAsset])
+        .rpc();
+
+      await program.methods
+        .setParentAssetWithOptions(parentAsset1.publicKey, false)
+        .accounts({
+          agentAccount: childPda,
+          asset: childAsset.publicKey,
+          parentAgentAccount: parentPda1,
+          parentAssetAccount: parentAsset1.publicKey,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      await program.methods
+        .setParentAssetWithOptions(parentAsset2.publicKey, false)
+        .accounts({
+          agentAccount: childPda,
+          asset: childAsset.publicKey,
+          parentAgentAccount: parentPda2,
+          parentAssetAccount: parentAsset2.publicKey,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      let child = await program.account.agentAccount.fetch(childPda);
+      expect(child.parentAsset).to.not.be.null;
+      expect(child.parentAsset!.toBase58()).to.equal(parentAsset2.publicKey.toBase58());
+      expect(child.parentLocked).to.equal(false);
+
+      await program.methods
+        .setParentAssetWithOptions(parentAsset2.publicKey, true)
+        .accounts({
+          agentAccount: childPda,
+          asset: childAsset.publicKey,
+          parentAgentAccount: parentPda2,
+          parentAssetAccount: parentAsset2.publicKey,
+          owner: provider.wallet.publicKey,
+        })
+        .rpc();
+
+      child = await program.account.agentAccount.fetch(childPda);
+      expect(child.parentLocked).to.equal(true);
+
+      await expectAnchorError(
+        program.methods
+          .setParentAssetWithOptions(parentAsset1.publicKey, false)
+          .accounts({
+            agentAccount: childPda,
+            asset: childAsset.publicKey,
+            parentAgentAccount: parentPda1,
+            parentAssetAccount: parentAsset1.publicKey,
+            owner: provider.wallet.publicKey,
+          })
+          .rpc(),
+        "ParentAlreadySet"
+      );
     });
   });
 });

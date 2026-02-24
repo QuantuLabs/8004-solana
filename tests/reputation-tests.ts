@@ -318,9 +318,9 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       );
     });
 
-    it("giveFeedback() fails with valueDecimals > 6", async () => {
+    it("giveFeedback() fails with valueDecimals > 18", async () => {
       const value = new BN(100);
-      const valueDecimals = 7;  // Max is 6
+      const valueDecimals = 19;  // Max is 18
 
       await expectAnchorError(
         program.methods
@@ -811,7 +811,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     it("appendResponse() emits ResponseAppended event", async () => {
       const tx = await program.methods
         .appendResponse(
-          responseAgentAsset.publicKey,
           responseClientKeypair.publicKey,
           feedbackIndex,
           "https://example.com/response/0",
@@ -827,11 +826,30 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       console.log("AppendResponse (events-only) tx:", tx);
     });
 
+    it("appendResponse() allows non-owner responder (permissionless)", async () => {
+      const randomResponder = Keypair.generate();
+      await fundKeypair(provider, randomResponder, 0.02 * anchor.web3.LAMPORTS_PER_SOL);
+
+      await program.methods
+        .appendResponse(
+          responseClientKeypair.publicKey,
+          feedbackIndex,
+          "https://example.com/response/permissionless",
+          Array.from(randomHash()),
+          responseFeedbackHash
+        )
+        .accountsPartial({
+          responder: randomResponder.publicKey,
+          asset: responseAgentAsset.publicKey,
+        })
+        .signers([randomResponder])
+        .rpc();
+    });
+
     it("appendResponse() multiple responses to same feedback", async () => {
       for (let i = 1; i <= 3; i++) {
         await program.methods
           .appendResponse(
-            responseAgentAsset.publicKey,
             responseClientKeypair.publicKey,
             feedbackIndex,
             `https://example.com/response/${i}`,
@@ -852,7 +870,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
       await expectAnchorError(
         program.methods
           .appendResponse(
-            responseAgentAsset.publicKey,
             responseClientKeypair.publicKey,
             feedbackIndex,
             longUri,
@@ -871,7 +888,6 @@ describe("Reputation Module Tests (v0.5.0 EVM-Compatible)", () => {
     it("appendResponse() with empty URI (allowed)", async () => {
       await program.methods
         .appendResponse(
-          responseAgentAsset.publicKey,
           responseClientKeypair.publicKey,
           feedbackIndex,
           "",

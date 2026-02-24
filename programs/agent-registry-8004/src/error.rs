@@ -31,6 +31,20 @@ pub enum RegistryError {
     TransferToSelf = 6012,
     #[msg("Metadata is immutable and cannot be modified or deleted")]
     MetadataImmutable = 6013,
+    #[msg("Parent link is locked")]
+    ParentAlreadySet = 6014,
+    #[msg("Parent cannot reference self")]
+    ParentSelfReference = 6015,
+    #[msg("Invalid parent asset")]
+    InvalidParentAsset = 6016,
+    #[msg("Only parent creator can link this child")]
+    NotParentCreator = 6017,
+    #[msg("Invalid collection pointer format")]
+    InvalidCollectionPointer = 6018,
+    #[msg("Collection pointer is locked")]
+    CollectionPointerAlreadySet = 6019,
+    #[msg("Only agent creator can set collection pointer")]
+    NotAgentCreator = 6020,
 
     // ========== Reputation Errors (6050-6099) ==========
     #[msg("Score must be 0-100")]
@@ -53,7 +67,7 @@ pub enum RegistryError {
     EmptyTags = 6057,
     #[msg("Endpoint exceeds 250 bytes")]
     EndpointTooLong = 6060,
-    #[msg("Invalid decimals (max 6)")]
+    #[msg("Invalid decimals (max 18)")]
     InvalidDecimals = 6061,
     #[msg("ATOM stats not initialized - call initialize_atom_stats first")]
     AtomStatsNotInitialized = 6058,

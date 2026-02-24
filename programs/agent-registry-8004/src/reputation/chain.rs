@@ -4,6 +4,8 @@ use anchor_lang::solana_program::keccak;
 pub const DOMAIN_FEEDBACK: &[u8] = b"8004_FEEDBACK_V1";
 pub const DOMAIN_RESPONSE: &[u8] = b"8004_RESPONSE_V1";
 pub const DOMAIN_REVOKE: &[u8] = b"8004_REVOKE_V1";
+pub const DOMAIN_RESPONSE_LEAF_V1: &[u8; 16] = b"8004_RSP_LEAF_V1";
+pub const DOMAIN_REVOKE_LEAF_V1: &[u8; 16] = b"8004_RVK_LEAF_V1";
 
 pub fn compute_feedback_leaf(
     asset: &Pubkey,
@@ -30,7 +32,8 @@ pub fn compute_response_leaf(
     feedback_hash: &[u8; 32],
     slot: u64,
 ) -> [u8; 32] {
-    let mut data = Vec::with_capacity(32 + 32 + 8 + 32 + 32 + 32 + 8);
+    let mut data = Vec::with_capacity(16 + 32 + 32 + 8 + 32 + 32 + 32 + 8);
+    data.extend_from_slice(DOMAIN_RESPONSE_LEAF_V1);
     data.extend_from_slice(asset.as_ref());
     data.extend_from_slice(client.as_ref());
     data.extend_from_slice(&feedback_index.to_le_bytes());
@@ -48,7 +51,8 @@ pub fn compute_revoke_leaf(
     feedback_hash: &[u8; 32],
     slot: u64,
 ) -> [u8; 32] {
-    let mut data = Vec::with_capacity(32 + 32 + 8 + 32 + 8);
+    let mut data = Vec::with_capacity(16 + 32 + 32 + 8 + 32 + 8);
+    data.extend_from_slice(DOMAIN_REVOKE_LEAF_V1);
     data.extend_from_slice(asset.as_ref());
     data.extend_from_slice(client.as_ref());
     data.extend_from_slice(&feedback_index.to_le_bytes());

@@ -495,7 +495,6 @@ describe("E2E Cost Measurement v3.0 (ATOM Engine)", () => {
         async () => {
           return program.methods
             .appendResponse(
-              agent1Asset.publicKey,      // asset_key
               thirdParty.publicKey,       // client_address
               feedbackIndex,              // feedback_index
               "https://example.com/response", // response_uri

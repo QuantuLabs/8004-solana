@@ -6,6 +6,8 @@ Trustless on-chain hash computation for feedback integrity.
 
 SEAL v1 ensures that feedback data cannot be tampered with. The program computes `seal_hash` deterministically from all instruction parameters—clients cannot lie about what they submitted.
 
+Compatibility profile note: `feedback_index` is maintained as a global per-asset sequence (`0`-based). Per-client views are derived by the indexer from events.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  CLIENT submits (instruction params):                       │
@@ -47,19 +49,19 @@ SEAL v1 ensures that feedback data cannot be tampered with. The program computes
 The `seal_hash` is computed from a deterministic binary encoding:
 
 ```
-FIXED FIELDS (28 bytes):
+FIXED FIELDS (36 bytes):
 ┌────────────────────────────────────────────────────────────┐
 │ Offset │ Size │ Field            │ Format                  │
 ├────────┼──────┼──────────────────┼─────────────────────────┤
 │   0    │  16  │ DOMAIN_SEAL_V1   │ "8004_SEAL_V1____"      │
-│  16    │   8  │ value            │ i64 little-endian       │
-│  24    │   1  │ value_decimals   │ u8                      │
-│  25    │   1  │ score_flag       │ 0=None, 1=Some          │
-│  26    │   1  │ score_value      │ u8 (0 if flag=0)        │
-│  27    │   1  │ file_hash_flag   │ 0=None, 1=Some          │
+│  16    │  16  │ value            │ i128 little-endian      │
+│  32    │   1  │ value_decimals   │ u8 (0-18)               │
+│  33    │   1  │ score_flag       │ 0=None, 1=Some          │
+│  34    │   1  │ score_value      │ u8 (0 if flag=0)        │
+│  35    │   1  │ file_hash_flag   │ 0=None, 1=Some          │
 └────────┴──────┴──────────────────┴─────────────────────────┘
 
-DYNAMIC FIELDS (after offset 28):
+DYNAMIC FIELDS (after offset 36):
 ┌────────────────────────────────────────────────────────────┐
 │ Order │ Field              │ Format                        │
 ├───────┼────────────────────┼───────────────────────────────┤
@@ -118,7 +120,7 @@ pub fn give_feedback(
 
 // After (v0.6.0 SEAL v1)
 pub fn give_feedback(
-    value: i64,
+    value: i128,
     value_decimals: u8,
     score: Option<u8>,
     feedback_file_hash: Option<[u8; 32]>,  // Optional, only for file linking
@@ -143,7 +145,6 @@ pub fn revoke_feedback(
 
 ```rust
 pub fn append_response(
-    asset_key: Pubkey,
     client_address: Pubkey,
     feedback_index: u64,
     response_uri: String,
@@ -162,7 +163,7 @@ pub struct NewFeedback {
     pub asset: Pubkey,
     pub client_address: Pubkey,
     pub feedback_index: u64,
-    pub value: i64,
+    pub value: i128,
     pub value_decimals: u8,
     pub score: Option<u8>,
     pub tag1: String,
