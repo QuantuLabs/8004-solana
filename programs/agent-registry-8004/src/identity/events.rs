@@ -43,6 +43,33 @@ pub struct WalletUpdated {
     pub updated_by: Pubkey,
 }
 
+/// Event emitted when sync_owner resets a stale wallet after ownership change.
+/// This flow is permissionless, so we record the owner after sync rather than a caller.
+#[event]
+pub struct WalletResetOnOwnerSync {
+    pub asset: Pubkey,
+    pub old_wallet: Option<Pubkey>,
+    pub new_wallet: Pubkey,
+    pub owner_after_sync: Pubkey,
+}
+
+/// Event emitted when collection pointer is first set
+#[event]
+pub struct CollectionPointerSet {
+    pub asset: Pubkey,
+    pub set_by: Pubkey,
+    pub col: String,
+}
+
+/// Event emitted when parent link is first set
+#[event]
+pub struct ParentAssetSet {
+    pub asset: Pubkey,
+    pub parent_asset: Pubkey,
+    pub parent_creator: Pubkey,
+    pub set_by: Pubkey,
+}
+
 // ============================================================================
 // Registry Events
 // ============================================================================

@@ -3,7 +3,6 @@ use anchor_lang::solana_program::ed25519_program;
 use anchor_lang::solana_program::sysvar::instructions::{
     load_current_index_checked, load_instruction_at_checked,
 };
-use mpl_core::accounts::BaseAssetV1;
 use mpl_core::instructions::{
     CreateCollectionV2CpiBuilder, CreateV2CpiBuilder, TransferV1CpiBuilder,
     UpdateV1CpiBuilder,
@@ -13,6 +12,7 @@ use super::contexts::*;
 use super::events::*;
 use super::state::*;
 use crate::constants::*;
+use crate::core_asset::{get_core_owner, verify_core_owner};
 use crate::error::RegistryError;
 
 /// Maximum deadline window: 5 minutes (300 seconds)
@@ -20,6 +20,9 @@ const MAX_DEADLINE_WINDOW: i64 = 300;
 
 /// Message prefix for wallet set signature
 const WALLET_SET_MESSAGE_PREFIX: &[u8] = b"8004_WALLET_SET:";
+
+/// Prefix for canonical collection pointer storage
+const COLLECTION_POINTER_PREFIX: &str = "c1:";
 
 /// Set metadata as individual PDA
 ///
@@ -183,11 +186,11 @@ pub fn sync_owner(ctx: Context<SyncOwner>) -> Result<()> {
         let old_wallet = agent.agent_wallet;
         if old_wallet.is_some() {
             agent.agent_wallet = None;
-            emit!(WalletUpdated {
+            emit!(WalletResetOnOwnerSync {
                 asset,
                 old_wallet,
                 new_wallet: Pubkey::default(),
-                updated_by: new_owner,
+                owner_after_sync: new_owner,
             });
         }
 
@@ -317,9 +320,8 @@ pub fn set_agent_wallet(
         &expected_message,
     )?;
 
-    // 5. Store wallet and sync owner atomically
-    // SECURITY: Sync owner ensures append_response's wallet check passes
-    // (wallet only valid when cached_owner == core_owner)
+    // 5. Store wallet and sync owner atomically.
+    // Keeping owner/wallet updates in one instruction avoids stale cached-owner state.
     let agent = &mut ctx.accounts.agent_account;
     let old_wallet = agent.agent_wallet;
     let old_owner = agent.owner;
@@ -348,6 +350,109 @@ pub fn set_agent_wallet(
     Ok(())
 }
 
+/// Set canonical collection pointer in AgentAccount.
+/// First-write-wins once `col_locked` is set to true.
+pub fn set_collection_pointer(ctx: Context<SetCollectionPointer>, col: String) -> Result<()> {
+    set_collection_pointer_inner(ctx, col, true)
+}
+
+/// Set canonical collection pointer with explicit lock behavior.
+/// If `lock` is false, creator can update the pointer until eventually locked.
+pub fn set_collection_pointer_with_options(
+    ctx: Context<SetCollectionPointer>,
+    col: String,
+    lock: bool,
+) -> Result<()> {
+    set_collection_pointer_inner(ctx, col, lock)
+}
+
+fn set_collection_pointer_inner(
+    ctx: Context<SetCollectionPointer>,
+    col: String,
+    lock: bool,
+) -> Result<()> {
+    // Validate child asset account is a live Core asset.
+    get_core_owner(&ctx.accounts.asset).map_err(|_| RegistryError::InvalidAsset)?;
+
+    validate_collection_pointer(&col)?;
+
+    let signer = ctx.accounts.owner.key();
+    let agent = &mut ctx.accounts.agent_account;
+    require!(signer == agent.creator, RegistryError::NotAgentCreator);
+    require!(
+        !agent.col_locked,
+        RegistryError::CollectionPointerAlreadySet
+    );
+
+    agent.col = col.clone();
+    if lock {
+        agent.col_locked = true;
+    }
+
+    emit!(CollectionPointerSet {
+        asset: agent.asset,
+        set_by: signer,
+        col,
+    });
+
+    Ok(())
+}
+
+/// Set parent link in AgentAccount.
+/// First-write-wins once `parent_locked` is set to true.
+/// Authorization rule: signer must match parent creator snapshot.
+pub fn set_parent_asset(ctx: Context<SetParentAsset>, parent_asset: Pubkey) -> Result<()> {
+    set_parent_asset_inner(ctx, parent_asset, true)
+}
+
+/// Set parent link with explicit lock behavior.
+/// If `lock` is false, matching signer can update parent until eventually locked.
+pub fn set_parent_asset_with_options(
+    ctx: Context<SetParentAsset>,
+    parent_asset: Pubkey,
+    lock: bool,
+) -> Result<()> {
+    set_parent_asset_inner(ctx, parent_asset, lock)
+}
+
+fn set_parent_asset_inner(
+    ctx: Context<SetParentAsset>,
+    parent_asset: Pubkey,
+    lock: bool,
+) -> Result<()> {
+    // Verify caller is current live child owner.
+    verify_core_owner(&ctx.accounts.asset, &ctx.accounts.owner.key())?;
+
+    // Verify parent Core asset is still valid/livable in Core.
+    get_core_owner(&ctx.accounts.parent_asset_account)
+        .map_err(|_| RegistryError::InvalidParentAsset)?;
+
+    let owner = ctx.accounts.owner.key();
+    let parent_creator = ctx.accounts.parent_agent_account.creator;
+    let agent = &mut ctx.accounts.agent_account;
+
+    require!(!agent.parent_locked, RegistryError::ParentAlreadySet);
+    require!(agent.asset != parent_asset, RegistryError::ParentSelfReference);
+    require!(
+        owner == parent_creator,
+        RegistryError::NotParentCreator
+    );
+
+    agent.parent_asset = Some(parent_asset);
+    if lock {
+        agent.parent_locked = true;
+    }
+
+    emit!(ParentAssetSet {
+        asset: agent.asset,
+        parent_asset,
+        parent_creator,
+        set_by: owner,
+    });
+
+    Ok(())
+}
+
 // ============================================================================
 // Helper functions
 // ============================================================================
@@ -366,6 +471,26 @@ fn build_wallet_set_message(
     message.extend_from_slice(owner.as_ref());
     message.extend_from_slice(&deadline.to_le_bytes());
     message
+}
+
+fn validate_collection_pointer(col: &str) -> Result<()> {
+    require!(
+        col.len() <= AgentAccount::MAX_COL_LENGTH,
+        RegistryError::InvalidCollectionPointer
+    );
+    require!(
+        col.starts_with(COLLECTION_POINTER_PREFIX),
+        RegistryError::InvalidCollectionPointer
+    );
+
+    let cid = &col[COLLECTION_POINTER_PREFIX.len()..];
+    require!(!cid.is_empty(), RegistryError::InvalidCollectionPointer);
+    require!(
+        cid.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
+        RegistryError::InvalidCollectionPointer
+    );
+
+    Ok(())
 }
 
 /// Verify Ed25519 signature via sysvar introspection
@@ -492,23 +617,6 @@ fn update_core_asset_uri_cpi<'info>(
     Ok(())
 }
 
-/// Verify that the signer owns the Core asset
-fn verify_core_owner(asset_info: &AccountInfo, expected_owner: &Pubkey) -> Result<()> {
-    let actual_owner = get_core_owner(asset_info)?;
-    require!(actual_owner == *expected_owner, RegistryError::Unauthorized);
-    Ok(())
-}
-
-/// Get owner from Core asset account data
-fn get_core_owner(asset_info: &AccountInfo) -> Result<Pubkey> {
-    require!(*asset_info.owner == mpl_core::ID, RegistryError::InvalidAsset);
-
-    let data = asset_info.try_borrow_data()?;
-    let asset = BaseAssetV1::from_bytes(&data).map_err(|_| RegistryError::InvalidAsset)?;
-
-    Ok(asset.owner)
-}
-
 // ============================================================================
 // Single Collection Instructions
 // ============================================================================
@@ -592,6 +700,7 @@ fn register_inner(
     // Initialize agent account
     let agent = &mut ctx.accounts.agent_account;
     agent.collection = collection_key;
+    agent.creator = ctx.accounts.owner.key();
     agent.owner = ctx.accounts.owner.key();
     agent.asset = asset;
     agent.bump = ctx.bumps.agent_account;
@@ -603,8 +712,12 @@ fn register_inner(
     agent.response_count = 0;
     agent.revoke_digest = [0u8; 32];
     agent.revoke_count = 0;
+    agent.parent_asset = None;
+    agent.parent_locked = false;
+    agent.col_locked = false;
     agent.agent_uri = agent_uri;
     agent.nft_name = "Agent".to_string();
+    agent.col = String::new();
 
     emit!(AgentRegistered {
         asset,

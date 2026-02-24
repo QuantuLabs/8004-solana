@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 declare_id!("8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm");
 
 pub mod constants;
+pub mod core_asset;
 pub mod error;
 pub mod identity;
 pub mod reputation;
@@ -100,6 +101,34 @@ pub mod agent_registry_8004 {
         identity::instructions::set_agent_wallet(ctx, new_wallet, deadline)
     }
 
+    /// Set canonical collection pointer once (first-write-wins)
+    pub fn set_collection_pointer(ctx: Context<SetCollectionPointer>, col: String) -> Result<()> {
+        identity::instructions::set_collection_pointer(ctx, col)
+    }
+
+    /// Set canonical collection pointer with optional lock behavior
+    pub fn set_collection_pointer_with_options(
+        ctx: Context<SetCollectionPointer>,
+        col: String,
+        lock: bool,
+    ) -> Result<()> {
+        identity::instructions::set_collection_pointer_with_options(ctx, col, lock)
+    }
+
+    /// Set parent link once (first-write-wins)
+    pub fn set_parent_asset(ctx: Context<SetParentAsset>, parent_asset: Pubkey) -> Result<()> {
+        identity::instructions::set_parent_asset(ctx, parent_asset)
+    }
+
+    /// Set parent link with optional lock behavior
+    pub fn set_parent_asset_with_options(
+        ctx: Context<SetParentAsset>,
+        parent_asset: Pubkey,
+        lock: bool,
+    ) -> Result<()> {
+        identity::instructions::set_parent_asset_with_options(ctx, parent_asset, lock)
+    }
+
     // ============================================================================
     // Reputation Instructions
     // ============================================================================
@@ -109,7 +138,7 @@ pub mod agent_registry_8004 {
     /// the program computes seal_hash on-chain for trustless integrity.
     pub fn give_feedback(
         ctx: Context<GiveFeedback>,
-        value: i64,
+        value: i128,
         value_decimals: u8,
         score: Option<u8>,
         feedback_file_hash: Option<[u8; 32]>,
@@ -145,14 +174,20 @@ pub mod agent_registry_8004 {
     /// SEAL v1: Client provides seal_hash from the original feedback
     pub fn append_response(
         ctx: Context<AppendResponse>,
-        asset_key: Pubkey,
         client_address: Pubkey,
         feedback_index: u64,
         response_uri: String,
         response_hash: [u8; 32],
         seal_hash: [u8; 32],
     ) -> Result<()> {
-        reputation::instructions::append_response(ctx, asset_key, client_address, feedback_index, response_uri, response_hash, seal_hash)
+        reputation::instructions::append_response(
+            ctx,
+            client_address,
+            feedback_index,
+            response_uri,
+            response_hash,
+            seal_hash,
+        )
     }
 
     // NOTE: Validation module removed in v0.5.0 - planned for future upgrade

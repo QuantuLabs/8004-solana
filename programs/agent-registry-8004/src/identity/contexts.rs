@@ -229,6 +229,65 @@ pub struct SetAgentWallet<'info> {
     pub instructions_sysvar: UncheckedAccount<'info>,
 }
 
+/// Set canonical collection pointer in AgentAccount (first-write-wins)
+#[derive(Accounts)]
+#[instruction(col: String)]
+pub struct SetCollectionPointer<'info> {
+    #[account(
+        mut,
+        seeds = [b"agent", asset.key().as_ref()],
+        bump = agent_account.bump,
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    /// Core asset - ownership verified in instruction
+    /// CHECK: Verified via agent_account constraint and in instruction
+    #[account(
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
+    )]
+    pub asset: UncheckedAccount<'info>,
+
+    /// Creator signer (must match immutable AgentAccount.creator)
+    #[account(mut)]
+    pub owner: Signer<'info>,
+}
+
+/// Set parent link in AgentAccount (first-write-wins)
+#[derive(Accounts)]
+#[instruction(parent_asset: Pubkey)]
+pub struct SetParentAsset<'info> {
+    #[account(
+        mut,
+        seeds = [b"agent", asset.key().as_ref()],
+        bump = agent_account.bump,
+    )]
+    pub agent_account: Account<'info, AgentAccount>,
+
+    /// Core child asset - ownership verified in instruction
+    /// CHECK: Verified via agent_account constraint and in instruction
+    #[account(
+        constraint = asset.key() == agent_account.asset @ RegistryError::InvalidAsset
+    )]
+    pub asset: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [b"agent", parent_asset.as_ref()],
+        bump = parent_agent_account.bump,
+    )]
+    pub parent_agent_account: Account<'info, AgentAccount>,
+
+    /// Core parent asset account
+    /// CHECK: Liveness/type verified in instruction
+    #[account(
+        constraint = parent_asset_account.key() == parent_agent_account.asset @ RegistryError::InvalidAsset
+    )]
+    pub parent_asset_account: UncheckedAccount<'info>,
+
+    /// Current owner of child asset
+    #[account(mut)]
+    pub owner: Signer<'info>,
+}
+
 // ============================================================================
 // Single Collection Architecture
 // ============================================================================

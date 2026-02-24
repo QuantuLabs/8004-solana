@@ -90,7 +90,17 @@ See **[docs/SEAL.md](docs/SEAL.md)** for full specification.
 
 ## ERC-8004 Compliance
 
-Fully compliant with the [ERC-8004 spec](https://eips.ethereum.org/EIPS/eip-8004), adapted for Solana.
+Aligned with the [ERC-8004 spec](https://eips.ethereum.org/EIPS/eip-8004), with an explicit Solana profile.
+
+Current documented compatibility profile:
+- `appendResponse()` is permissionless.
+- `feedback_index` is intentionally a global per-agent counter (`0`-based), not a per-client `1`-based counter.
+- Per-client sequencing is derived off-chain by the indexer from canonical on-chain events.
+
+Rationale for keeping global per-agent indexing:
+- No extra on-chain per-client counters or migration complexity.
+- Deterministic single sequence for hash-chain/event ordering per agent.
+- Lower implementation and audit risk for the current architecture.
 
 | Module | Functions |
 |--------|-----------|

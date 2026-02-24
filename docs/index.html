@@ -707,7 +707,7 @@ quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
                 <p><strong>Parameters:</strong></p>
                 <table>
                     <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
-                    <tr><td>agent_uri</td><td>String</td><td>Max 200 bytes (or empty for register_empty)</td></tr>
+                    <tr><td>agent_uri</td><td>String</td><td>Max 250 bytes (or empty for register_empty)</td></tr>
                 </table>
 
                 <p><strong>Flow:</strong></p>
@@ -808,24 +808,25 @@ quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
             </div>
 
             <div class="card">
-                <h4>MetadataEntryPda (~306 bytes)</h4>
+                <h4>MetadataEntryPda (~332 bytes)</h4>
                 <pre><code>pub struct MetadataEntryPda {
+    pub asset: Pubkey,              // 32 bytes
     pub metadata_key: String,       // 4 + 32 = 36 bytes
-    pub metadata_value: Vec&lt;u8&gt;,    // 4 + 256 = 260 bytes
+    pub metadata_value: Vec&lt;u8&gt;,    // 4 + 250 = 254 bytes
     pub immutable: bool,            // 1 byte (if true, locked forever)
     pub bump: u8,                   // 1 byte
 }
 // Removed: agent_id, created_at
 // Delete to recover rent (~0.0029 SOL)</code></pre>
-                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_meta", asset.key(), key_hash[0..8]]</div>
+                <div class="pda-seed"><strong>PDA:</strong> seeds = ["agent_meta", asset.key(), key_hash[0..16]]</div>
             </div>
 
             <h3>Error Codes</h3>
             <table>
                 <tr><th>Error</th><th>Message</th><th>Condition</th></tr>
-                <tr><td>UriTooLong</td><td>"URI&gt;200"</td><td>agent_uri exceeds 200 bytes</td></tr>
+                <tr><td>UriTooLong</td><td>"URI&gt;250"</td><td>agent_uri exceeds 250 bytes</td></tr>
                 <tr><td>KeyTooLong</td><td>"Key&gt;32"</td><td>metadata key exceeds 32 bytes</td></tr>
-                <tr><td>ValueTooLong</td><td>"Val&gt;256"</td><td>metadata value exceeds 256 bytes</td></tr>
+                <tr><td>ValueTooLong</td><td>"Val&gt;250"</td><td>metadata value exceeds 250 bytes</td></tr>
                 <tr><td>MetadataImmutable</td><td>"Immutable"</td><td>Cannot modify/delete immutable metadata</td></tr>
                 <tr><td>Unauthorized</td><td>"!owner"</td><td>Caller is not agent owner</td></tr>
                 <tr><td>Overflow</td><td>"Overflow"</td><td>Agent ID counter overflowed</td></tr>
@@ -855,29 +856,33 @@ quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
             <div class="info">
                 <strong>v0.3.0:</strong> Aggregates (total_feedbacks, average_score) computed off-chain via indexer. <code>AgentReputationMetadata</code> only stores <code>next_feedback_index</code> for sequencing.
             </div>
+            <div class="info" style="margin-top: 0.5rem;">
+                <strong>Compatibility profile:</strong> <code>feedback_index</code> is an on-chain global per-asset sequence (0-based). Per-client ordering is derived off-chain by the indexer.
+            </div>
 
             <h3>Instructions</h3>
 
             <!-- give_feedback -->
             <div class="card">
-                <h4>give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)</h4>
+                <h4>give_feedback(value, value_decimals, score, feedback_file_hash, tag1, tag2, endpoint, feedback_uri)</h4>
                 <p>Create feedback for an agent. Asset passed via account context.</p>
 
                 <p><strong>Parameters:</strong></p>
                 <table>
                     <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
-                    <tr><td>score</td><td>u8</td><td>0-100 (validated on-chain)</td></tr>
+                    <tr><td>value</td><td>i128</td><td>Signed metric value</td></tr>
+                    <tr><td>value_decimals</td><td>u8</td><td>0-18 (validated on-chain)</td></tr>
+                    <tr><td>score</td><td>Option&lt;u8&gt;</td><td>0-100 when present</td></tr>
+                    <tr><td>feedback_file_hash</td><td>Option&lt;[u8; 32]&gt;</td><td>Optional external file hash</td></tr>
                     <tr><td>tag1, tag2</td><td>String</td><td>Max 32 bytes each (in event)</td></tr>
-                    <tr><td>endpoint</td><td>String</td><td>Max 200 bytes (in event)</td></tr>
-                    <tr><td>feedback_uri</td><td>String</td><td>Max 200 bytes (in event)</td></tr>
-                    <tr><td>feedback_hash</td><td>[u8; 32]</td><td>SHA-256 hash</td></tr>
-                    <tr><td>feedback_index</td><td>u64</td><td>Must match next_feedback_index</td></tr>
+                    <tr><td>endpoint</td><td>String</td><td>Max 250 bytes (in event)</td></tr>
+                    <tr><td>feedback_uri</td><td>String</td><td>Max 250 bytes (in event)</td></tr>
                 </table>
 
                 <p><strong>Global Feedback Index:</strong></p>
-                <pre><code>// Index verified and incremented from AgentReputationMetadata
-require!(feedback_index == agent_reputation.next_feedback_index);
-agent_reputation.next_feedback_index += 1;</code></pre>
+                <pre><code>// feedback_index is global per-asset and managed on-chain
+let feedback_index = agent.feedback_count;
+agent.feedback_count += 1;</code></pre>
 
                 <div class="info" style="margin-top: 0.5rem;">
                     <strong>Event-only:</strong> No Feedback PDA. Data stored in <code>NewFeedback</code> event + rolling hash-chain digest on <code>AgentAccount</code>.
@@ -909,16 +914,15 @@ agent_reputation.next_feedback_index += 1;</code></pre>
 
             <!-- append_response -->
             <div class="card">
-                <h4>append_response(asset_key, client_address, feedback_index, response_uri, response_hash, seal_hash)</h4>
-                <p>Append response to existing feedback. <strong>Authorized only</strong> (agent owner or agent wallet).</p>
+                <h4>append_response(client_address, feedback_index, response_uri, response_hash, seal_hash)</h4>
+                <p>Append response to existing feedback. <strong>Permissionless</strong> (any signer).</p>
 
                 <p><strong>Parameters:</strong></p>
                 <table>
                     <tr><th>Param</th><th>Type</th><th>Constraint</th></tr>
-                    <tr><td>asset_key</td><td>Pubkey</td><td>Agent asset key</td></tr>
                     <tr><td>client_address</td><td>Pubkey</td><td>Original feedback author</td></tr>
                     <tr><td>feedback_index</td><td>u64</td><td>Must be &lt; agent.feedback_count</td></tr>
-                    <tr><td>response_uri</td><td>String</td><td>Max 200 bytes (in event)</td></tr>
+                    <tr><td>response_uri</td><td>String</td><td>Max 250 bytes (in event)</td></tr>
                     <tr><td>response_hash</td><td>[u8; 32]</td><td>SHA-256 hash (in event)</td></tr>
                     <tr><td>seal_hash</td><td>[u8; 32]</td><td>SEAL hash of original feedback (for digest integrity)</td></tr>
                 </table>
@@ -954,8 +958,7 @@ pub revoke_count: u64,           // Revoke counter</code></pre>
             <table>
                 <tr><th>Error</th><th>Message</th><th>Condition</th></tr>
                 <tr><td>InvalidScore</td><td>"Score[0-100]"</td><td>score &gt; 100</td></tr>
-                <tr><td>UriTooLong</td><td>"URI&gt;200"</td><td>file_uri exceeds 200 bytes</td></tr>
-                <tr><td>Unauthorized</td><td>"!author"</td><td>Non-owner attempts append_response</td></tr>
+                <tr><td>UriTooLong</td><td>"URI&gt;250"</td><td>file_uri exceeds 250 bytes</td></tr>
                 <tr><td>AgentNotFound</td><td>"!Agent"</td><td>Agent doesn't exist in Identity Registry</td></tr>
                 <tr><td>InvalidFeedbackIndex</td><td>"!FbIdx"</td><td>Index mismatch</td></tr>
                 <tr><td>InvalidIdentityRegistry</td><td>"!IdReg"</td><td>Wrong Identity Registry program</td></tr>
@@ -964,9 +967,9 @@ pub revoke_count: u64,           // Revoke counter</code></pre>
             <h3>Events</h3>
             <table>
                 <tr><th>Event</th><th>Fields</th></tr>
-                <tr><td>NewFeedback</td><td><strong>asset</strong>, client_address, feedback_index, score, tag1, tag2, endpoint, feedback_uri, feedback_hash</td></tr>
-                <tr><td>FeedbackRevoked</td><td><strong>asset</strong>, client_address, feedback_index</td></tr>
-                <tr><td>ResponseAppended</td><td><strong>asset</strong>, feedback_index, responder, response_uri, response_hash</td></tr>
+                <tr><td>NewFeedback</td><td><strong>asset</strong>, client_address, feedback_index, value, value_decimals, score, feedback_file_hash, seal_hash, atom fields, tag1, tag2, endpoint, feedback_uri</td></tr>
+                <tr><td>FeedbackRevoked</td><td><strong>asset</strong>, client_address, feedback_index, seal_hash, atom result fields, new_revoke_digest/count</td></tr>
+                <tr><td>ResponseAppended</td><td><strong>asset</strong>, client, feedback_index, responder, response_uri, response_hash, seal_hash, new_response_digest/count</td></tr>
             </table>
             <div class="info" style="margin-top: 0.5rem;">
                 <strong>v0.3.0:</strong> All events use <code>asset: Pubkey</code>. URIs/hashes stored in events only.
