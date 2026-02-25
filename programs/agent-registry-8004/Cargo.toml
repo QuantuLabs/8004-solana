@@ -20,4 +20,4 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
 anchor-spl = "0.31.1"
 mpl-core = "0.11.1"
-atom-engine = { git = "https://github.com/QuantuLabs/8004-atom.git", rev = "acc839243ddfa322f0c6482a8b0b7c14cd4c483b", features = ["cpi"] }
+atom-engine = { git = "https://github.com/QuantuLabs/8004-atom.git", rev = "e8d39ec68c80b512f607a07ff8c4ed43eb0ff798", features = ["cpi"] }
