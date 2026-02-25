@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/atom_engine.json`.
  */
 export type AtomEngine = {
-  "address": "AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ",
+  "address": "AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF",
   "metadata": {
     "name": "atomEngine",
     "version": "0.2.2",

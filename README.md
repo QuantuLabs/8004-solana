@@ -10,8 +10,8 @@
 
 | Program | Address |
 |---------|---------|
-| agent-registry-8004 | `8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm` |
-| [atom-engine](https://github.com/QuantuLabs/8004-atom) | `AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ` |
+| agent-registry-8004 | `8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C` |
+| [atom-engine](https://github.com/QuantuLabs/8004-atom) | `AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF` |
 
 ## Highlights
 
@@ -31,7 +31,7 @@ Two core modules (Identity + Reputation) with an external reputation engine (ATO
 ```
 +-----------------------------------------------------------------+
 |              agent-registry-8004 (Devnet)                        |
-|         8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm            |
+|         8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C            |
 +-----------------------------------------------------------------+
 |  +---------------+ +------------------+                          |
 |  | Identity      | | Reputation       |                          |
@@ -46,7 +46,7 @@ Two core modules (Identity + Reputation) with an external reputation engine (ATO
           v                    v
 +-----------------------------------------------------------------+
 |                    atom-engine (ATOM)                            |
-|         AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ            |
+|         AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF            |
 +-----------------------------------------------------------------+
 |  HLL[256] + ring buffer[24] + tier vesting + quality/risk       |
 +-----------------------------------------------------------------+

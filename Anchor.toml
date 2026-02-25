@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-agent_registry_8004 = "8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm"
+agent_registry_8004 = "8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C"
 
 [programs.localnet]
-agent_registry_8004 = "8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm"
+agent_registry_8004 = "8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C"
 
 [registry]
 url = "https://api.apr.dev"
@@ -41,4 +41,4 @@ address = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
 
 # Clone ATOM Engine from devnet for CPI
 [[test.validator.clone]]
-address = "AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ"
+address = "AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF"

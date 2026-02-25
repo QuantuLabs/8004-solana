@@ -81,8 +81,8 @@ npx ts-node scripts/deploy.ts --cluster devnet --full
 
 | Program | Localnet | Devnet |
 |---------|----------|--------|
-| atom-engine | (generated) | AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ |
-| agent-registry-8004 | (generated) | 8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm |
+| atom-engine | (generated) | AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF |
+| agent-registry-8004 | (generated) | 8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C |
 
 ## Verification
 
