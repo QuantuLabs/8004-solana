@@ -179,10 +179,22 @@ Clone, build, test—you're up in minutes:
 ```bash
 git clone https://github.com/QuantuLabs/8004-solana.git
 cd 8004-solana
+./scripts/setup-atom-engine-dep.sh
 yarn install
 anchor build
 anchor test
 ```
+
+### Reproducible Build Note (Mainnet Hash)
+
+`agent-registry-8004` intentionally depends on `atom-engine` via a local path:
+`../../../8004-atom/programs/atom-engine`.
+
+This path layout is required to reproduce the current mainnet binary hash. Switching
+to a `git` dependency or changing the path location changes the rebuilt `.so` hash.
+
+Use `./scripts/setup-atom-engine-dep.sh` to provision `../8004-atom` at the expected
+revision before running `anchor build` or `cargo build-sbf`.
 
 ## Devnet Setup
 
