@@ -196,6 +196,29 @@ to a `git` dependency or changing the path location changes the rebuilt `.so` ha
 Use `./scripts/setup-atom-engine-dep.sh` to provision `../8004-atom` at the expected
 revision before running `anchor build` or `cargo build-sbf`.
 
+### Mainnet Binary Hash Reference
+
+As of **2026-03-04**, the expected `agent-registry-8004` mainnet executable hash is:
+
+`5aeae715714861fd43ac09d80bc51f70836b27a325a2c2131374121c6c05a5c8`
+
+Verify directly from chain:
+
+```bash
+solana program dump --url mainnet-beta 8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ /tmp/agent_registry_8004_mainnet.so
+shasum -a 256 /tmp/agent_registry_8004_mainnet.so
+```
+
+Verify local reproducible build:
+
+```bash
+./scripts/setup-atom-engine-dep.sh
+cargo build-sbf --manifest-path programs/agent-registry-8004/Cargo.toml
+shasum -a 256 target/deploy/agent_registry_8004.so
+```
+
+`solana-verify` is optional. For binary integrity, `solana program dump` + `shasum` is sufficient.
+
 ## Devnet Setup
 
 After deploying the programs to devnet, **initialize the registry** (one-time setup by the upgrade authority):
