@@ -780,15 +780,12 @@ quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
             <h3>Account Structures</h3>
 
             <div class="card">
-                <h4>RegistryConfig (78 bytes)</h4>
+                <h4>RegistryConfig</h4>
                 <pre><code>pub struct RegistryConfig {
     pub collection: Pubkey,             // 32 bytes (Core Collection)
-    pub registry_type: RegistryType,    // 1 byte
     pub authority: Pubkey,              // 32 bytes
-    pub base_index: u32,                // 4 bytes
     pub bump: u8,                       // 1 byte
-}
-// Removed: next_agent_id, total_agents (off-chain via indexer)</code></pre>
+}</code></pre>
                 <div class="pda-seed"><strong>PDA:</strong> seeds = ["config"]</div>
             </div>
 
@@ -829,7 +826,7 @@ quality_score = (quality_score * 900 + centered * 100) / 1000</code></pre>
                 <tr><td>ValueTooLong</td><td>"Val&gt;250"</td><td>metadata value exceeds 250 bytes</td></tr>
                 <tr><td>MetadataImmutable</td><td>"Immutable"</td><td>Cannot modify/delete immutable metadata</td></tr>
                 <tr><td>Unauthorized</td><td>"!owner"</td><td>Caller is not agent owner</td></tr>
-                <tr><td>Overflow</td><td>"Overflow"</td><td>Agent ID counter overflowed</td></tr>
+                <tr><td>Overflow</td><td>"Overflow"</td><td>Arithmetic overflow during on-chain math</td></tr>
                 <tr><td>InvalidTokenAccount</td><td>"!NFT"</td><td>Token account doesn't hold the NFT</td></tr>
             </table>
 

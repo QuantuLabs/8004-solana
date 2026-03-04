@@ -104,6 +104,10 @@ describe("Initialize Localnet", () => {
 
   it("Initialize ATOM Engine (if needed)", async () => {
     const [atomConfigPda] = getAtomConfigPda(atomEngine.programId);
+    const [atomProgramDataPda] = PublicKey.findProgramAddressSync(
+      [atomEngine.programId.toBuffer()],
+      new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111")
+    );
 
     // Check if already initialized
     const accountInfo = await provider.connection.getAccountInfo(atomConfigPda);
@@ -114,6 +118,7 @@ describe("Initialize Localnet", () => {
 
     console.log("Initializing ATOM Engine...");
     console.log("  Config PDA:", atomConfigPda.toBase58());
+    console.log("  Program Data PDA:", atomProgramDataPda.toBase58());
     console.log("  Agent Registry Program:", program.programId.toBase58());
 
     const tx = await atomEngine.methods
@@ -121,6 +126,7 @@ describe("Initialize Localnet", () => {
       .accounts({
         config: atomConfigPda,
         authority: provider.wallet.publicKey,
+        programData: atomProgramDataPda,
         systemProgram: SystemProgram.programId,
       })
       .rpc();

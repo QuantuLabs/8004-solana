@@ -13,6 +13,13 @@
 | agent-registry-8004 | `8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C` |
 | [atom-engine](https://github.com/QuantuLabs/8004-atom) | `AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF` |
 
+## Programs (Mainnet)
+
+| Program | Address |
+|---------|---------|
+| agent-registry-8004 | `8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ` |
+| [atom-engine](https://github.com/QuantuLabs/8004-atom) | `AToMw53aiPQ8j7iHVb4fGt6nzUNxUhcPc3tbPBZuzVVb` |
+
 ## Highlights
 
 - **SEAL v1** (Solana Event Authenticity Layer): Trustless on-chain hash computation

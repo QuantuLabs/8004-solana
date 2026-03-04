@@ -14,8 +14,9 @@
     "test:identity": "npm test -- tests/identity-tests.ts",
     "test:reputation": "npm test -- tests/reputation-tests.ts",
     "test:anti-gaming": "npm test -- tests/anti-gaming-tests.ts",
-    "test:all": "npm test -- tests/identity-tests.ts tests/reputation-tests.ts tests/anti-gaming-tests.ts",
-    "test:all-local": "npm run test:local -- tests/identity-tests.ts tests/reputation-tests.ts tests/anti-gaming-tests.ts",
+    "test:all": "npm test -- tests/identity-tests.ts tests/reputation-tests.ts tests/anti-gaming-tests.ts tests/e2e-atom-toggle.ts tests/revoke-e2e.ts tests/security-fixes.ts",
+    "test:all-local": "npm run test:local -- tests/identity-tests.ts tests/reputation-tests.ts tests/anti-gaming-tests.ts tests/e2e-atom-toggle.ts tests/revoke-e2e.ts tests/security-fixes.ts",
+    "stress:devnet:massive": "tsx scripts/stress-devnet-massive.ts",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },

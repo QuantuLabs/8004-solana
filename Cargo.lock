@@ -284,7 +284,6 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 [[package]]
 name = "atom-engine"
 version = "0.2.3"
-source = "git+https://github.com/QuantuLabs/8004-atom.git?rev=e8d39ec68c80b512f607a07ff8c4ed43eb0ff798#e8d39ec68c80b512f607a07ff8c4ed43eb0ff798"
 dependencies = [
  "anchor-lang",
  "mpl-core",
