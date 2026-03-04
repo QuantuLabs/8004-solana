@@ -13,13 +13,14 @@
 
 ## Standard Deep-Audit Pipeline
 - This flow is executed by Codex + subagents (not by local shell automation scripts).
+- Cross-repo checks are **diff-scoped only**: validate changed files and their direct integration paths, not full-repo audits by default.
 
 1. Identify change scope and impacted modules.
 2. Run deep audit on the diff.
 3. Add/adjust tests that cover the changed behavior (unit first, then integration/e2e on devnet when relevant).
 4. Execute validations.
 5. If a step fails, apply a minimal patch and restart the pipeline from audit.
-6. Run cross-repo deep validation across:
+6. Run cross-repo validation only on impacted paths across:
    - `8004-solana-indexer`
    - `agent0-ts-solana`
    - `8004-solana`
