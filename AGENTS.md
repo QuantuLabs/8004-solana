@@ -4,6 +4,7 @@
 - Always prefer the smallest possible change that fixes the root cause.
 - Avoid broad refactors unless strictly required to unblock correctness.
 - After each patch, re-run the minimum relevant validations, then full flow when needed.
+- For every bug, first do a deep root-cause audit with evidence. Do not ship a patch that only masks symptoms or "seems to help" without identifying the actual source of the bug.
 
 ## Parallel Execution Rules
 - Never wait idly on subagents.
