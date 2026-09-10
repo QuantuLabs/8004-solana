@@ -236,27 +236,7 @@ const sealHash = computeSealHash({
 
 ### Verify Feedback Integrity
 
-```typescript
-import { computeSealHash } from '8004-solana';
-
-// Fetch feedback from indexer
-const feedback = await sdk.readFeedback(asset, client, 0);
-
-// Recompute seal hash
-const computed = computeSealHash({
-  value: feedback.value,
-  valueDecimals: feedback.valueDecimals,
-  score: feedback.score,
-  tag1: feedback.tag1,
-  tag2: feedback.tag2,
-  endpoint: feedback.endpoint,
-  feedbackUri: feedback.feedbackUri,
-  feedbackFileHash: feedback.feedbackFileHash ?? null,
-});
-
-// Verify
-const isValid = computed.equals(feedback.sealHash);
-```
+Follow [Verification via Indexer](#verification-via-indexer) below. `readFeedback()` returns the stored SEAL, not a separate `feedbackFileHash`; do not infer an original `None` commitment from that missing field.
 
 ### Revoke with Seal Hash
 
@@ -344,9 +324,13 @@ The indexer parses SEAL v1 events and stores them:
 | Event Field | DB Column | Notes |
 |-------------|-----------|-------|
 | `seal_hash` | `feedback_hash` | Stored as hex string |
-| `feedback_file_hash` | Not stored | Retrievable from URI if needed |
+| `feedback_file_hash` | No field in feedback rows | Recompute from the original file bytes to check its SEAL binding |
+
+Local Prisma `EventLog.data` can also retain the raw event, including `feedback_file_hash`; this is separate from feedback rows and their REST/GraphQL APIs.
 
 ### Verification via Indexer
+
+After RPC transaction history is pruned, replay the complete indexed history with `sdk.verifyIntegrityFull(asset, { useCheckpoints: false })` and require matching on-chain digests and counts. Then recompute each record's SEAL using Keccak-256 of the exact published file bytes and compare it to the seal anchored by replay. For an original `None` commitment, a matching SEAL verifies the parameters only; the missing indexed file-hash field does not establish `None`. See the [SDK verification guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/FEEDBACK.md#independent-file-and-seal-verification) for the complete two-step procedure.
 
 ```typescript
 // Fetch from indexer
